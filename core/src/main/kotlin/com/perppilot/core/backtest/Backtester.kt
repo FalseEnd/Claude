@@ -8,7 +8,7 @@ import com.perppilot.core.risk.RiskState
 import com.perppilot.core.strategy.EntrySignal
 import com.perppilot.core.strategy.PositionTrack
 import com.perppilot.core.strategy.PreparedSeries
-import com.perppilot.core.strategy.TrendStrategy
+import com.perppilot.core.strategy.Strategy
 import kotlinx.serialization.Serializable
 import kotlin.math.max
 import kotlin.math.min
@@ -91,7 +91,7 @@ data class BacktestResult(
  * - Fees, slippage and funding are charged on every fill / holding period.
  */
 class Backtester(
-    private val strategy: TrendStrategy,
+    private val strategy: Strategy,
     private val risk: RiskConfig,
     private val config: BacktestConfig = BacktestConfig(),
 ) {
@@ -105,7 +105,8 @@ class Backtester(
         val timeline = prepared.values.flatMap { p -> p.ltf.map { it.time } }.toSortedSet().toList()
         val fee = config.takerFeePct / 100.0
         val slip = config.slippagePct / 100.0
-        val fundingPerBar = config.fundingPctPer8h / 100.0 / 8.0
+        // Funding accrues per unit of time held, so scale the 8-hour rate by the bar length.
+        val fundingPerBar = config.fundingPctPer8h / 100.0 * strategy.ltfFrame.millis / (8 * 3_600_000.0)
 
         var cash = config.initialEquity
         val open = LinkedHashMap<String, OpenPos>()
@@ -160,7 +161,8 @@ class Backtester(
                     if (!decision.allowed) continue
                     val bar = p.ltf[i]
                     val entry = bar.open * (1 + sig.side.sign * slip)
-                    val stop = strategy.initialStop(sig.side, entry, sig.atr)
+                    val stop = strategy.initialStop(sig, entry)
+                    if ((entry - stop) * sig.side.sign <= 0) continue
                     val size = RiskManager.size(lastEquity, entry, stop, risk) ?: continue
                     val entryFee = size.notional * fee
                     cash -= entryFee
@@ -172,11 +174,12 @@ class Backtester(
                             entryPrice = entry,
                             initialStop = stop,
                             stop = stop,
-                            takeProfit = strategy.takeProfit(sig.side, entry, stop),
+                            takeProfit = strategy.takeProfit(sig, entry, stop),
                             size = size.quantity,
                             extreme = entry,
                             entryType = sig.type,
                             lastBarTime = bar.time - 1,
+                            strategy = strategy.type,
                         ),
                         riskAmount = size.riskAmount,
                         fees = entryFee,

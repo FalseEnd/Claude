@@ -47,7 +47,6 @@ import com.perppilot.core.backtest.BacktestConfig
 import com.perppilot.core.backtest.BacktestResult
 import com.perppilot.core.backtest.Backtester
 import com.perppilot.core.backtest.SymbolData
-import com.perppilot.core.strategy.TrendStrategy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -66,19 +65,19 @@ class BacktestViewModel(private val graph: AppGraph) : ViewModel() {
         viewModelScope.launch {
             try {
                 val s = graph.settings.current
-                val cfg = s.engine.strategy
+                val strategy = s.engine.activeStrategy()
                 val client = graph.publicClient(s)
                 val start = System.currentTimeMillis() - days * 86_400_000L
-                val warm = start - 260 * cfg.htfFrame.millis
+                val warm = start - 260 * strategy.htfFrame.millis
                 val data = symbols.map { inst ->
-                    _ui.value = _ui.value.copy(progress = "下載 ${shortSym(inst)} ${cfg.ltfFrame.label} K線…")
-                    val ltf = client.historyCandles(inst, cfg.ltfFrame, warm) { n -> _ui.value = _ui.value.copy(progress = "下載 ${shortSym(inst)}：$n 根") }
-                    val htf = client.historyCandles(inst, cfg.htfFrame, warm)
+                    _ui.value = _ui.value.copy(progress = "下載 ${shortSym(inst)} ${strategy.ltfFrame.label} K線…")
+                    val ltf = client.historyCandles(inst, strategy.ltfFrame, warm) { n -> _ui.value = _ui.value.copy(progress = "下載 ${shortSym(inst)}：$n 根") }
+                    val htf = client.historyCandles(inst, strategy.htfFrame, warm)
                     SymbolData(inst, ltf, htf)
                 }
                 _ui.value = _ui.value.copy(progress = "回測計算中…")
                 val result = withContext(Dispatchers.Default) {
-                    Backtester(TrendStrategy(cfg), s.engine.risk, BacktestConfig(startTime = start)).run(data)
+                    Backtester(strategy, s.engine.risk, BacktestConfig(startTime = start)).run(data)
                 }
                 _ui.value = BacktestUi(result = result)
             } catch (e: Exception) {
@@ -113,7 +112,11 @@ fun BacktestScreen(graph: AppGraph) {
                             FilterChip(selected = days == d, onClick = { days = d }, label = { Text(if (d >= 365) "${d / 365} 年" else "$d 天") })
                         }
                     }
-                    Hint("使用目前的策略與風控設定（${settings.engine.strategy.ltfFrame.label}/${settings.engine.strategy.htfFrame.label}），含手續費 0.05%、滑價 0.02%、資金費 0.01%/8h。訊號於收盤產生、下一根開盤成交。")
+                    val active = settings.engine.activeStrategy()
+                    Hint("策略：${active.type.label}（${active.ltfFrame.label}/${active.htfFrame.label}），使用目前的風控設定，含手續費 0.05%、滑價 0.02%、資金費 0.01%/8h。訊號於收盤產生、下一根開盤成交。")
+                    if (active.ltfFrame.millis <= com.perppilot.core.model.Timeframe.M15.millis && days > 180) {
+                        Hint("短週期 K 線資料量大，下載 ${days} 天可能需要數分鐘。", com.perppilot.app.ui.theme.Accent)
+                    }
                     Button(enabled = !ui.running && selected.isNotEmpty(), onClick = { vm.run(selected.toList(), days) }) { Text("開始回測") }
                     if (ui.running) {
                         LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))

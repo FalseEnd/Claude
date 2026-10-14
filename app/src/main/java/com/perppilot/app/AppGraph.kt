@@ -2,12 +2,15 @@ package com.perppilot.app
 
 import android.content.Context
 import com.perppilot.app.data.AppSettings
+import com.perppilot.app.data.FileCarryStore
 import com.perppilot.app.data.FileEngineStore
 import com.perppilot.app.data.FileEventStore
 import com.perppilot.app.data.SecretKey
 import com.perppilot.app.data.SecureStore
 import com.perppilot.app.data.SettingsRepository
 import com.perppilot.app.notify.AppNotifier
+import com.perppilot.core.carry.CarryEngine
+import com.perppilot.core.carry.CarryState
 import com.perppilot.core.engine.CycleReport
 import com.perppilot.core.engine.TradingEngine
 import com.perppilot.core.events.EventEngine
@@ -32,6 +35,7 @@ class AppGraph(val context: Context) {
     val secure = SecureStore(context)
     val engineStore = FileEngineStore(File(context.filesDir, "engine_state.json"))
     val eventStore = FileEventStore(File(context.filesDir, "event_state.json"))
+    val carryStore = FileCarryStore(File(context.filesDir, "carry_state.json"))
     val notifier = AppNotifier(context, this)
     private val http = OkxClient.defaultHttpClient()
     private val engineLock = Mutex()
@@ -62,8 +66,26 @@ class AppGraph(val context: Context) {
         val trading = tradingClient(s)
         // In demo mode orders fill against demo prices, so read market data from the same environment.
         val market = trading ?: publicClient(s)
-        TradingEngine(market, trading, engineStore, notifier).runCycle(s.engine)
+        // Coins in the carry book are off-limits to the directional bot and vice versa.
+        val reserved = carryStore.get().positions.keys.map { "$it-USDT-SWAP" }.toSet()
+        val report = TradingEngine(market, trading, engineStore, notifier).runCycle(s.engine, reserved)
+        if (s.carry.enabled || carryStore.get().positions.isNotEmpty()) {
+            runCatching { runCarryLocked(s, closeAll = false) }
+        }
+        report
     } }
+
+    /** Refreshes the carry status (and trades if enabled). [closeAll] unwinds every carry position. */
+    suspend fun runCarry(closeAll: Boolean = false): CarryState = withContext(Dispatchers.IO) {
+        engineLock.withLock { runCarryLocked(settings.current, closeAll) }
+    }
+
+    private suspend fun runCarryLocked(s: AppSettings, closeAll: Boolean): CarryState {
+        val trading = tradingClient(s)
+        val market = trading ?: publicClient(s)
+        val blocked = engineStore.get().positions.keys
+        return CarryEngine(market, trading, market, carryStore, notifier).runCycle(s.carry, blocked, closeAll)
+    }
 
     suspend fun runEventCycle(): EventState = withContext(Dispatchers.IO) { eventLock.withLock {
         val s = settings.current

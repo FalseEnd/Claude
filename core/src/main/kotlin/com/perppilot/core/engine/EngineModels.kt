@@ -5,8 +5,13 @@ import com.perppilot.core.model.Timeframe
 import com.perppilot.core.risk.RiskConfig
 import com.perppilot.core.risk.RiskState
 import com.perppilot.core.strategy.EntrySignal
+import com.perppilot.core.strategy.MeanRevConfig
+import com.perppilot.core.strategy.OrbConfig
 import com.perppilot.core.strategy.PositionTrack
+import com.perppilot.core.strategy.Strategy
 import com.perppilot.core.strategy.StrategyConfig
+import com.perppilot.core.strategy.StrategyFactory
+import com.perppilot.core.strategy.StrategyType
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -75,9 +80,16 @@ data class EngineSettings(
     val maxChaseAtr: Double = 0.5,
     /** Open trades from the built-in strategy (turn off to trade only TradingView alerts). */
     val useBuiltInStrategy: Boolean = true,
+    /** Which built-in strategy opens new trades. */
+    val strategyType: StrategyType = StrategyType.TREND,
+    val orb: OrbConfig = OrbConfig(),
+    val meanRev: MeanRevConfig = MeanRevConfig(),
 ) {
     val ltf: Timeframe get() = strategy.ltfFrame
     val htf: Timeframe get() = strategy.htfFrame
+
+    fun strategyFor(type: StrategyType): Strategy = StrategyFactory.create(type, strategy, orb, meanRev)
+    fun activeStrategy(): Strategy = strategyFor(strategyType)
 }
 
 interface EngineStore {

@@ -1,6 +1,8 @@
 package com.perppilot.app.data
 
 import android.util.AtomicFile
+import com.perppilot.core.carry.CarryState
+import com.perppilot.core.carry.CarryStore
 import com.perppilot.core.engine.EngineState
 import com.perppilot.core.engine.EngineStore
 import com.perppilot.core.events.EventState
@@ -47,4 +49,9 @@ class FileEngineStore(file: File) : JsonFileStore<EngineState>(file, EngineState
 class FileEventStore(file: File) : JsonFileStore<EventState>(file, EventState.serializer(), { EventState() }), EventStore {
     override fun load(): EventState = get()
     override fun save(state: EventState) = put(state)
+}
+
+class FileCarryStore(file: File) : JsonFileStore<CarryState>(file, CarryState.serializer(), { CarryState() }), CarryStore {
+    override fun load(): CarryState = get()
+    override fun save(state: CarryState) = put(state)
 }

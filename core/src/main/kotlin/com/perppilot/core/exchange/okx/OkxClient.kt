@@ -1,5 +1,7 @@
 package com.perppilot.core.exchange.okx
 
+import com.perppilot.core.carry.CarryApi
+import com.perppilot.core.carry.FundingSnapshot
 import com.perppilot.core.events.EventApi
 import com.perppilot.core.events.EventMarket
 import com.perppilot.core.events.EventMethod
@@ -63,7 +65,7 @@ class OkxClient(
     private val baseUrl: String = DEFAULT_BASE_URL,
     private val http: OkHttpClient = defaultHttpClient(),
     private val clock: () -> Long = System::currentTimeMillis,
-) : Exchange, EventApi {
+) : Exchange, EventApi, CarryApi {
 
     override val name: String = if (demo) "OKX 模擬盤" else "OKX 實盤"
 
@@ -91,7 +93,27 @@ class OkxClient(
     private suspend fun post(path: String, body: JsonElement): JsonArray =
         call("POST", path, emptyMap(), body, auth = true)
 
+    /** Retries OKX rate-limit rejections (50011 / HTTP 429) with exponential backoff. */
     private suspend fun call(
+        method: String,
+        path: String,
+        params: Map<String, String?>,
+        body: JsonElement?,
+        auth: Boolean,
+    ): JsonArray {
+        var attempt = 0
+        while (true) {
+            try {
+                return callOnce(method, path, params, body, auth)
+            } catch (e: ExchangeException) {
+                if (e.code != "50011" && e.code != "429" || attempt >= 3) throw e
+                attempt++
+                delay(1000L shl (attempt - 1))
+            }
+        }
+    }
+
+    private suspend fun callOnce(
         method: String,
         path: String,
         params: Map<String, String?>,
@@ -123,6 +145,7 @@ class OkxClient(
         val text = withContext(Dispatchers.IO) {
             http.newCall(builder.build()).execute().use { resp ->
                 val s = resp.body?.string().orEmpty()
+                if (resp.code == 429) throw ExchangeException("HTTP 429 請求過於頻繁", "429")
                 if (!resp.isSuccessful && s.isBlank()) throw ExchangeException("HTTP ${resp.code}")
                 s
             }
@@ -433,6 +456,82 @@ class OkxClient(
                 )
             }
             .sortedBy { it.closeTime }
+
+    // ---------------------------------------------------------------- funding carry
+
+    private val spotLots = ConcurrentHashMap<String, Pair<Double, Double>>()
+
+    override suspend fun fundingHistory(instId: String, limit: Int): List<Pair<Long, Double>> =
+        get("/api/v5/public/funding-rate-history", mapOf("instId" to instId, "limit" to limit.coerceIn(1, 100).toString()))
+            .map { it.obj() }
+            .map { o -> o.long("fundingTime") to (o.dblOrNull("realizedRate") ?: o.dbl("fundingRate")) }
+            .sortedByDescending { it.first }
+
+    override suspend fun allFunding(): List<FundingSnapshot> =
+        get("/api/v5/public/funding-rate", mapOf("instId" to "ANY")).map { it.obj() }
+            .filter { it.str("instId").endsWith("-USDT-SWAP") }
+            .map { o -> FundingSnapshot(o.str("instId"), o.dbl("fundingRate") * 100, o.longOrNull("fundingTime") ?: 0L) }
+
+    override suspend fun spotLotSize(instId: String): Pair<Double, Double> {
+        spotLots[instId]?.let { return it }
+        val o = get("/api/v5/public/instruments", mapOf("instType" to "SPOT", "instId" to instId)).firstOrNull()?.obj()
+            ?: throw ExchangeException("找不到現貨 $instId")
+        val r = o.dbl("lotSz") to o.dbl("minSz")
+        spotLots[instId] = r
+        return r
+    }
+
+    override suspend fun assetBalance(ccy: String): Double {
+        val o = get("/api/v5/account/balance", mapOf("ccy" to ccy), auth = true).firstOrNull()?.obj() ?: return 0.0
+        val d = (o["details"] as? JsonArray)?.map { it.obj() }?.firstOrNull { it.str("ccy") == ccy } ?: return 0.0
+        return d.dblOrNull("availBal") ?: d.dblOrNull("cashBal") ?: 0.0
+    }
+
+    override suspend fun spotMarket(instId: String, buy: Boolean, baseQty: Double, clientOrderId: String): Double {
+        val (lot, _) = spotLotSize(instId)
+        val o = post("/api/v5/trade/order", buildJsonObject {
+            put("instId", instId)
+            put("tdMode", "cash")
+            put("side", if (buy) "buy" else "sell")
+            put("ordType", "market")
+            put("tgtCcy", "base_ccy")
+            put("sz", fmt(baseQty, lot))
+            put("clOrdId", clientOrderId)
+        }).first().obj()
+        checkSCode(o)
+        delay(400)
+        // Buy fees are charged in the coin, so report the net quantity received.
+        val d = runCatching {
+            get("/api/v5/trade/order", mapOf("instId" to instId, "ordId" to o.str("ordId")), auth = true).first().obj()
+        }.getOrNull() ?: return baseQty
+        val filled = d.dblOrNull("accFillSz") ?: return baseQty
+        val fee = d.dblOrNull("fee") ?: 0.0
+        val base = instId.substringBefore("-")
+        return if (buy && d.str("feeCcy") == base) filled + fee else filled
+    }
+
+    override suspend fun perpMarket(
+        instId: String,
+        sell: Boolean,
+        contracts: Double,
+        marginMode: String,
+        hedgeMode: Boolean,
+        reduceOnly: Boolean,
+        clientOrderId: String,
+    ) {
+        val spec = instrument(instId)
+        val o = post("/api/v5/trade/order", buildJsonObject {
+            put("instId", instId)
+            put("tdMode", marginMode)
+            put("side", if (sell) "sell" else "buy")
+            // The carry book only ever holds shorts: opening = sell, reducing = buy.
+            if (hedgeMode) put("posSide", "short") else if (reduceOnly) put("reduceOnly", true)
+            put("ordType", "market")
+            put("sz", fmt(contracts, spec.lotSz))
+            put("clOrdId", clientOrderId)
+        }).first().obj()
+        checkSCode(o)
+    }
 
     /** Public GET returning rows of string arrays (candles-style endpoints). */
     suspend fun rawGet(path: String, params: Map<String, String?>): List<List<String>> =

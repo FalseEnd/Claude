@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.perppilot.app.ui.screens
 
@@ -181,6 +181,7 @@ fun BotScreen(graph: AppGraph, onOpenSettings: () -> Unit) {
                     }
                 }
             }
+            item { CarrySection(graph) }
             item { Text("事件記錄", style = MaterialTheme.typography.titleMedium) }
             items(state.events.take(60)) { e -> EventRow(e) }
         }
@@ -231,4 +232,88 @@ fun LiveRiskDialog(onDismiss: () -> Unit, onAccept: () -> Unit) {
         confirmButton = { TextButton(onClick = onAccept) { Text("我了解風險，啟用", color = Red) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
+}
+
+@Composable
+private fun CarrySection(graph: AppGraph) {
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val carry by graph.carryStore.state.collectAsStateWithLifecycle()
+    val mc = LocalMarketColors.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var confirmClose by remember { mutableStateOf(false) }
+    val cfg = settings.carry
+    val hasKeys = graph.credentials(settings.demoMode) != null
+    androidx.compose.runtime.LaunchedEffect(Unit) { if (carry.lastRun == 0L) runCatching { graph.runCarry() } }
+
+    SectionCard("資金費率套利（Delta 中性）") {
+        Hint(
+            "買入現貨＋做空等量永續，價格漲跌互相抵銷，只賺資金費。回測 2022–2026（BTC＋ETH，含手續費）：年化約 3.5–4%、最大回撤約 1%，" +
+                "56 個月中 5–12 個月小虧。穩定但報酬不高；資金費轉負時自動出場。",
+        )
+        SwitchRow(
+            "啟用套利",
+            cfg.enabled,
+            { on -> graph.settings.update { it.copy(carry = it.carry.copy(enabled = on)) } },
+            desc = "每 15 分鐘檢查；需要帳戶有 USDT 並開啟現貨交易權限",
+            enabled = hasKeys,
+        )
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("BTC", "ETH", "SOL").forEach { c ->
+                androidx.compose.material3.FilterChip(
+                    selected = c in cfg.coins,
+                    onClick = {
+                        graph.settings.update {
+                            val list = if (c in it.carry.coins) it.carry.coins - c else it.carry.coins + c
+                            it.copy(carry = it.carry.copy(coins = list.ifEmpty { listOf("BTC") }))
+                        }
+                    },
+                    label = { Text(c) },
+                )
+            }
+        }
+        com.perppilot.app.ui.components.FieldRow {
+            com.perppilot.app.ui.components.NumberField("投入權益比例", cfg.capitalPct, { v -> graph.settings.update { it.copy(carry = it.carry.copy(capitalPct = v.coerceIn(5.0, 90.0))) } }, Modifier.weight(1f), "%")
+            com.perppilot.app.ui.components.NumberField("空單槓桿", cfg.perpLeverage.toDouble(), { v -> graph.settings.update { it.copy(carry = it.carry.copy(perpLeverage = v.toInt().coerceIn(1, 3))) } }, Modifier.weight(1f), "x", integer = true)
+        }
+        carry.status.forEach { st ->
+            val pos = carry.positions[st.coin]
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(st.coin, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(48.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("7日均 %.4f%%／8h（年化 %.1f%%）".format(st.avgRatePct, st.annualizedPct), style = MaterialTheme.typography.bodySmall, color = mc.of(st.avgRatePct))
+                    Text(
+                        if (pos != null) "持有 ${pos.contracts} 張｜估計已收 %+.2f USDT".format(pos.fundingEarned) else st.note.ifEmpty { "未持有" },
+                        style = MaterialTheme.typography.labelSmall, color = TextSecondary,
+                    )
+                }
+                if (pos != null) Tag("套利中", Accent)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(enabled = !busy, onClick = {
+                busy = true
+                scope.launch { runCatching { graph.runCarry() }; busy = false }
+            }) { Text(if (busy) "處理中…" else "立即檢查") }
+            if (carry.positions.isNotEmpty()) {
+                OutlinedButton(onClick = { confirmClose = true }) { Text("全部平倉", color = Red) }
+            }
+        }
+        Hint("注意：單幣種保證金模式下現貨不能當空單保證金，價格大漲時程式會同步縮減兩腿以維持安全；若帳戶設為多幣種保證金，資金效率更高（回測年化約 5%）。")
+    }
+    if (confirmClose) {
+        AlertDialog(
+            onDismissRequest = { confirmClose = false },
+            title = { Text("平掉所有套利倉位？") },
+            text = { Text("將平掉永續空單並賣出對應現貨，並關閉套利開關。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmClose = false
+                    graph.settings.update { it.copy(carry = it.carry.copy(enabled = false)) }
+                    scope.launch { runCatching { graph.runCarry(closeAll = true) } }
+                }) { Text("全部平倉", color = Red) }
+            },
+            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text("取消") } },
+        )
+    }
 }

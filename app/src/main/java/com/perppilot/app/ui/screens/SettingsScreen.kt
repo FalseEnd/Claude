@@ -47,7 +47,10 @@ import com.perppilot.app.work.MonitorService
 import com.perppilot.app.work.Scheduler
 import com.perppilot.core.model.Timeframe
 import com.perppilot.core.risk.RiskConfig
+import com.perppilot.core.strategy.MeanRevConfig
+import com.perppilot.core.strategy.OrbConfig
 import com.perppilot.core.strategy.StrategyConfig
+import com.perppilot.core.strategy.StrategyType
 import com.perppilot.core.strategy.TradingSession
 import kotlinx.coroutines.launch
 import java.security.SecureRandom
@@ -106,8 +109,11 @@ fun SettingsScreen(graph: AppGraph) {
                 testResult?.let { Hint(it) }
             }
 
+            // ------------------------------------------------------------- strategy choice
+            StrategyPicker(graph)
+
             // ------------------------------------------------------------- strategy
-            SectionCard("策略參數") {
+            SectionCard("趨勢跟隨策略參數") {
                 Text("週期（進場 / 趨勢）", style = MaterialTheme.typography.bodyMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(Timeframe.H4 to Timeframe.D1, Timeframe.H1 to Timeframe.H4).forEach { (l, h) ->
@@ -208,6 +214,75 @@ fun SettingsScreen(graph: AppGraph) {
                 graph.settings.update { it.copy(liveRiskAccepted = true, demoMode = false) }
             },
         )
+    }
+}
+
+@Composable
+private fun StrategyPicker(graph: AppGraph) {
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val e = settings.engine
+    fun orb(f: (OrbConfig) -> OrbConfig) = graph.settings.update { it.copy(engine = it.engine.copy(orb = f(it.engine.orb))) }
+    fun mr(f: (MeanRevConfig) -> MeanRevConfig) = graph.settings.update { it.copy(engine = it.engine.copy(meanRev = f(it.engine.meanRev))) }
+
+    SectionCard("進場策略") {
+        StrategyType.entries.forEach { t ->
+            val selected = e.strategyType == t
+            FilterChip(
+                selected = selected,
+                onClick = {
+                    graph.settings.update { it.copy(engine = it.engine.copy(strategyType = t)) }
+                    MonitorService.sync(graph.context)
+                },
+                label = { Text(t.label + "｜" + StrategyVerdicts.badge(t)) },
+            )
+            if (selected) {
+                Hint(t.description)
+                Hint(StrategyVerdicts.detail(t), if (StrategyVerdicts.validated(t)) Accent else Red)
+            }
+        }
+        Hint("已有倉位一律由開倉時的策略管理到平倉；切換只影響新進場。5／15 分鐘策略會啟動前景服務每分鐘執行。")
+
+        when (e.strategyType) {
+            StrategyType.ORB -> {
+                val c = e.orb
+                Text("開盤區間突破參數", style = MaterialTheme.typography.bodyMedium)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(Timeframe.M5 to Timeframe.H1, Timeframe.M15 to Timeframe.H4).forEach { (l, h) ->
+                        FilterChip(c.ltfFrame == l, { orb { it.copy(ltfFrame = l, htfFrame = h) } }, label = { Text("${l.label} / ${h.label}") })
+                    }
+                }
+                FieldRow {
+                    NumberField("區間分鐘", c.rangeMinutes.toDouble(), { v -> orb { it.copy(rangeMinutes = v.toInt().coerceIn(5, 120)) } }, Modifier.weight(1f), integer = true)
+                    NumberField("止盈 R（0=收盤平）", c.takeProfitR, { v -> orb { it.copy(takeProfitR = v.coerceIn(0.0, 10.0)) } }, Modifier.weight(1f))
+                }
+                SwitchRow("順大週期趨勢", c.trendFilter, { on -> orb { it.copy(trendFilter = on) } })
+                SwitchRow("止損放在區間中線", c.stopAtMid, { on -> orb { it.copy(stopAtMid = on) } })
+                Hint("區間：美東 09:30 起 ${c.rangeMinutes} 分鐘；12:00 後不再進場；16:00 前全部平倉。")
+            }
+            StrategyType.MEAN_REVERSION -> {
+                val c = e.meanRev
+                Text("均值回歸參數", style = MaterialTheme.typography.bodyMedium)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(Timeframe.M5 to Timeframe.H1, Timeframe.M15 to Timeframe.H4, Timeframe.H1 to Timeframe.H4).forEach { (l, h) ->
+                        FilterChip(c.ltfFrame == l && c.htfFrame == h, { mr { it.copy(ltfFrame = l, htfFrame = h) } }, label = { Text("${l.label} / ${h.label}") })
+                    }
+                }
+                FieldRow {
+                    NumberField("布林倍數", c.bbMult, { v -> mr { it.copy(bbMult = v.coerceIn(1.0, 4.0)) } }, Modifier.weight(1f))
+                    NumberField("RSI(2) 極值", c.rsiExtreme, { v -> mr { it.copy(rsiExtreme = v.coerceIn(1.0, 30.0)) } }, Modifier.weight(1f))
+                }
+                FieldRow {
+                    NumberField("大週期 ADX 上限", c.maxHtfAdx, { v -> mr { it.copy(maxHtfAdx = v.coerceIn(0.0, 60.0)) } }, Modifier.weight(1f))
+                    NumberField("止損 ATR", c.stopAtrMult, { v -> mr { it.copy(stopAtrMult = v.coerceIn(0.5, 5.0)) } }, Modifier.weight(1f))
+                }
+                NumberField("最長持有 K 棒", c.maxHoldBars.toDouble(), { v -> mr { it.copy(maxHoldBars = v.toInt().coerceIn(1, 200)) } }, Modifier.fillMaxWidth(), integer = true)
+                Text("交易時段", style = MaterialTheme.typography.bodyMedium)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TradingSession.entries.forEach { ss -> FilterChip(c.session == ss, { mr { it.copy(session = ss) } }, label = { Text(ss.label) }) }
+                }
+            }
+            StrategyType.TREND -> Unit
+        }
     }
 }
 

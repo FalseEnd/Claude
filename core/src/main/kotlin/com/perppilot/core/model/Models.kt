@@ -15,6 +15,7 @@ data class Candle(
 
 @Serializable
 enum class Timeframe(val okx: String, val millis: Long, val label: String) {
+    M5("5m", 5 * 60_000L, "5分"),
     M15("15m", 15 * 60_000L, "15分"),
     H1("1H", 3_600_000L, "1小時"),
     H4("4H", 4 * 3_600_000L, "4小時"),

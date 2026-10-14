@@ -75,6 +75,7 @@ data class MarketUi(
     val snapshots: Map<String, AnalysisSnapshot> = emptyMap(),
     val errors: Map<String, String> = emptyMap(),
     val allTickers: List<Ticker> = emptyList(),
+    val funding: List<com.perppilot.core.carry.FundingSnapshot> = emptyList(),
     val updated: Long = 0,
 )
 
@@ -98,11 +99,13 @@ class MarketViewModel(private val graph: AppGraph) : ViewModel() {
                 }
             }.awaitAll()
             val tickers = runCatching { client.tickers().sortedByDescending { it.volQuote24h } }.getOrDefault(_ui.value.allTickers)
+            val funding = runCatching { client.allFunding().sortedByDescending { it.ratePct } }.getOrDefault(_ui.value.funding)
             _ui.value = MarketUi(
                 loading = false,
                 snapshots = results.mapNotNull { (k, r) -> r.getOrNull()?.let { k to it } }.toMap(),
                 errors = results.mapNotNull { (k, r) -> r.exceptionOrNull()?.let { k to (it.message ?: "錯誤") } }.toMap(),
                 allTickers = tickers,
+                funding = funding,
                 updated = System.currentTimeMillis(),
             )
         }
@@ -173,6 +176,7 @@ fun MarketScreen(graph: AppGraph, onOpen: (String) -> Unit) {
             PrimaryTabRow(selectedTabIndex = tab) {
                 Tab(tab == 0, { tab = 0 }, text = { Text("觀察清單") })
                 Tab(tab == 1, { tab = 1 }, text = { Text("全市場") })
+                Tab(tab == 2, { tab = 2 }, text = { Text("資金費率") })
             }
             if (tab == 0) {
                 LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -186,9 +190,28 @@ fun MarketScreen(graph: AppGraph, onOpen: (String) -> Unit) {
                         )
                     }
                 }
-            } else {
+            } else if (tab == 1) {
                 LazyColumn(contentPadding = PaddingValues(12.dp)) {
                     items(ui.allTickers.take(80), key = { it.instId }) { t -> TickerRow(t) { onOpen(t.instId) } }
+                }
+            } else {
+                val volumeRank = ui.allTickers.withIndex().associate { (i, t) -> t.instId to i }
+                LazyColumn(contentPadding = PaddingValues(12.dp)) {
+                    item {
+                        Text(
+                            "本期資金費率（每 8 小時）與年化。正值＝多方付給空方。成交量前 100 名的合約才適合套利；極端費率常伴隨暴漲暴跌與流動性風險。",
+                            style = MaterialTheme.typography.bodySmall, color = TextSecondary,
+                        )
+                    }
+                    val liquid = ui.funding.filter { (volumeRank[it.instId] ?: 999) < 100 }
+                    items(liquid.take(25) + liquid.takeLast(10).filter { it.ratePct < 0 }, key = { "f" + it.instId }) { f ->
+                        val mc = LocalMarketColors.current
+                        Row(Modifier.fillMaxWidth().clickable { onOpen(f.instId) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(shortSym(f.instId), Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                            Text("%.4f%%".format(f.ratePct), Modifier.weight(1f), fontFamily = Mono, color = mc.of(f.ratePct))
+                            Text("年化 %.1f%%".format(f.annualizedPct), Modifier.weight(1f), fontFamily = Mono, color = TextSecondary)
+                        }
+                    }
                 }
             }
         }

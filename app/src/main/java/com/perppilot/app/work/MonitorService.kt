@@ -43,6 +43,7 @@ class MonitorService : Service() {
         val parts = listOfNotNull(
             "TradingView 警報".takeIf { s.signals.enabled },
             "事件合約".takeIf { s.eventMonitor },
+            "${s.engine.strategyType.label}（每分鐘）".takeIf { needsMinuteCycle(s) },
         ).ifEmpty { listOf("待命") }
         val notification = NotificationCompat.Builder(this, AppNotifier.CH_SERVICE)
             .setSmallIcon(R.drawable.ic_stat_notify)
@@ -62,6 +63,7 @@ class MonitorService : Service() {
                     val cur = graph.settings.current
                     if (cur.signals.enabled) runCatching { graph.pollRelay() }
                     if (cur.eventMonitor && tick % 2 == 0L) runCatching { graph.runEventCycle() }
+                    if (needsMinuteCycle(cur) && tick % 4 == 0L) runCatching { graph.runTradingCycle() }
                     tick++
                     delay(15_000)
                 }
@@ -89,10 +91,15 @@ class MonitorService : Service() {
             if (running.value) context.startService(Intent(context, MonitorService::class.java).setAction(ACTION_STOP))
         }
 
+        /** Intraday strategies (5m/15m bars) must be evaluated far more often than every 15 minutes. */
+        fun needsMinuteCycle(s: com.perppilot.app.data.AppSettings): Boolean =
+            s.engine.activeStrategy().ltfFrame.millis <= com.perppilot.core.model.Timeframe.M15.millis &&
+                (s.engine.autoTrade || s.engine.notifySignals || s.backgroundScan)
+
         /** Starts or stops the service to match the settings. */
         fun sync(context: Context) {
             val s = context.graph.settings.current
-            if (s.signals.enabled || s.eventMonitor) start(context) else stop(context)
+            if (s.signals.enabled || s.eventMonitor || needsMinuteCycle(s)) start(context) else stop(context)
         }
     }
 }

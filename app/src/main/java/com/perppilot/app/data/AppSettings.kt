@@ -1,5 +1,6 @@
 package com.perppilot.app.data
 
+import com.perppilot.core.carry.CarryConfig
 import com.perppilot.core.engine.EngineSettings
 import com.perppilot.core.events.EventStrategyConfig
 import com.perppilot.core.exchange.okx.OkxClient
@@ -14,6 +15,8 @@ data class AppSettings(
     val eventMonitor: Boolean = false,
     /** TradingView alerts relayed through ntfy. */
     val signals: ExternalSignalConfig = ExternalSignalConfig(),
+    /** Delta-neutral funding carry (spot long + perp short). */
+    val carry: CarryConfig = CarryConfig(),
     /** true = OKX demo trading (x-simulated-trading), false = real money. */
     val demoMode: Boolean = true,
     val baseUrl: String = OkxClient.DEFAULT_BASE_URL,

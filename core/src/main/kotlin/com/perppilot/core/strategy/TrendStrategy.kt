@@ -49,6 +49,8 @@ data class PositionTrack(
     val entryType: String = "",
     /** Open time of the last bar already processed by [TrendStrategy.manage]. */
     val lastBarTime: Long = 0,
+    /** Strategy that manages this position. */
+    val strategy: StrategyType = StrategyType.TREND,
     /** Where the trade came from: 策略 (built-in) or TradingView. */
     val origin: String = "策略",
     /** false = keep only the initial stop; exits come from the signal source. */
@@ -78,8 +80,15 @@ class PreparedSeries(
     val htfAdx: DoubleArray,
     val htfPlusDi: DoubleArray,
     val htfMinusDi: DoubleArray,
+    /** Strategy-specific series (Bollinger bands, opening range, …). */
+    val extras: Map<String, DoubleArray> = emptyMap(),
 ) {
     val size: Int get() = ltf.size
+
+    fun withExtras(more: Map<String, DoubleArray>) = PreparedSeries(
+        ltf, htf, htfIndex, ema, rsi, atr, volSma, donchianHigh, donchianLow,
+        htfEmaFast, htfEmaSlow, htfAdx, htfPlusDi, htfMinusDi, extras + more,
+    )
 }
 
 /**
@@ -94,13 +103,20 @@ class PreparedSeries(
  * 3. Exit: initial stop at 2 ATR, break-even after +1R, chandelier trailing stop at 3 ATR from the
  *    best price, trend-break exit when the 4H trend structure flips, and a time stop.
  */
-class TrendStrategy(val cfg: StrategyConfig = StrategyConfig()) {
+class TrendStrategy(val cfg: StrategyConfig = StrategyConfig()) : Strategy {
+    override val type = StrategyType.TREND
+    override val ltfFrame: Timeframe get() = cfg.ltfFrame
+    override val htfFrame: Timeframe get() = cfg.htfFrame
+    override val ltfWarmup: Int get() = cfg.ltfWarmup
+    override val htfWarmup: Int get() = cfg.htfWarmup
+
+    override fun prepare(ltf: List<Candle>, htf: List<Candle>): PreparedSeries = prepare(ltf, htf, cfg.ltfFrame, cfg.htfFrame)
 
     fun prepare(
         ltf: List<Candle>,
         htf: List<Candle>,
-        ltfFrame: Timeframe = cfg.ltfFrame,
-        htfFrame: Timeframe = cfg.htfFrame,
+        ltfFrame: Timeframe,
+        htfFrame: Timeframe,
     ): PreparedSeries {
         val closes = ltf.closes()
         val htfCloses = htf.closes()
@@ -154,8 +170,7 @@ class TrendStrategy(val cfg: StrategyConfig = StrategyConfig()) {
         }
     }
 
-    /** Evaluates the closed bar [i]. [fundingRate] is a fraction (0.0001 = 0.01%). */
-    fun entrySignal(p: PreparedSeries, i: Int, fundingRate: Double? = null): EntrySignal? {
+    override fun entrySignal(p: PreparedSeries, i: Int, fundingRate: Double?): EntrySignal? {
         if (i < cfg.ltfWarmup || i >= p.size) return null
         val side = when (regime(p, i)) {
             Regime.BULL -> if (cfg.allowLongs) Side.LONG else return null
@@ -253,11 +268,15 @@ class TrendStrategy(val cfg: StrategyConfig = StrategyConfig()) {
     fun takeProfit(side: Side, entryPrice: Double, stop: Double): Double? =
         if (cfg.takeProfitR > 0) entryPrice + side.sign * cfg.takeProfitR * abs(entryPrice - stop) else null
 
+    override fun initialStop(signal: EntrySignal, entry: Double): Double = initialStop(signal.side, entry, signal.atr)
+
+    override fun takeProfit(signal: EntrySignal, entry: Double, stop: Double): Double? = takeProfit(signal.side, entry, stop)
+
     /**
      * Updates the protective stop after bar [i] closed and decides whether to exit at its close.
      * The stop only ever moves in the trade's favour.
      */
-    fun manage(pos: PositionTrack, p: PreparedSeries, i: Int): ManageResult {
+    override fun manage(pos: PositionTrack, p: PreparedSeries, i: Int): ManageResult {
         val bar = p.ltf[i]
         if (bar.time <= pos.lastBarTime) return ManageResult(pos, null)
         val side = pos.side

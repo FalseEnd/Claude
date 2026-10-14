@@ -44,6 +44,14 @@ suspend fun runSmoke() {
     val st = EventEngine(okx, false, InMemoryEventStore(), {}).runCycle(EventStrategyConfig(), null)
     ok("event engine scan", "opportunities=${st.opportunities.size} errors=${st.events.filter { it.kind.name == "ERROR" }.map { it.message }}")
 
+    val all = okx.allFunding()
+    ok("all funding", "${all.size} perps, top=${all.maxByOrNull { it.ratePct }?.let { "${it.instId} ${"%.4f".format(it.ratePct)}%" }}")
+    ok("funding history", okx.fundingHistory("BTC-USDT-SWAP", 21).take(3))
+    ok("spot lot size", okx.spotLotSize("BTC-USDT"))
+    val carry = com.perppilot.core.carry.CarryEngine(okx, null, okx, com.perppilot.core.carry.InMemoryCarryStore(), {})
+        .runCycle(com.perppilot.core.carry.CarryConfig(enabled = true, coins = listOf("BTC", "ETH", "SOL")))
+    ok("carry status", carry.status.map { "${it.coin} 7d=${"%.4f".format(it.avgRatePct)}% apr=${"%.1f".format(it.annualizedPct)}%" })
+
     val topic = "up" + System.currentTimeMillis().toString(36)
     val relay = NtfyClient("https://ntfy.sh", topic)
     runCatching {

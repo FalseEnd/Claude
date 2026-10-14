@@ -13,6 +13,7 @@ import com.perppilot.core.strategy.EntrySignal
 import com.perppilot.core.strategy.EntryType
 import com.perppilot.core.strategy.PositionTrack
 import com.perppilot.core.strategy.PreparedSeries
+import com.perppilot.core.strategy.Strategy
 import com.perppilot.core.strategy.TrendStrategy
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -37,12 +38,13 @@ class TradingEngine(
     private val events = mutableListOf<EngineEvent>()
     private val errors = mutableListOf<String>()
 
-    suspend fun runCycle(settings: EngineSettings): CycleReport {
+    /** [reserved]: perpetuals held by the funding-carry book; never traded or counted here. */
+    suspend fun runCycle(settings: EngineSettings, reserved: Set<String> = emptySet()): CycleReport {
         state = store.load()
         events.clear()
         errors.clear()
         val now = clock()
-        val strategy = TrendStrategy(settings.strategy)
+        val strategy = settings.activeStrategy()
         // Existing positions keep being managed even when auto-trading is switched off;
         // only new entries require [EngineSettings.autoTrade].
         val tradingApi = trading.takeIf { settings.autoTrade || state.positions.isNotEmpty() }
@@ -63,7 +65,7 @@ class TradingEngine(
                 val bal = tradingApi.balance()
                 equity = bal.totalEquity
                 available = bal.availableEquity
-                exPositions = tradingApi.positions()
+                exPositions = tradingApi.positions().filter { it.instId !in reserved }
                 val before = state.risk
                 val risk = RiskManager.onEquity(before, bal.totalEquity, now, settings.risk)
                 state = state.copy(risk = risk, lastEquity = bal.totalEquity, lastAvailable = available)
@@ -77,21 +79,23 @@ class TradingEngine(
             }
         }
 
-        val symbols = (settings.watchlist + state.positions.keys).distinct()
+        val symbols = (settings.watchlist.filter { it !in reserved } + state.positions.keys).distinct()
         for (instId in symbols) {
             try {
-                val ltf = market.candles(instId, settings.ltf, 300)
-                val htf = market.candles(instId, settings.htf, 300)
-                if (ltf.size < settings.strategy.ltfWarmup || htf.size < settings.strategy.htfWarmup) {
+                val track = state.positions[instId]
+                // A position is always managed by the strategy that opened it.
+                val strat = if (track != null) settings.strategyFor(track.strategy) else strategy
+                val ltf = market.candles(instId, strat.ltfFrame, 300)
+                val htf = market.candles(instId, strat.htfFrame, 300)
+                if (ltf.size < strat.ltfWarmup || htf.size < strat.htfWarmup) {
                     signals[instId] = null
                     continue
                 }
-                val p = strategy.prepare(ltf, htf, settings.ltf, settings.htf)
+                val p = strat.prepare(ltf, htf)
                 val last = p.size - 1
-                val track = state.positions[instId]
                 if (track != null) {
                     if (tradingApi != null && account != null) {
-                        managePosition(tradingApi, account, strategy, p, track, exPositions, settings)
+                        managePosition(tradingApi, account, strat, p, track, exPositions, settings)
                     }
                     continue
                 }
@@ -152,7 +156,7 @@ class TradingEngine(
     private suspend fun managePosition(
         api: TradingApi,
         account: AccountConfig,
-        strategy: TrendStrategy,
+        strategy: Strategy,
         p: PreparedSeries,
         original: PositionTrack,
         exPositions: List<ExchangePosition>,
@@ -221,7 +225,7 @@ class TradingEngine(
     private suspend fun openPosition(
         api: TradingApi,
         account: AccountConfig,
-        strategy: TrendStrategy,
+        strategy: Strategy,
         signal: EntrySignal,
         instId: String,
         equity: Double,
@@ -252,13 +256,13 @@ class TradingEngine(
             emit(EventKind.INFO, "${shortName(instId)} 訊號未執行", "價格已偏離訊號價超過 ${settings.maxChaseAtr} ATR，不追價", instId)
             return
         }
-        val rawStop = stopOverride ?: strategy.initialStop(signal.side, price, signal.atr)
+        val rawStop = stopOverride ?: strategy.initialStop(signal, price)
         if ((rawStop - price) * signal.side.sign >= 0) {
             emit(EventKind.INFO, "${shortName(instId)} 訊號未執行", "止損價 ${px(rawStop)} 不在${signal.side.label}方向的正確一側", instId)
             return
         }
         val stop = RiskManager.roundPrice(rawStop, spec.tickSz, up = signal.side == Side.SHORT)
-        val tp = (tpOverride ?: strategy.takeProfit(signal.side, price, stop))?.let { RiskManager.roundPrice(it, spec.tickSz) }
+        val tp = (tpOverride ?: strategy.takeProfit(signal, price, stop))?.let { RiskManager.roundPrice(it, spec.tickSz) }
         val leverage = minOf(cfg.leverage, spec.maxLeverage)
         val size = RiskManager.size(equity, price, stop, cfg.copy(leverage = leverage), spec, available)
         if (size == null) {
@@ -288,11 +292,13 @@ class TradingEngine(
             extreme = fill,
             entryType = signal.type,
             lastBarTime = signal.barTime,
+            strategy = strategy.type,
             origin = origin,
             manageExits = manageExits,
         )
         state = state.copy(positions = state.positions + (instId to track))
-        val typeLabel = runCatching { EntryType.valueOf(signal.type).label }.getOrDefault(origin)
+        val typeLabel = runCatching { EntryType.valueOf(signal.type).label }.getOrNull()
+            ?: runCatching { com.perppilot.core.strategy.StrategyType.valueOf(signal.type).label }.getOrDefault(origin)
         emit(
             EventKind.ORDER,
             "${shortName(instId)} 已${signal.side.label}開倉",
@@ -401,7 +407,7 @@ class TradingEngine(
                 }
                 val ltf = market.candles(sig.instId, settings.ltf, 300)
                 val htf = market.candles(sig.instId, settings.htf, 300)
-                val p = strategy.prepare(ltf, htf)
+                val p = strategy.prepare(ltf, htf, settings.ltf, settings.htf)
                 val atr = p.atr.lastOrNull()?.takeIf { !it.isNaN() } ?: throw IllegalStateException("K 線不足，無法計算 ATR")
                 val ref = sig.price ?: market.ticker(sig.instId).last
                 val entry = EntrySignal(
