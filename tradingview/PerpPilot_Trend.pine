@@ -1,0 +1,115 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// PerpPilot 趨勢策略（與 App 內建策略相同邏輯）
+// 建議：4 小時圖（趨勢週期自動取日線）；或 1 小時圖搭配 4 小時趨勢。
+// 使用方式：加到圖表 → 新增警報 → 條件選本策略「alert() function calls only」→ 勾選 Webhook，
+//          貼上 App「設定 → TradingView」中的 Webhook URL；訊息欄留空（腳本自帶 JSON）。
+//@version=6
+strategy("PerpPilot Trend", overlay = true, initial_capital = 10000, commission_type = strategy.commission.percent,
+     commission_value = 0.05, slippage = 2, default_qty_type = strategy.percent_of_equity, default_qty_value = 10,
+     calc_on_every_tick = false, process_orders_on_close = false)
+
+// ---------------------------------------------------------------- 輸入
+secret      = input.string("", "App 密鑰 (secret)", group = "Webhook")
+htfTf       = input.timeframe("D", "趨勢週期", group = "趨勢")
+emaFastLen  = input.int(50, "趨勢 EMA 快", group = "趨勢")
+emaSlowLen  = input.int(200, "趨勢 EMA 慢", group = "趨勢")
+adxLen      = input.int(14, "ADX 週期", group = "趨勢")
+adxMin      = input.float(30, "ADX 門檻", group = "趨勢")
+emaLen      = input.int(20, "進場 EMA", group = "進場")
+rsiLen      = input.int(14, "RSI 週期", group = "進場")
+pullRsi     = input.float(45, "回踩 RSI 低於", group = "進場")
+resumeRsi   = input.float(50, "恢復 RSI 高於", group = "進場")
+lookback    = input.int(6, "回踩回看根數", group = "進場")
+useBreakout = input.bool(true, "放量突破進場", group = "進場")
+donLen      = input.int(20, "突破通道長度", group = "進場")
+volMult     = input.float(1.3, "突破量倍數", group = "進場")
+atrLen      = input.int(14, "ATR 週期", group = "出場")
+stopMult    = input.float(2.0, "止損 ATR", group = "出場")
+trailMult   = input.float(4.0, "移動止損 ATR", group = "出場")
+beR         = input.float(1.0, "保本觸發 R", group = "出場")
+allowShort  = input.bool(true, "允許做空", group = "方向")
+usOnly      = input.bool(false, "只在美股盤中進場 (09:30–16:00 ET)", group = "時段")
+
+// ---------------------------------------------------------------- 高週期趨勢（只用已收盤的 HTF K 線，避免未來函數）
+htfCalc() =>
+    [dp, dm, ax] = ta.dmi(adxLen, adxLen)
+    [ta.ema(close, emaFastLen)[1], ta.ema(close, emaSlowLen)[1], close[1], dp[1], dm[1], ax[1]]
+
+[hEmaF, hEmaS, hClose, hDiPlus, hDiMinus, hAdx] = request.security(syminfo.tickerid, htfTf, htfCalc(), lookahead = barmerge.lookahead_on)
+
+bull = hEmaF > hEmaS and hClose > hEmaF and hAdx >= adxMin and hDiPlus > hDiMinus
+bear = hEmaF < hEmaS and hClose < hEmaF and hAdx >= adxMin and hDiMinus > hDiPlus
+
+// ---------------------------------------------------------------- 低週期進場
+ema  = ta.ema(close, emaLen)
+rsi  = ta.rsi(close, rsiLen)
+atr  = ta.atr(atrLen)
+donH = ta.highest(high, donLen)[1]
+donL = ta.lowest(low, donLen)[1]
+vAvg = ta.sma(volume, 20)[1]
+loc  = high > low ? (close - low) / (high - low) : 0.5
+
+rsiResetL = ta.lowest(rsi, lookback)[1] < pullRsi
+rsiResetS = ta.highest(rsi, lookback)[1] > 100 - pullRsi
+touchL = false
+touchS = false
+for k = 1 to lookback
+    touchL := touchL or low[k] <= ema[k]
+    touchS := touchS or high[k] >= ema[k]
+
+pullL = rsiResetL and touchL and close > ema and close > open and rsi > resumeRsi and rsi > rsi[1]
+pullS = rsiResetS and touchS and close < ema and close < open and rsi < 100 - resumeRsi and rsi < rsi[1]
+brkL  = useBreakout and close > donH and volume > volMult * vAvg and loc >= 0.5
+brkS  = useBreakout and close < donL and volume > volMult * vAvg and loc <= 0.5
+
+inSession = not usOnly or (not na(time(timeframe.period, "0930-1600:23456", "America/New_York")))
+goLong  = barstate.isconfirmed and inSession and bull and (pullL or brkL) and strategy.position_size == 0
+goShort = barstate.isconfirmed and inSession and allowShort and bear and (pullS or brkS) and strategy.position_size == 0
+
+// ---------------------------------------------------------------- 出場：保本 + 吊燈移動止損 + 趨勢破壞
+var float stopPx = na
+var float riskPx = na
+var float bestPx = na
+
+jsonMsg(action, stop) =>
+    '{"secret":"' + secret + '","action":"' + action + '","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) +
+     (na(stop) ? '' : ',"stop":' + str.tostring(stop)) + ',"time":"' + str.format_time(timenow, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC") + '"}'
+
+if goLong
+    stopPx := close - stopMult * atr
+    riskPx := close - stopPx
+    bestPx := high
+    strategy.entry("L", strategy.long)
+    alert(jsonMsg("long", stopPx), alert.freq_once_per_bar_close)
+if goShort
+    stopPx := close + stopMult * atr
+    riskPx := stopPx - close
+    bestPx := low
+    strategy.entry("S", strategy.short)
+    alert(jsonMsg("short", stopPx), alert.freq_once_per_bar_close)
+
+if strategy.position_size > 0 and not goLong
+    bestPx := math.max(bestPx, high)
+    if bestPx - strategy.position_avg_price >= beR * riskPx
+        stopPx := math.max(stopPx, strategy.position_avg_price + 0.1 * riskPx)
+    stopPx := math.max(stopPx, bestPx - trailMult * atr)
+    strategy.exit("XL", "L", stop = stopPx)
+    if hEmaF < hEmaS or hClose < hEmaS
+        strategy.close("L", comment = "趨勢破壞")
+        alert(jsonMsg("close", na), alert.freq_once_per_bar_close)
+if strategy.position_size < 0 and not goShort
+    bestPx := math.min(bestPx, low)
+    if strategy.position_avg_price - bestPx >= beR * riskPx
+        stopPx := math.min(stopPx, strategy.position_avg_price - 0.1 * riskPx)
+    stopPx := math.min(stopPx, bestPx + trailMult * atr)
+    strategy.exit("XS", "S", stop = stopPx)
+    if hEmaF > hEmaS or hClose > hEmaS
+        strategy.close("S", comment = "趨勢破壞")
+        alert(jsonMsg("close", na), alert.freq_once_per_bar_close)
+
+// ---------------------------------------------------------------- 視覺化
+plot(ema, "EMA20", color.new(color.orange, 0))
+plot(strategy.position_size != 0 ? stopPx : na, "止損", color.red, style = plot.style_linebr)
+bgcolor(bull ? color.new(color.teal, 92) : bear ? color.new(color.red, 92) : na)
+plotshape(goLong, "多", shape.triangleup, location.belowbar, color.teal, size = size.small)
+plotshape(goShort, "空", shape.triangledown, location.abovebar, color.red, size = size.small)
