@@ -10,17 +10,21 @@ const { createJobs } = require('./jobs');
 const registerRoutes = require('./routes');
 const loadConfig = require('./config');
 
+// 只在這台電腦內部用的虛擬網卡（WSL、Hyper-V、VirtualBox、VMware、Docker），手機連不到
+const VIRTUAL_ADAPTER = /^vEthernet \((Default Switch|WSL)|VirtualBox|Host-Only|VMware|VMnet|^vboxnet|^docker|^br-|^virbr|^veth/i;
+
 /** 這台電腦的區網 / Tailscale 位址，讓使用者知道 App 要填哪個網址 */
-function addresses(port) {
+function addresses(port, interfaces = os.networkInterfaces()) {
   const out = [];
-  for (const [name, list] of Object.entries(os.networkInterfaces())) {
+  for (const [name, list] of Object.entries(interfaces)) {
     for (const a of list || []) {
       if (a.family !== 'IPv4' || a.internal) continue;
       const tailscale = a.address.startsWith('100.') && Number(a.address.split('.')[1]) >= 64 && Number(a.address.split('.')[1]) < 128;
-      out.push({ name, url: `http://${a.address}:${port}`, tailscale });
+      out.push({ name, url: `http://${a.address}:${port}`, tailscale, virtual: !tailscale && VIRTUAL_ADAPTER.test(name) });
     }
   }
-  return out;
+  const real = out.filter((a) => !a.virtual);
+  return real.length ? real : out;
 }
 
 const DOCKER_HINT = '伺服器在 Docker 裡，看不到這台電腦的網路位址。Windows 請在命令提示字元輸入 ipconfig，找「IPv4 位址」（例如 192.168.1.23）；'
@@ -29,7 +33,7 @@ const DOCKER_HINT = '伺服器在 Docker 裡，看不到這台電腦的網路位
 function landingPage(cfg, users) {
   const list = process.env.IN_DOCKER
     ? `<li>${DOCKER_HINT.replace('埠號', String(cfg.port === 8080 ? 8080 : cfg.port))}</li>`
-    : addresses(cfg.port).map((a) => `<li><code>${a.url}</code> ${a.tailscale ? '<b>Tailscale：在外面也能連</b>' : '（同一個 Wi-Fi 才能連）'}</li>`).join('');
+    : addresses(cfg.port).map((a) => `<li><code>${a.url}</code> ${a.tailscale ? '<b>Tailscale：在外面也能連</b>' : '（區網：同一個 Wi-Fi 才能連）'}</li>`).join('');
   return `<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>小倆口伺服器</title>
 <style>body{font-family:system-ui,"Noto Sans TC",sans-serif;background:#FFF5F7;color:#4A2B39;max-width:640px;margin:40px auto;padding:0 20px;line-height:1.7}
@@ -134,7 +138,8 @@ async function main(cfg = loadConfig()) {
   else {
     const list = addresses(port);
     if (list.length) console.log('  在 App 的「伺服器網址」填入：');
-    for (const a of list) console.log(`    ${a.url}${a.tailscale ? '　← Tailscale（在外面也能連）' : '　← 同一個 Wi-Fi'}`);
+    for (const a of list) console.log(`    ${a.url}${a.tailscale ? '　← Tailscale（在外面也能連）' : '　← 區網（同一個 Wi-Fi）'}`);
+    if (list.length > 1) console.log('  （列出好幾個時，通常是 192.168. 開頭、跟手機同一個 Wi-Fi 的那個；連不上就換另一個試試）');
   }
   console.log('  關掉這個視窗，伺服器就會停止。\n');
   const stop = () => app.close().then(() => process.exit(0));

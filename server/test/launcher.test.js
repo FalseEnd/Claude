@@ -56,6 +56,36 @@ test('臨時密碼：夠長、不含容易看錯的字', () => {
   assert.notEqual(L.tempPassword(), L.tempPassword());
 });
 
+test('pg_dump／psql 挑跟資料庫伺服器相配的版本', () => {
+  const tools = [{ path: 'a', major: 18 }, { path: 'b', major: 16 }, { path: 'c', major: 17 }];
+  assert.equal(L.pickTool(tools, 16).path, 'b');
+  assert.equal(L.pickTool(tools, 15).path, 'b', '沒有同版就用比伺服器新、最接近的');
+  assert.equal(L.pickTool(tools, 19).path, 'a', '都比伺服器舊時用最新的（pg_dump 會說明版本不合）');
+  assert.equal(L.pickTool(tools, null).path, 'a');
+  assert.equal(L.pickTool([], 16), null);
+});
+
+test('新版 pg_dump 的備份還原到舊版 PostgreSQL 前拿掉不認得的設定', () => {
+  const sql = 'SET statement_timeout = 0;\nSET transaction_timeout = 0;\r\nSET lock_timeout = 0;\n';
+  assert.equal(L.stripNewerSettings(sql, 16), 'SET statement_timeout = 0;\nSET lock_timeout = 0;\n');
+  assert.equal(L.stripNewerSettings(sql, 17), sql);
+});
+
+test('列出網址時略過手機連不到的虛擬網卡', () => {
+  const { addresses } = require('../src/index');
+  const nic = (address) => [{ family: 'IPv4', internal: false, address }];
+  const list = addresses(8080, {
+    'Wi-Fi': nic('192.168.1.23'),
+    'vEthernet (WSL (Hyper-V firewall))': nic('172.20.0.1'),
+    'VirtualBox Host-Only Network': nic('192.168.56.1'),
+    Tailscale: nic('100.101.102.103'),
+    lo: [{ family: 'IPv4', internal: true, address: '127.0.0.1' }]
+  });
+  assert.deepEqual(list.map((a) => a.url), ['http://192.168.1.23:8080', 'http://100.101.102.103:8080']);
+  assert.equal(list[1].tailscale, true);
+  assert.equal(addresses(8080, { docker0: nic('172.17.0.1') }).length, 1, '只有虛擬網卡時還是列出來');
+});
+
 test('PostgreSQL 版本與連線錯誤分類', () => {
   assert.equal(L.pgVersionText(160004), '16.4');
   assert.equal(L.pgVersionText(90624), '9.6');
@@ -66,6 +96,7 @@ test('PostgreSQL 版本與連線錯誤分類', () => {
   assert.equal(L.errKind(Object.assign(new Error('password authentication failed'), { code: '28P01' })), 'password');
   assert.equal(L.errKind(Object.assign(new Error('Peer authentication failed'), { code: '28000' })), 'denied');
   assert.equal(L.errKind(Object.assign(new Error('database "x" does not exist'), { code: '3D000' })), 'nodb');
+  assert.equal(L.errKind(Object.assign(new Error('the database system is starting up'), { code: '57P03' })), 'down');
   assert.equal(L.errKind(new Error('something else')), 'other');
 });
 
@@ -73,7 +104,9 @@ test('自動啟動設定檔：路徑有空白、中文與特殊字元時引號�
   assert.equal(L.systemdQuote('/home/小雨/my "app" 100%/$x'), '"/home/小雨/my \\"app\\" 100%%/$$x"');
   assert.equal(L.psQuote("C:\\Users\\O'Neil\\小倆口"), "'C:\\Users\\O''Neil\\小倆口'");
   assert.equal(L.escapeXml('a & <b> "c"'), 'a &amp; &lt;b&gt; &quot;c&quot;');
-  assert.match(L.macPlist(), /<string>--autostart<\/string>/);
+  assert.match(L.macPlist(), /<string>\/usr\/bin\/open<\/string>\s*<string>-a<\/string>\s*<string>Terminal<\/string>/);
+  assert.match(L.macAutostartCommand(), /^exec \/bin\/bash '.*start-.*' --autostart$/m);
+  assert.equal(L.shQuote("/Users/小雨/it's here"), "'/Users/小雨/it'\\''s here'");
   assert.match(L.systemdUnit(), /^ExecStart=\/bin\/bash ".*" --autostart$/m);
 });
 

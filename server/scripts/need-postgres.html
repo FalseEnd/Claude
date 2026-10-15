@@ -44,14 +44,15 @@
     <li>下載 Postgres.app，拖進「應用程式」資料夾。<br>
       <a class="btn" href="https://postgresapp.com/downloads.html" target="_blank" rel="noopener">前往 Postgres.app</a></li>
     <li>打開 Postgres.app，按「Initialize」。左上角大象圖示亮起來就代表在執行了。</li>
-    <li>再雙擊一次 <code>start-mac.command</code>。Postgres.app 不需要密碼，會自動設定好。</li>
+    <li>再雙擊一次 <code>start-mac.command</code>。Postgres.app 不需要密碼，會自動設定好；跳出詢問是否允許連線的視窗時，按「OK」。</li>
   </ol>
 
   <h2>Linux</h2>
   <ol>
     <li>用套件管理員安裝，例如 <code class="cmd">sudo apt install postgresql</code>。</li>
     <li>幫管理員設定密碼：<code class="cmd">sudo -u postgres psql -c "\password postgres"</code></li>
-    <li>執行 <code>./start-linux.sh</code>，輸入剛剛的密碼。</li>
+    <li>執行 <code>./start-linux.sh</code>，輸入剛剛的密碼。<br>
+      <span class="tip">Fedora／RHEL：先把 pg_hba.conf 裡 127.0.0.1/32 與 ::1/128 的 ident 改成 scram-sha-256，再 <code class="cmd">sudo systemctl reload postgresql</code>。</span></li>
   </ol>
   <p class="tip">已經裝過 PostgreSQL 但忘記密碼？請看說明文件 docs/SELF_HOSTING.md 的「疑難排解」。</p>
 </main>

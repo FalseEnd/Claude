@@ -48,7 +48,11 @@
 
 1. 安裝 [Node.js](https://nodejs.org/zh-tw/download) 的 LTS 版本（.pkg）。
 2. 安裝 [Postgres.app](https://postgresapp.com/downloads.html)：拖進「應用程式」，打開後按「Initialize」，並在設定裡勾選登入時自動啟動。
-3. 雙擊 `start-mac.command`。第一次如果顯示「無法打開，因為它來自未識別的開發者」，請在檔案上按右鍵 ›「打開」›「打開」。Postgres.app 不需要密碼；如果它詢問是否允許連線，按「OK」。
+3. 雙擊 `start-mac.command`。第一次 Mac 會擋下網路上下載的檔案：
+   - macOS 15 以上：先雙擊一次，出現警告後按「完成」，再到「系統設定 › 隱私權與安全性」，往下捲到「已阻擋 start-mac.command」，按「強制打開」並輸入密碼，然後再雙擊一次。
+   - macOS 14 以前：在檔案上按右鍵 ›「打開」›「打開」。
+   - 會用終端機的話，也可以執行 `xattr -dr com.apple.quarantine 小倆口資料夾` 一次解除。
+4. Postgres.app 不需要密碼。它跳出「允許連線」的視窗時，按「OK」。
 
 用 Homebrew 的話：`brew install node postgresql@17 && brew services start postgresql@17`，再執行 `./start-mac.command`。
 
@@ -57,23 +61,25 @@
 ```sh
 sudo apt install postgresql                                  # 或用你的發行版的套件管理員
 sudo -u postgres psql -c "\password postgres"                # 幫管理員設定密碼
-# Node.js 需要 20 以上：發行版的版本太舊的話，用 https://nodejs.org 或 nvm 安裝
+# Node.js 需要 20 以上（還要有 npm）：發行版的版本太舊的話，用 https://nodejs.org 或 nvm 安裝
 ./start-linux.sh
 ```
+
+Fedora／RHEL 預設用 ident 驗證本機連線：請把 `pg_hba.conf`（`/var/lib/pgsql/data`）裡 `127.0.0.1/32` 和 `::1/128` 那兩行的 `ident` 改成 `scram-sha-256`，再 `sudo systemctl reload postgresql`。
 
 ## 3. 讓伺服器一直開著
 
 - **開機自動啟動**：
   - Windows：雙擊 `autostart-windows.bat`。之後登入 Windows 時，伺服器會自動在背景啟動，工作列上會有一個縮小的視窗，別關掉它。再執行一次就可以取消。PostgreSQL 安裝時已經設定成開機自動啟動。
-  - macOS：在「終端機」執行 `./start-mac.command --install-autostart`（可以把檔案拖進終端機視窗，再輸入後面的參數）。
-  - Linux：`./start-linux.sh --install-autostart`（systemd 使用者服務）。
+  - macOS：在「終端機」執行 `./start-mac.command --install-autostart`（可以把檔案拖進終端機視窗，再輸入後面的參數）。之後登入時會自動打開一個終端機視窗執行伺服器，別關掉它。
+  - Linux：`./start-linux.sh --install-autostart`（systemd 使用者服務，在背景執行）。要停止：`systemctl --user stop xiaoliangkou`；取消自動啟動：`./start-linux.sh --remove-autostart`。
 - **別讓電腦睡著**：電腦睡眠時伺服器也會暫停，對方就看不到你的位置、收不到通知。Windows：設定 › 系統 › 電源 › 插上電源時「永不」進入睡眠；Mac：系統設定 › 電池 › 選項 › 「在顯示器關閉時防止自動進入睡眠」。
 
 ## 4. 讓手機連到你的電腦
 
 ### 在家（同一個 Wi-Fi）
 
-1. 伺服器視窗會列出電腦的區網網址，例如 `http://192.168.1.23:8080`。也可以用瀏覽器打開 <http://localhost:8080> 查看。
+1. 伺服器視窗會列出電腦的區網網址，例如 `http://192.168.1.23:8080`。也可以用瀏覽器打開 <http://localhost:8080> 查看。列出好幾個的話，通常是跟手機同一個 Wi-Fi 的那個（常見是 `192.168.` 開頭）；連不上就換另一個試試。
 2. 把這個網址填進 App 的「伺服器網址」。
 3. 連不上的話，通常是 Windows 防火牆擋住了：
    - 確認 Wi-Fi 的網路類型是「**私人網路**」（設定 › 網路和網際網路 › Wi-Fi › 你的網路）。設成「公用網路」時，防火牆會擋住所有連入的連線。
@@ -127,6 +133,13 @@ BACKUP_DIR=C:\Users\你的名字\OneDrive\小倆口備份
 4. 完成後再雙擊 `start-windows.bat`。
 
 **搬到新電腦**：在新電腦照第 2 節安裝並啟動一次 → 關掉伺服器視窗 → 用上面的方法還原舊電腦的備份檔。順便把舊電腦的 `server/.app-secret` 複製過去，兩支手機就不用重新登入。
+
+### 更新到新版
+
+1. 關掉伺服器視窗。
+2. 下載新版的 ZIP，解壓縮後**覆蓋**原本的小倆口資料夾（`server/.env`、`server/.app-secret`、`backups` 都會保留）。
+   想放在新的資料夾也可以，但要把這三樣從舊資料夾複製過去，不然新資料夾會重新設定資料庫帳號，舊資料夾就不能用了。
+3. 雙擊啟動檔。第一次會自動更新伺服器套件，資料庫也會自動升級。
 
 ## 7. 忘記密碼
 
@@ -183,7 +196,7 @@ BACKUP_DIR=C:\Users\你的名字\OneDrive\小倆口備份
 | 備份 | `docker compose exec db pg_dump -U xlk --no-owner -f /tmp/backup.sql xiaoliangkou` 再 `docker compose cp db:/tmp/backup.sql ./backup.sql` |
 | 還原到全新的資料庫 | `docker compose up -d db`、`docker compose cp ./backup.sql db:/tmp/backup.sql`、`docker compose exec db psql -U xlk -d xiaoliangkou -f /tmp/backup.sql`、`docker compose up -d` |
 
-想從 Docker 版改成雙擊啟動：用上表備份，照第 2 節安裝並啟動一次，關掉伺服器視窗後用第 6 節的方法還原 `backup.sql`。
+想從 Docker 版改成雙擊啟動：用上表備份，執行 `docker compose down` 停掉 Docker 版，照第 2 節安裝並啟動一次，關掉伺服器視窗後用第 6 節的方法還原 `backup.sql`。
 
 ## 10. 疑難排解
 
@@ -192,7 +205,11 @@ BACKUP_DIR=C:\Users\你的名字\OneDrive\小倆口備份
 | 「這台電腦好像還沒安裝 PostgreSQL」 | 照打開的說明安裝 PostgreSQL，再啟動一次 |
 | 「PostgreSQL 已經安裝了，但是沒有在執行」 | Windows：Win 鍵搜尋「服務」，找到 `postgresql-x64-版本`，按右鍵 ›「啟動」，並把啟動類型設成「自動」。Mac：打開 Postgres.app |
 | 「三次都登入失敗」 | 確認是安裝 PostgreSQL 時設定的密碼；忘記了請看第 7 節 |
-| 「埠號 8080 已經被使用」 | 可能有別的程式占用，在 `server/.env` 把 `PORT` 改成例如 `8090`，App 的網址也要跟著改 |
+| 「PostgreSQL 不接受用密碼登入」 | 照訊息修改 `pg_hba.conf`（多半是 Fedora／RHEL 的 ident 設定） |
+| 「無法使用備份資料夾」 | 隨身碟或雲端硬碟沒接上，或 `server/.env` 的 `BACKUP_DIR` 打錯；自動備份失敗不會影響伺服器 |
+| 「找不到 npm」 | Linux 的 Node.js 套件沒附 npm：`sudo apt install npm`，或從 nodejs.org 安裝 |
+| 雙擊後顯示「Please extract the ZIP file first」 | 還在 ZIP 裡面：在 ZIP 檔上按右鍵 ›「解壓縮全部」，到解壓縮出來的資料夾再雙擊 |
+| 「埠號 8080 已經被使用」 | 可能有別的程式（或 Docker 版的小倆口）占用，在 `server/.env` 把 `PORT` 改成例如 `8090`，App 的網址也要跟著改 |
 | 「下載套件失敗」 | 第一次啟動需要網路；確認連上網路後再試一次 |
 | App 顯示「連不到伺服器」 | 網址開頭是 `http://` 不是 `https://`；伺服器視窗有開著；手機和電腦在同一個 Wi-Fi 或都開著 Tailscale；防火牆與網路類型見第 4 節 |
 | 伺服器好像卡住、App 一直轉圈 | 伺服器視窗標題出現「選取」時，按 Esc |
