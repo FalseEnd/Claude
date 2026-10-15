@@ -1,0 +1,88 @@
+package tw.xiaoliangkou.app.service
+
+import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import tw.xiaoliangkou.app.MainActivity
+import tw.xiaoliangkou.app.R
+import tw.xiaoliangkou.app.data.RemoteRepository
+
+/** 系統通知：依類型分到不同頻道，使用者可以在系統設定分別調整 */
+class Notifier(private val context: Context) {
+    companion object {
+        const val CH_LOVE = "love"
+        const val CH_PLACE = "place"
+        const val CH_REMIND = "remind"
+        const val CH_SERVICE = "service"
+        const val SERVICE_ID = 1
+        const val EXTRA_ROUTE = "route"
+        private const val PINK = 0xFFFF7AA2.toInt()
+    }
+
+    fun createChannels() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val nm = context.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannels(listOf(
+            NotificationChannel(CH_LOVE, "抱抱、心情與悄悄話", NotificationManager.IMPORTANCE_HIGH).apply { description = "對方安撫你、更新心情、猜了你的花費" },
+            NotificationChannel(CH_PLACE, "抵達與離開", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "對方進出你們設定的標點、電量低" },
+            NotificationChannel(CH_REMIND, "約會與紀念日", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "約會邀請、紀念日與經期關懷提醒" },
+            NotificationChannel(CH_SERVICE, "背景連線", NotificationManager.IMPORTANCE_MIN).apply { description = "保持與伺服器連線、分享位置時常駐" ; setShowBadge(false) },
+        ))
+    }
+
+    private fun channelFor(kind: String) = when (kind) {
+        "comfort", "mood", "guess" -> CH_LOVE
+        "place", "battery_low", "sharing_changed", "pairing" -> CH_PLACE
+        else -> CH_REMIND
+    }
+
+    private fun openApp(route: String?, requestCode: Int): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            if (route != null) putExtra(EXTRA_ROUTE, route)
+        }
+        return PendingIntent.getActivity(context, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    fun show(id: Long, title: String, body: String, kind: String) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+        val n = NotificationCompat.Builder(context, channelFor(kind))
+            .setSmallIcon(R.drawable.ic_stat_heart)
+            .setColor(PINK)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setAutoCancel(true)
+            .setPriority(if (channelFor(kind) == CH_LOVE) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(openApp(RemoteRepository.routeFor(kind), id.toInt()))
+            .build()
+        runCatching { NotificationManagerCompat.from(context).notify(id.toInt() + 100, n) }
+    }
+
+    fun serviceNotification(text: String): Notification =
+        NotificationCompat.Builder(context, CH_SERVICE)
+            .setSmallIcon(R.drawable.ic_stat_heart)
+            .setColor(PINK)
+            .setContentTitle("小倆口")
+            .setContentText(text)
+            .setOngoing(true)
+            .setSilent(true)
+            .setContentIntent(openApp(null, 0))
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .build()
+
+    fun updateService(text: String) {
+        runCatching { NotificationManagerCompat.from(context).notify(SERVICE_ID, serviceNotification(text)) }
+    }
+}

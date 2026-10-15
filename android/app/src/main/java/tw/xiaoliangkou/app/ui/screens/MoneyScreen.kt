@@ -1,0 +1,357 @@
+package tw.xiaoliangkou.app.ui.screens
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import tw.xiaoliangkou.app.core.Catalog
+import tw.xiaoliangkou.app.core.Guess
+import tw.xiaoliangkou.app.core.PaymentParser
+import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.Expense
+import tw.xiaoliangkou.app.data.GuessResult
+import tw.xiaoliangkou.app.ui.AppViewModel
+import tw.xiaoliangkou.app.ui.Derived
+import tw.xiaoliangkou.app.ui.Fmt
+import tw.xiaoliangkou.app.ui.SheetSpec
+import tw.xiaoliangkou.app.ui.components.CategoryBars
+import tw.xiaoliangkou.app.ui.components.ChoiceChip
+import tw.xiaoliangkou.app.ui.components.Confetti
+import tw.xiaoliangkou.app.ui.components.CountUpText
+import tw.xiaoliangkou.app.ui.components.CuteButton
+import tw.xiaoliangkou.app.ui.components.CuteCard
+import tw.xiaoliangkou.app.ui.components.CuteField
+import tw.xiaoliangkou.app.ui.components.EmojiBubble
+import tw.xiaoliangkou.app.ui.components.EmptyState
+import tw.xiaoliangkou.app.ui.components.Note
+import tw.xiaoliangkou.app.ui.components.Pill
+import tw.xiaoliangkou.app.ui.components.ScreenHeader
+import tw.xiaoliangkou.app.ui.components.Segmented
+import tw.xiaoliangkou.app.ui.components.SoftButton
+import tw.xiaoliangkou.app.ui.components.StatTile
+import tw.xiaoliangkou.app.ui.components.ToggleRow
+import tw.xiaoliangkou.app.ui.components.Wiggle
+import tw.xiaoliangkou.app.ui.components.bouncyClick
+import tw.xiaoliangkou.app.ui.theme.Cute
+import java.time.LocalDate
+
+@Composable
+fun MoneyScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit) {
+    var who by remember { mutableStateOf("partner") }
+    val mine = who == "me"
+    LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item { ScreenHeader("帳本") }
+        item { Segmented(listOf("partner" to "${s.partnerName} 的帳本", "me" to "我的帳本"), who) { who = it } }
+        if (!mine && s.partnerSharing?.shareExpenses != true) {
+            item { CuteCard { EmptyState("${s.partnerName} 目前沒有分享開銷", "🙈") } }
+            return@LazyColumn
+        }
+        val all = Derived.recent(if (mine) s.myExpenses else s.partnerExpenses)
+        val visible = if (mine) all else all.filterNot { Derived.surpriseHidden(it) }
+        val counted = visible.filter { it.amount != null }
+        val pending = visible.filter { it.waitingForGuess }
+        item { Summary(counted, pending.size, mine, s.partnerName) }
+        if (!mine) item { GuessCard(s, pending, sheet) }
+        else item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CuteButton("記一筆", Modifier.weight(1f), icon = Icons.Rounded.Add) { sheet(SheetSpec.ExpenseEdit(null)) }
+                SoftButton("測試自動記帳", Modifier.weight(1f), icon = Icons.Rounded.NotificationsActive) { sheet(SheetSpec.ParseTest) }
+            }
+        }
+        val groups = visible.filter { mine || !it.waitingForGuess }.sortedByDescending { it.time }.groupBy { Fmt.localDate(it.time) }
+        if (groups.isEmpty()) item { CuteCard { EmptyState("近 30 天還沒有開銷", "🧾") } }
+        groups.forEach { (day, list) ->
+            item(key = "h$day$who") {
+                Row(Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                    Text(Fmt.dayLabel(day), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    Text(Fmt.money(list.sumOf { it.amount ?: 0.0 }), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            items(list, key = { it.id }) { e -> ExpenseRow(e, mine) { sheet(if (mine) SheetSpec.ExpenseEdit(e.id) else SheetSpec.ExpenseView(e.id)) } }
+        }
+        if (!mine) {
+            val hidden = all.count { Derived.surpriseHidden(it) }
+            if (hidden > 0) item { Note("${s.partnerName} 有 $hidden 筆開銷設成禮物模式，到了日子才會出現。是給你的驚喜嗎？", "🎁") }
+        } else item {
+            Note("自動記帳：在「我的 › 權限與背景執行」開啟通知存取權後，LINE Pay、街口、銀行的付款通知會自動記下來。同一筆交易重複通知會自動合併。", "🤖")
+        }
+    }
+}
+
+@Composable
+private fun Summary(list: List<Expense>, pending: Int, mine: Boolean, partner: String) {
+    val total = list.sumOf { it.amount ?: 0.0 }
+    val byCat = list.groupBy { it.category }.map { (k, v) -> val c = Catalog.category(k); Triple(c.emoji, c.label, v.sumOf { it.amount ?: 0.0 }) }.sortedByDescending { it.third }
+    CuteCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("近 30 天", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text("${list.size} 筆" + if (pending > 0) " · 另有 $pending 筆待猜" else "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CountUpText(total.toInt(), MaterialTheme.typography.headlineLarge, prefix = "NT$")
+            Text(if (mine) "我的支出" else "$partner 的支出", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+        }
+        if (byCat.isNotEmpty()) CategoryBars(byCat, if (mine) Cute.colors.me else Cute.colors.partner, Fmt::money)
+    }
+}
+
+@Composable
+private fun GuessCard(s: AppState, pending: List<Expense>, sheet: (SheetSpec) -> Unit) {
+    val done = s.partnerExpenses.filter { it.myGuess != null && it.amount != null }
+    val points = done.sumOf { it.myPoints ?: 0 }
+    val err = if (done.isEmpty()) 0.0 else done.sumOf { kotlin.math.abs(it.myGuess!! - it.amount!!) / it.amount } / done.size
+    CuteCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("猜猜看 💰", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text("猜得越準分數越高", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (pending.isEmpty()) Text("目前沒有等你猜的開銷。${s.partnerName} 開放猜金額的消費會出現在這裡。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        pending.forEach { e ->
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Cute.colors.butter.copy(alpha = 0.25f)).bouncyClick(haptic = true) { sheet(SheetSpec.GuessIt(e.id)) }.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                EmojiBubble(Catalog.category(e.category).emoji, Cute.colors.card)
+                Column(Modifier.weight(1f)) {
+                    Text(e.merchant, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    Text("${Catalog.category(e.category).label} · ${Fmt.rel(e.time)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Wiggle(8f, 1200) { Pill("猜！", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatTile("總分", Fmt.int(points), Modifier.weight(1f))
+            StatTile("猜過", "${done.size} 次", Modifier.weight(1f))
+            StatTile("平均誤差", "${Math.round(err * 100)}%", Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun ExpenseRow(e: Expense, mine: Boolean, onClick: () -> Unit) {
+    val c = Catalog.category(e.category)
+    val tags = buildList {
+        add(Catalog.sources[e.source] ?: "付款通知")
+        add(Fmt.time(e.time))
+        if (mine && e.visibility == "private") add("不給看")
+        if (mine && e.visibility == "surprise") add("禮物 · ${e.revealOn?.let { Fmt.parseDate(it)?.let(Fmt::md) } ?: ""} 公開")
+        if (mine && e.guessable) add(e.theirGuess?.let { "對方猜 ${Fmt.money(it)}" } ?: "開放猜")
+        if (!mine && e.myGuess != null) add("你猜 ${Fmt.money(e.myGuess)} · ${e.myPoints} 分")
+    }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Cute.colors.card).bouncyClick(onClick = onClick).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        EmojiBubble(c.emoji, if (mine) Cute.colors.meSoft else Cute.colors.partnerSoft)
+        Column(Modifier.weight(1f)) {
+            Text(e.merchant, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            Text("${c.label} · " + tags.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
+        Text(Fmt.money(e.amount), style = MaterialTheme.typography.titleSmall)
+    }
+}
+
+// ---------------------------------------------------------------- 底部面板
+
+@Composable
+fun GuessSheet(s: AppState, vm: AppViewModel, id: String, close: () -> Unit) {
+    val e = s.partnerExpenses.firstOrNull { it.id == id } ?: return
+    var input by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf<GuessResult?>(null) }
+    var confetti by remember { mutableIntStateOf(0) }
+    val same = s.partnerExpenses.filter { it.category == e.category && it.id != id && it.amount != null }
+    val avg = if (same.isEmpty()) null else same.sumOf { it.amount!! } / same.size
+    Box {
+        AnimatedContent(result, transitionSpec = { (fadeIn() + scaleIn(initialScale = 0.8f)) togetherWith fadeOut() }, label = "guess") { r ->
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (r == null) {
+                    Text("猜猜 ${s.partnerName} 花了多少？", style = MaterialTheme.typography.titleLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        EmojiBubble(Catalog.category(e.category).emoji, Cute.colors.partnerSoft, 52.dp)
+                        Column {
+                            Text(e.merchant, style = MaterialTheme.typography.titleMedium)
+                            Text("${Catalog.category(e.category).label} · ${Catalog.sources[e.source]} · ${Fmt.dayLabel(Fmt.localDate(e.time))} ${Fmt.time(e.time)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (avg != null) Note("提示：${s.partnerName} 在「${Catalog.category(e.category).label}」平均每筆 ${Fmt.money(avg)}", "🤫")
+                    CuteField(input, { input = it.filter(Char::isDigit).take(7) }, "你猜（NT$）", keyboard = KeyboardType.Number, placeholder = "例如 150")
+                    CuteButton("送出答案", Modifier.fillMaxWidth(), enabled = input.isNotEmpty() && !vm.busy) {
+                        vm.act { repo ->
+                            val res = repo.guess(id, input.toDouble())
+                            result = res
+                            if (res.scorePoints >= 80) confetti++
+                        }
+                    }
+                    Text("誤差 3% 內 100 分、10% 內 80 分、25% 內 50 分、50% 內 20 分。每筆只能猜一次。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    val g = input.toDoubleOrNull() ?: 0.0
+                    val score = Guess.score(g, r.actualAmount)
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(if (r.scorePoints >= 80) "🎉" else if (r.scorePoints >= 50) "😆" else "🙈", style = MaterialTheme.typography.displayMedium)
+                        CountUpText(r.scorePoints, MaterialTheme.typography.displayLarge, suffix = " 分", color = MaterialTheme.colorScheme.primary)
+                        Text(score.label, style = MaterialTheme.typography.titleLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            StatTile("你猜", Fmt.money(g), Modifier.weight(1f))
+                            StatTile("實際", Fmt.money(r.actualAmount), Modifier.weight(1f))
+                        }
+                        Text(if (score.diff == 0.0) "一塊錢都不差！" else "猜${if (score.diff > 0) "高" else "低"}了 ${Fmt.money(kotlin.math.abs(score.diff))}（${Math.round(score.ratio * 100)}%）",
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    CuteButton("好", Modifier.fillMaxWidth(), onClick = close)
+                }
+            }
+        }
+        Confetti(confetti, Modifier.matchParentSize())
+    }
+}
+
+@Composable
+fun ExpenseViewSheet(s: AppState, id: String, close: () -> Unit) {
+    val e = s.partnerExpenses.firstOrNull { it.id == id } ?: s.myExpenses.firstOrNull { it.id == id } ?: return
+    val c = Catalog.category(e.category)
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            EmojiBubble(c.emoji, Cute.colors.partnerSoft, 52.dp)
+            Column {
+                Text(e.merchant, style = MaterialTheme.typography.titleLarge)
+                Text(Fmt.money(e.amount), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatTile("類別", c.label, Modifier.weight(1f))
+            StatTile("時間", "${Fmt.dayLabel(Fmt.localDate(e.time))} ${Fmt.time(e.time)}", Modifier.weight(1f))
+            StatTile("來源", Catalog.sources[e.source] ?: "—", Modifier.weight(1f))
+        }
+        if (e.myGuess != null) Note("你猜了 ${Fmt.money(e.myGuess)}，拿到 ${e.myPoints} 分", "💰")
+        CuteButton("關閉", Modifier.fillMaxWidth(), onClick = close)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ExpenseEditSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
+    val e = id?.let { x -> s.myExpenses.firstOrNull { it.id == x } }
+    var merchant by remember { mutableStateOf(e?.merchant ?: "") }
+    var amount by remember { mutableStateOf(e?.amount?.toLong()?.toString() ?: "") }
+    var category by remember { mutableStateOf(e?.category) }
+    var visibility by remember { mutableStateOf(e?.visibility ?: "shared") }
+    var reveal by remember { mutableStateOf(e?.revealOn ?: LocalDate.now().plusDays(30).toString()) }
+    var guessable by remember { mutableStateOf(e?.guessable ?: false) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(if (e == null) "記一筆 ✍️" else "編輯開銷", style = MaterialTheme.typography.titleLarge)
+        CuteField(merchant, { merchant = it.take(60) }, "商家或項目", placeholder = "例如：鼎泰豐")
+        CuteField(amount, { amount = it.filter(Char::isDigit).take(8) }, "金額（NT$）", keyboard = KeyboardType.Number)
+        Text("類別", style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Catalog.categories.forEach { c -> ChoiceChip(c.label, (category ?: PaymentParser.categorize(merchant)) == c.key, c.emoji) { category = c.key } }
+        }
+        Text("${s.partnerName} 看得到嗎", style = MaterialTheme.typography.labelLarge)
+        Segmented(listOf("shared" to "看得到", "private" to "不給看", "surprise" to "禮物模式 🎁"), visibility) { visibility = it; if (it != "shared") guessable = false }
+        if (visibility == "surprise") {
+            DateField("這天之後才讓 ${s.partnerName} 看到", reveal) { reveal = it }
+        }
+        ToggleRow("開放 ${s.partnerName} 猜金額", guessable, "猜之前對方看不到金額", "💰", enabled = visibility == "shared") { guessable = it }
+        CuteButton("儲存", Modifier.fillMaxWidth(), enabled = merchant.isNotBlank() && (amount.toLongOrNull() ?: 0) > 0 && !vm.busy) {
+            val body = buildJsonObject {
+                put("merchant", merchant.trim()); put("amount", amount.toDouble())
+                put("category", category ?: PaymentParser.categorize(merchant)); put("visibility", visibility)
+                if (visibility == "surprise") put("revealOn", reveal)
+                put("guessable", guessable && visibility == "shared")
+                if (e == null) put("source", "manual")
+            }
+            vm.act(if (visibility == "surprise") "已儲存，${Fmt.md(LocalDate.parse(reveal))} 前對方看不到 🤫" else "已記下 ✨", onDone = close) { it.saveExpense(id, body) }
+        }
+        if (e != null) SoftButton("刪除", Modifier.fillMaxWidth(), icon = Icons.Rounded.Delete) { vm.act("已刪除", onDone = close) { it.deleteExpense(e.id) } }
+    }
+}
+
+@Composable
+fun ParseTestSheet(vm: AppViewModel, close: () -> Unit) {
+    val samples = listOf(
+        "LINE Pay" to "LINE Pay｜付款完成 NT$135 商店：星巴克 信義新天地門市",
+        "信用卡" to "【國泰世華】您的卡片末四碼1234於10/15 12:03消費新台幣1,280元，商店：UNIQLO 微風南山店",
+        "街口" to "街口支付：您已付款 65 元給 全家便利商店 松仁店",
+        "行動支付" to "Apple Pay 交易：台灣高鐵 NT$1,490",
+    )
+    var text by remember { mutableStateOf(samples[0].second) }
+    val parsed = PaymentParser.parse(text)
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("測試自動記帳 🤖", style = MaterialTheme.typography.titleLarge)
+        Text("開啟通知存取權後，App 會在背景自動處理付款通知。這裡可以貼一則通知看看會怎麼被記下來。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { samples.forEach { (l, t) -> ChoiceChip(l, text == t) { text = t } } }
+        CuteField(text, { text = it }, "通知內容", singleLine = false)
+        if (parsed == null) Note("找不到金額，這則通知不會被記帳。", "🤔")
+        else CuteCard(color = MaterialTheme.colorScheme.surfaceVariant) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatTile("金額", Fmt.money(parsed.amount), Modifier.weight(1f))
+                StatTile("類別", Catalog.category(parsed.category).label, Modifier.weight(1f))
+            }
+            StatTile("商家", parsed.merchant, Modifier.fillMaxWidth(), sub = "來源：${Catalog.sources[parsed.source]}")
+        }
+        CuteButton("加入我的帳本", Modifier.fillMaxWidth(), enabled = parsed != null) {
+            val p = parsed ?: return@CuteButton
+            vm.act("已記下 ${p.merchant} ${Fmt.money(p.amount)}", onDone = close) {
+                it.saveExpense(null, buildJsonObject {
+                    put("merchant", p.merchant); put("amount", p.amount); put("category", p.category); put("source", "notification")
+                })
+            }
+        }
+    }
+}
+
+/** 點一下跳出日期選擇器的欄位 */
+@Composable
+fun DateField(label: String, value: String, onChange: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (open) 0.97f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "date")
+    Column(
+        Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }.clip(RoundedCornerShape(18.dp))
+            .background(Cute.colors.card).bouncyClick { open = true }.padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val d = Fmt.parseDate(value)
+        Text(
+            d?.let { (if (it.year != LocalDate.now().year) "${it.year}/" else "") + "${it.monthValue}/${it.dayOfMonth}（${Fmt.weekday(it).substring(1)}）" } ?: "選擇日期",
+            style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Start, maxLines = 1,
+        )
+    }
+    if (open) DatePickerPopup(value, onDismiss = { open = false }) { onChange(it); open = false }
+}

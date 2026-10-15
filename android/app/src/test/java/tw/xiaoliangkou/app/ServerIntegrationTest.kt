@@ -1,0 +1,181 @@
+package tw.xiaoliangkou.app
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assume
+import org.junit.Before
+import org.junit.Test
+import tw.xiaoliangkou.app.core.PaymentParser
+import tw.xiaoliangkou.app.data.Api
+import tw.xiaoliangkou.app.data.RealtimeClient
+import tw.xiaoliangkou.app.data.RemoteRepository
+import tw.xiaoliangkou.app.data.apiCall
+import java.time.Instant
+import java.time.LocalDate
+
+/**
+ * App 的資料層對真正的自架伺服器跑一遍：確認 JSON 欄位對得上、WebSocket 通知與自動更新都正常。
+ * 需要一台全新（沒有帳號）的伺服器：XLK_TEST_SERVER=http://127.0.0.1:18080 ./gradlew testDebugUnitTest
+ * 沒設定環境變數時會略過。
+ */
+class ServerIntegrationTest {
+    private val url: String? = System.getenv("XLK_TEST_SERVER")
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Before fun requireServer() = Assume.assumeTrue("set XLK_TEST_SERVER to run", url != null)
+    @After fun tearDown() = scope.cancel()
+
+    private suspend fun eventually(what: String, ms: Long = 6000, check: () -> Boolean) {
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) { if (check()) return; delay(100) }
+        throw AssertionError("等不到：$what")
+    }
+
+    private class Client(val repo: RemoteRepository, val realtime: RealtimeClient, val notes: MutableList<RealtimeClient.Event.Notification>)
+
+    private suspend fun signUp(username: String, name: String): Client {
+        val r = apiCall {
+            Api.create(url!!) { null }.register(buildJsonObject { put("username", username); put("password", "secret1"); put("displayName", name) })
+        }
+        val api = Api.create(url!!) { r.token }
+        val rt = RealtimeClient(scope)
+        val notes = java.util.Collections.synchronizedList(mutableListOf<RealtimeClient.Event.Notification>())
+        val repo = RemoteRepository(api, rt, scope) { notes += it }
+        rt.start(url!!, r.token)
+        return Client(repo, rt, notes)
+    }
+
+    @Test fun fullFlowAgainstRealServer() = runBlocking {
+        withTimeout(60_000) {
+            val zhe = signUp("azhe", "阿哲")
+            val yu = signUp("xiaoyu", "小雨")
+            eventually("WebSocket 連線") { zhe.realtime.connected.value && yu.realtime.connected.value }
+
+            // 配對
+            val code = zhe.repo.createInvite().code
+            yu.repo.acceptInvite(code, "2025-05-20")
+            zhe.repo.refreshAll()
+            val s = zhe.repo.state.value
+            assertTrue(s.paired)
+            assertEquals("小雨", s.partnerName)
+            assertEquals(LocalDate.parse("2025-05-20"), s.togetherSince)
+            eventually("配對通知") { zhe.notes.any { it.kind == "pairing" } }
+
+            // 分享設定與手機狀態
+            zhe.repo.updateSharing(buildJsonObject { put("location", true); put("device", true); put("expenses", true) })
+            yu.repo.updateSharing(buildJsonObject { put("location", true); put("device", true); put("cycle", true) })
+            eventually("分享變更通知") { yu.notes.any { it.kind == "sharing_changed" } }
+            zhe.repo.reportDevice(buildJsonObject {
+                put("batteryLevel", 55); put("isCharging", false); put("network", "wifi"); put("stepsToday", 3210); put("deviceModel", "Pixel 8")
+            })
+            zhe.repo.reportLocation(25.0330, 121.5654, 12f, 0f)
+            eventually("對方畫面自動更新電量") { yu.repo.state.value.partnerStatus.device?.batteryLevel == 55 }
+            assertEquals(25.0330, yu.repo.state.value.partnerStatus.location!!.lat, 1e-6)
+            zhe.repo.reportDevice(buildJsonObject { put("batteryLevel", 15); put("isCharging", false); put("network", "cellular") })
+            eventually("低電量通知") { yu.notes.any { it.kind == "battery_low" && it.title.contains("15%") } }
+
+            // 暫停分享
+            zhe.repo.pauseSharing(30)
+            eventually("暫停後看不到位置") { yu.repo.state.value.partnerSharing?.paused == true && yu.repo.state.value.partnerStatus.location == null }
+            zhe.repo.pauseSharing(0)
+
+            // 心情與安撫：對方的畫面靠 WebSocket 的 changed 自動更新
+            yu.repo.postMood("sad", "被主管念了")
+            eventually("心情同步") { zhe.repo.state.value.moods.any { it.mood == "sad" && it.note == "被主管念了" } }
+            eventually("心情通知") { zhe.notes.any { it.kind == "mood" } }
+            val banner = async { yu.repo.banners.first { it.kind == "comfort" } }
+            zhe.repo.sendComfort("hug", "晚上請你吃好料")
+            val b = withTimeout(6000) { banner.await() }
+            assertTrue(b.title, b.title.contains("抱抱"))
+            assertEquals("晚上請你吃好料", b.body)
+
+            // 地點與地理圍欄
+            zhe.repo.savePlace(null, buildJsonObject {
+                put("name", "小雨公司"); put("icon", "work"); put("lat", 25.036); put("lng", 121.567); put("radiusM", 250); put("watch", "partner")
+            })
+            eventually("對方看到標點") { yu.repo.state.value.places.size == 1 }
+            val place = yu.repo.state.value.places.first()
+            assertEquals(yu.repo.state.value.myId, place.watchUser)
+            yu.repo.reportPlaceEvent(place.id, arrive = true)
+            eventually("抵達通知") { zhe.notes.any { it.kind == "place" && it.title.contains("已抵達 小雨公司") } }
+
+            // 自動記帳與猜花費
+            zhe.repo.addAutoExpense(PaymentParser.parse("LINE Pay｜付款完成 NT$135 商店：星巴克 信義新天地門市")!!, "k1")
+            zhe.repo.addAutoExpense(PaymentParser.parse("LINE Pay｜付款完成 NT$135 商店：星巴克 信義新天地門市")!!, "k1")
+            zhe.repo.saveExpense(null, buildJsonObject { put("merchant", "路易莎咖啡"); put("amount", 95); put("category", "drink"); put("guessable", true) })
+            eventually("帳本同步") { zhe.repo.state.value.myExpenses.size == 2 }
+            eventually("對方看到待猜開銷") { yu.repo.state.value.partnerExpenses.any { it.waitingForGuess } }
+            val pending = yu.repo.state.value.partnerExpenses.first { it.waitingForGuess }
+            assertNull(pending.amount)
+            val g = yu.repo.guess(pending.id, 90.0)
+            assertEquals(95.0, g.actualAmount, 0.0)
+            assertEquals(80, g.scorePoints)
+            eventually("猜完看到金額與分數") { yu.repo.state.value.partnerExpenses.first { it.id == pending.id }.myPoints == 80 }
+            eventually("猜花費通知") { zhe.notes.any { it.kind == "guess" } }
+            eventually("自己看到對方猜的金額") { zhe.repo.state.value.myExpenses.any { it.theirGuess == 90.0 } }
+
+            // 約會
+            zhe.repo.saveEvent(null, buildJsonObject {
+                put("title", "吃火鍋"); put("startsAt", Instant.now().plusSeconds(86400).toString()); put("locationText", "老四川")
+                putJsonArray("remindMinutes") { add(JsonPrimitive(60)) }
+            })
+            eventually("對方收到邀約") { yu.repo.state.value.events.any { it.title == "吃火鍋" } }
+            val ev = yu.repo.state.value.events.first { it.title == "吃火鍋" }
+            assertEquals("proposed", ev.status)
+            yu.repo.answerEvent(ev.id, "confirmed")
+            eventually("答應的通知") { zhe.notes.any { it.kind == "event" && it.title.contains("答應了") } }
+
+            // 紀念日
+            zhe.repo.saveAnniversary(null, buildJsonObject {
+                put("title", "小雨生日"); put("date", "1999-11-21"); put("kind", "birthday"); put("repeat", "yearly")
+                putJsonArray("remindDays") { add(JsonPrimitive(0)); add(JsonPrimitive(7)) }
+            })
+            eventually("紀念日同步") { yu.repo.state.value.anniversaries.any { it.title == "小雨生日" && it.remindDays == listOf(0, 7) } }
+
+            // 經期：小雨記錄並分享，阿哲看得到預測、看不到症狀
+            yu.repo.saveCycleSettings(buildJsonObject { put("careReminders", true); put("partnerCanEdit", true) })
+            yu.repo.addPeriod(false, LocalDate.now().minusDays(26).toString(), LocalDate.now().minusDays(22).toString())
+            yu.repo.saveCycleLog(LocalDate.now().toString(), "light", listOf("經痛"))
+            eventually("經期同步") { zhe.repo.state.value.cycle.partner.periods.size == 1 }
+            val z = zhe.repo.state.value
+            assertTrue(z.cycleVisible)
+            assertTrue(!z.cycleOwnerIsMe)
+            assertTrue(z.cycle.partner.logs.isEmpty())
+            assertEquals(1, yu.repo.state.value.cycle.mine.logs.size)
+            zhe.repo.addPeriod(true, LocalDate.now().plusDays(2).toString(), null)
+            eventually("幫對方記錄") { yu.repo.state.value.cycle.mine.periods.size == 2 }
+
+            // 歷史紀錄與通知設定
+            eventually("歷史紀錄") { zhe.repo.state.value.history.map { it.kind }.containsAll(listOf("paired", "mood", "comfort", "guess", "place_arrive")) }
+            zhe.repo.setNotifPref("comfort", false)
+            assertEquals(false, zhe.repo.state.value.notifPrefs["comfort"])
+
+            // 「現在在哪」
+            val locate = async { yu.realtime.events.first { it is RealtimeClient.Event.Locate } }
+            assertTrue(zhe.repo.locatePartner())
+            withTimeout(5000) { locate.await() }
+
+            // 解除配對
+            yu.repo.unpair()
+            eventually("解除後看不到對方") { !zhe.repo.state.value.paired && zhe.repo.state.value.partnerStatus.device == null }
+            assertNotNull(zhe.repo.state.value.me)
+            zhe.realtime.stop(); yu.realtime.stop()
+        }
+    }
+}

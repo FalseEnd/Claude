@@ -1,0 +1,191 @@
+package tw.xiaoliangkou.app.data
+
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+
+// 與伺服器 API 的 JSON 對應（欄位為 camelCase）
+
+@Serializable data class AuthResponse(val token: String, val userId: String? = null)
+
+@Serializable data class Profile(
+    val id: String,
+    val displayName: String,
+    val avatarUrl: String? = null,
+    val birthday: String? = null,
+    val username: String? = null,
+)
+
+@Serializable data class Couple(val id: String, val togetherSince: String? = null, val createdAt: String? = null)
+
+@Serializable data class Sharing(
+    val userId: String,
+    val shareLocation: Boolean = false,
+    val shareDevice: Boolean = false,
+    val shareExpenses: Boolean = false,
+    val shareMood: Boolean = true,
+    val shareCycle: Boolean = false,
+    val hiddenCategories: List<String> = emptyList(),
+    val pausedUntil: String? = null,
+) {
+    val pausedUntilInstant: Instant? get() = pausedUntil?.toInstantOrNull()?.takeIf { it.isAfter(Instant.now()) }
+    val paused get() = pausedUntilInstant != null
+    /** 實際有在分享位置（有開、沒暫停） */
+    val locationLive get() = shareLocation && !paused
+    val deviceLive get() = shareDevice && !paused
+}
+
+@Serializable data class MeResponse(
+    val user: Profile,
+    val couple: Couple? = null,
+    val partner: Profile? = null,
+    val mySharing: Sharing? = null,
+    val partnerSharing: Sharing? = null,
+    val partnerOnline: Boolean = false,
+)
+
+@Serializable data class Invite(val code: String, val expiresAt: String? = null)
+
+@Serializable data class DeviceStatus(
+    val userId: String,
+    val batteryLevel: Int? = null,
+    val isCharging: Boolean? = null,
+    val network: String? = null,
+    val networkLabel: String? = null,
+    val notificationsSilenced: Boolean? = null,
+    val stepsToday: Int? = null,
+    val lastActiveAt: String? = null,
+    val deviceModel: String? = null,
+    val updatedAt: String? = null,
+)
+
+@Serializable data class LocationDto(
+    val userId: String,
+    val lat: Double,
+    val lng: Double,
+    val accuracyM: Double? = null,
+    val speedMps: Double? = null,
+    val activity: String? = null,
+    val recordedAt: String? = null,
+    val updatedAt: String? = null,
+)
+
+@Serializable data class PartnerStatus(val device: DeviceStatus? = null, val location: LocationDto? = null)
+
+@Serializable data class Place(
+    val id: String,
+    val coupleId: String? = null,
+    val createdBy: String? = null,
+    val name: String,
+    val icon: String = "pin",
+    val lat: Double,
+    val lng: Double,
+    val radiusM: Int = 150,
+    val notifyArrive: Boolean = true,
+    val notifyLeave: Boolean = true,
+    val watchUser: String? = null,
+)
+
+@Serializable data class Expense(
+    val id: String,
+    val userId: String? = null,
+    val amount: Double? = null,
+    val merchant: String,
+    val category: String = "other",
+    val source: String = "manual",
+    val occurredAt: String,
+    val visibility: String = "shared",
+    val revealOn: String? = null,
+    val guessable: Boolean = false,
+    val theirGuess: Double? = null,
+    val theirPoints: Int? = null,
+    val myGuess: Double? = null,
+    val myPoints: Int? = null,
+) {
+    val time: Instant get() = occurredAt.toInstantOrNull() ?: Instant.EPOCH
+    /** 對方開放猜、我還沒猜：金額先藏起來 */
+    val waitingForGuess get() = guessable && amount == null
+}
+
+@Serializable data class GuessResult(val actualAmount: Double, val scorePoints: Int, val errorRatio: Double)
+
+@Serializable data class Mood(val id: Long, val userId: String, val mood: String, val note: String? = null, val createdAt: String)
+
+@Serializable data class Comfort(
+    val id: Long,
+    val coupleId: String? = null,
+    val senderId: String,
+    val receiverId: String,
+    val kind: String,
+    val message: String? = null,
+    val createdAt: String,
+    val readAt: String? = null,
+)
+
+@Serializable data class Anniversary(
+    val id: String,
+    val coupleId: String? = null,
+    val createdBy: String? = null,
+    val title: String,
+    val date: String,
+    val kind: String = "custom",
+    val repeat: String = "yearly",
+    val calendar: String = "solar",
+    val remindDays: List<Int> = listOf(0, 1, 7),
+)
+
+@Serializable data class DateEvent(
+    val id: String,
+    val coupleId: String? = null,
+    val createdBy: String? = null,
+    val title: String,
+    val startsAt: String,
+    val endsAt: String? = null,
+    val allDay: Boolean = false,
+    val placeId: String? = null,
+    val locationText: String? = null,
+    val note: String? = null,
+    val status: String = "proposed",
+    val remindMinutes: List<Int> = listOf(60),
+) {
+    val start: Instant get() = startsAt.toInstantOrNull() ?: Instant.EPOCH
+    val localDate: LocalDate get() = start.atZone(ZoneId.systemDefault()).toLocalDate()
+}
+
+@Serializable data class CycleSettingsDto(
+    val userId: String,
+    val cycleLength: Int? = null,
+    val periodLength: Int? = null,
+    val lutealLength: Int = 14,
+    val partnerCanEdit: Boolean = false,
+    val careReminders: Boolean = true,
+)
+
+@Serializable data class PeriodDto(val id: String, val userId: String, val startDate: String, val endDate: String? = null, val recordedBy: String? = null)
+
+@Serializable data class CycleLog(val userId: String, val logDate: String, val flow: String? = null, val symptoms: List<String> = emptyList(), val note: String? = null)
+
+@Serializable data class CycleBundle(
+    val settings: CycleSettingsDto? = null,
+    val periods: List<PeriodDto> = emptyList(),
+    val logs: List<CycleLog> = emptyList(),
+)
+
+@Serializable data class CycleResponse(val mine: CycleBundle = CycleBundle(), val partner: CycleBundle = CycleBundle())
+
+@Serializable data class Activity(
+    val id: Long,
+    val coupleId: String? = null,
+    val actorId: String? = null,
+    val kind: String,
+    val payload: JsonObject = JsonObject(emptyMap()),
+    val createdAt: String,
+) {
+    val time: Instant get() = createdAt.toInstantOrNull() ?: Instant.EPOCH
+}
+
+@Serializable data class ApiError(val error: String? = null, val message: String? = null)
+
+fun String.toInstantOrNull(): Instant? = runCatching { Instant.parse(this) }.getOrNull()

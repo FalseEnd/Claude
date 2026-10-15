@@ -1,0 +1,2120 @@
+<title>小倆口</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="小倆口情侶 App 互動原型：配對、對方手機狀態、地點通知、自動記帳與猜花費、心情與安撫、紀念日、約會日曆、經期預測、歷史紀錄。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: one phone-width column. The partner's live status is the hero, tied to you by a red thread (紅線). */
+:root {
+  --stage: #E9E3E7;
+  --bg: #F6F2F4;
+  --surface: #FFFFFF;
+  --sunken: #EEE7EC;
+  --line: #E4DAE1;
+  --line-strong: #CFC3CB;
+  --ink: #261C2C;
+  --ink-2: #5E5266;
+  --ink-3: #8B7F92;
+  --thread: #CC3346;
+  --thread-press: #AE283A;
+  --thread-soft: #FBE3E6;
+  --on-thread: #FFFFFF;
+  --me: #3A5BC7;
+  --me-soft: #E2E8FB;
+  --you: #B3650B;
+  --you-soft: #F8EAD6;
+  --on-person: #FFFFFF;
+  --good: #23885A;
+  --warn: #B26B00;
+  --bad: #C42E3B;
+  --period: #D9445D;
+  --period-soft: #FBE0E5;
+  --fertile: #7652D1;
+  --fertile-soft: #ECE5FB;
+  --ovulation: #4E30A3;
+  --safe: #2A9A82;
+  --safe-soft: #DDF1EB;
+  --map-land: #F3EFEC;
+  --map-block: #E5DEDA;
+  --map-road: #FFFFFF;
+  --map-water: #C3D9EE;
+  --map-park: #D2E6CB;
+  --map-transit: #8C76C9;
+  --map-label: #8B7F92;
+  --knob: #FFFFFF;
+  --scrim: rgba(24, 14, 28, 0.42);
+  --shadow: 0 1px 2px rgba(38, 28, 44, 0.05), 0 6px 20px rgba(38, 28, 44, 0.07);
+  --frame-shadow: 0 30px 80px rgba(38, 28, 44, 0.18), 0 2px 6px rgba(38, 28, 44, 0.08);
+  --font-display: "LXGW WenKai TC", "Kaiti TC", "STKaiti", "BiauKai", "DFKai-SB", serif;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --stage: #0F0B11; --bg: #17121A; --surface: #221B26; --sunken: #2B232F; --line: #372D3D; --line-strong: #4A3F51;
+    --ink: #F3EDF5; --ink-2: #C5BACB; --ink-3: #978C9E;
+    --thread: #F0596A; --thread-press: #F27886; --thread-soft: #3E1E27; --on-thread: #1A0D12;
+    --me: #8EA7F7; --me-soft: #232B4B; --you: #F0B061; --you-soft: #3B2B16; --on-person: #17121A;
+    --good: #5CC08A; --warn: #E8A33D; --bad: #F06A74;
+    --period: #E05A72; --period-soft: #45202A; --fertile: #8E6DE6; --fertile-soft: #2D2547; --ovulation: #C7B4FF;
+    --safe: #2F9C86; --safe-soft: #17332C;
+    --map-land: #221B25; --map-block: #2C2430; --map-road: #3B3242; --map-water: #1E3247; --map-park: #1F3326;
+    --map-transit: #8C76C9; --map-label: #978C9E;
+    --knob: #F3EDF5; --scrim: rgba(0, 0, 0, 0.55);
+    --shadow: 0 0 0 1px #2E2533; --frame-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --stage: #0F0B11; --bg: #17121A; --surface: #221B26; --sunken: #2B232F; --line: #372D3D; --line-strong: #4A3F51;
+  --ink: #F3EDF5; --ink-2: #C5BACB; --ink-3: #978C9E;
+  --thread: #F0596A; --thread-press: #F27886; --thread-soft: #3E1E27; --on-thread: #1A0D12;
+  --me: #8EA7F7; --me-soft: #232B4B; --you: #F0B061; --you-soft: #3B2B16; --on-person: #17121A;
+  --good: #5CC08A; --warn: #E8A33D; --bad: #F06A74;
+  --period: #E05A72; --period-soft: #45202A; --fertile: #8E6DE6; --fertile-soft: #2D2547; --ovulation: #C7B4FF;
+  --safe: #2F9C86; --safe-soft: #17332C;
+  --map-land: #221B25; --map-block: #2C2430; --map-road: #3B3242; --map-water: #1E3247; --map-park: #1F3326;
+  --map-transit: #8C76C9; --map-label: #978C9E;
+  --knob: #F3EDF5; --scrim: rgba(0, 0, 0, 0.55);
+  --shadow: 0 0 0 1px #2E2533; --frame-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+html { height: 100%; box-sizing: border-box; }
+*, *::before, *::after { box-sizing: inherit; }
+body {
+  height: 100%; margin: 0; overflow: hidden;
+  background: var(--stage); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
+input, select, textarea { font: inherit; color: inherit; }
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { text-wrap: balance; }
+:focus-visible { outline: 2px solid var(--thread); outline-offset: 2px; }
+.ic { flex: none; display: block; }
+.gut { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- stage & device */
+.stage {
+  height: 100%; display: flex; justify-content: center; align-items: center; gap: 40px;
+  padding-block: 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.device {
+  position: relative; width: 390px; height: min(844px, 100%); flex: none;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 44px; box-shadow: var(--frame-shadow);
+}
+.view { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
+.console {
+  width: 340px; max-height: min(844px, 100%); overflow-y: auto; flex: none;
+  background: var(--surface); border-radius: 24px; box-shadow: var(--shadow); padding: 20px;
+}
+@media (max-width: 799px) {
+  .stage { display: block; padding: 0; }
+  .device { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+  .console { display: none; }
+}
+
+/* ---------- header & tabbar */
+.hdr {
+  position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px;
+  min-height: 60px; padding-block: 10px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.hdr h1 { flex: 1; font-family: var(--font-display); font-size: 23px; font-weight: 700; letter-spacing: 0.02em; }
+.hdr .back + h1 { text-align: center; }
+.hdr-spacer { width: 40px; flex: none; }
+.brand { flex: 1; display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 21px; font-weight: 700; }
+.brand svg { color: var(--thread); }
+.pill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; font-family: var(--font-body); font-size: 11px; font-weight: 500; letter-spacing: 0.04em; background: var(--sunken); color: var(--ink-2); white-space: nowrap; }
+.pill.warn { background: var(--you-soft); color: var(--ink); }
+.pill.ok { background: var(--safe-soft); color: var(--ink); }
+.pill.red { background: var(--thread-soft); color: var(--ink); }
+.icon-btn { position: relative; width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 12px; color: var(--ink-2); }
+.icon-btn:hover { background: var(--sunken); }
+.dot-badge { position: absolute; top: 4px; right: 3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--thread); color: var(--on-thread); font-size: 10px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--bg); }
+
+.tabbar { flex: none; display: flex; background: var(--surface); border-top: 1px solid var(--line); padding-block: 6px 8px; }
+.tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding-block: 4px; font-size: 11px; font-weight: 500; color: var(--ink-3); text-align: center; }
+.tab[aria-current="page"] { color: var(--thread); }
+
+/* ---------- content primitives */
+.content { display: flex; flex-direction: column; gap: 16px; padding-block: 4px 28px; }
+.card { background: var(--surface); border-radius: 20px; padding: 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card-head h2, .sec-head h2 { font-size: 16px; font-weight: 700; }
+.card-head .ttl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.meta { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-inline: 4px; }
+.link { font-size: 13px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 2px; }
+.link:hover { color: var(--ink); }
+.sub { font-size: 13px; color: var(--ink-2); }
+.foot { font-size: 12px; color: var(--ink-3); }
+.note { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--ink-2); background: var(--sunken); border-radius: 14px; padding: 10px 12px; }
+.note .ic { margin-top: 2px; color: var(--ink-3); }
+.empty { color: var(--ink-2); font-size: 14px; padding-block: 4px; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 44px; padding: 0 16px; border-radius: 12px; background: var(--sunken); font-weight: 500; white-space: nowrap; }
+.btn:hover { background: var(--line); }
+.btn.primary { background: var(--thread); color: var(--on-thread); }
+.btn.primary:hover { background: var(--thread-press); }
+.btn.ghost { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); }
+.btn.sm { height: 34px; padding: 0 12px; font-size: 13.5px; border-radius: 10px; }
+.btn.block { width: 100%; }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-row > .btn { flex: 1; }
+
+.av { display: grid; place-items: center; border-radius: 50%; font-family: var(--font-display); font-weight: 700; color: var(--on-person); flex: none; line-height: 1; }
+.av.me { background: var(--me); }
+.av.you { background: var(--you); }
+
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.li { display: flex; align-items: center; gap: 12px; padding-block: 11px; border-bottom: 1px solid var(--line); min-width: 0; }
+.li:last-child { border-bottom: 0; }
+.li-body { flex: 1; min-width: 0; }
+.li-title, .li-sub { display: block; }
+.li-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.li-sub { font-size: 12.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.li-end { text-align: right; flex: none; font-variant-numeric: tabular-nums; }
+button.li { width: 100%; }
+button.li:hover .li-title { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+.ico { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--sunken); color: var(--ink-2); flex: none; }
+.ico.you { background: var(--you-soft); color: var(--ink); }
+.ico.me { background: var(--me-soft); color: var(--ink); }
+.ico.red { background: var(--thread-soft); color: var(--thread); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { height: 32px; padding: 0 12px; border-radius: 999px; background: var(--sunken); font-size: 13px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+.seg { display: flex; background: var(--sunken); border-radius: 12px; padding: 3px; gap: 2px; }
+.seg button { flex: 1; height: 34px; border-radius: 9px; font-size: 13.5px; color: var(--ink-2); text-align: center; white-space: nowrap; padding: 0 6px; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+
+.switch { width: 46px; height: 28px; border-radius: 999px; background: var(--line-strong); position: relative; flex: none; transition: background 0.2s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--knob); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.2s; }
+.switch[aria-checked="true"] { background: var(--thread); }
+.switch[aria-checked="true"]::after { transform: translateX(18px); }
+.switch[disabled] { opacity: 0.4; cursor: not-allowed; }
+.tg { display: flex; align-items: center; gap: 12px; padding-block: 10px; border-bottom: 1px solid var(--line); }
+.tg:last-child { border-bottom: 0; }
+.tg-text { flex: 1; min-width: 0; }
+.tg-label { font-weight: 500; }
+.tg-desc { font-size: 12.5px; color: var(--ink-3); }
+
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); min-width: 0; }
+.field input, .field select, .field textarea {
+  height: 46px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg);
+  padding: 0 12px; font-size: 16px; color: var(--ink); width: 100%; min-width: 0;
+}
+.field textarea { height: auto; padding: 10px 12px; resize: vertical; line-height: 1.5; }
+.field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--thread); outline-offset: -1px; border-color: transparent; }
+.field small { color: var(--ink-3); font-size: 12px; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form { display: flex; flex-direction: column; gap: 14px; }
+.money-input { display: flex; align-items: center; gap: 8px; height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); padding: 0 14px; }
+.money-input span { font-weight: 700; color: var(--ink-2); }
+.money-input input { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 26px; font-weight: 700; height: 100%; padding: 0; outline: none; font-variant-numeric: tabular-nums; }
+.money-input:focus-within { outline: 2px solid var(--thread); }
+
+.meter { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--m) 22%, transparent); overflow: hidden; }
+.meter > i { display: block; height: 100%; border-radius: 3px; background: var(--m); }
+
+/* ---------- home */
+.hero { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-block: 6px 2px; text-align: center; }
+.duo { display: flex; align-items: center; width: 100%; max-width: 320px; }
+.duo-person { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; color: var(--ink-2); width: 64px; }
+.duo-person .av { width: 56px; height: 56px; font-size: 24px; box-shadow: 0 0 0 3px var(--bg), 0 0 0 4px var(--line); }
+.duo-thread { flex: 1; position: relative; height: 44px; margin-bottom: 18px; }
+.duo-thread svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.duo-thread path { fill: none; stroke: var(--thread); stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.duo-thread .knot { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--thread); background: var(--bg); padding: 2px; border-radius: 50%; }
+.hero-days { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+.hero-days .lbl { font-size: 13px; color: var(--ink-2); }
+.hero-days .big { font-family: var(--font-display); font-size: 40px; font-weight: 700; line-height: 1.1; }
+.hero-line { font-size: 13.5px; color: var(--ink-2); min-height: 20px; }
+.banner { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 16px; background: var(--you-soft); font-size: 13.5px; }
+.banner .grow { flex: 1; min-width: 0; }
+
+.stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat { background: var(--bg); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stat.span2 { grid-column: span 2; }
+.stat .k { font-size: 11.5px; color: var(--ink-3); letter-spacing: 0.04em; }
+.stat .v { display: flex; align-items: center; gap: 5px; font-weight: 500; font-size: 14.5px; min-width: 0; }
+.stat .v span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat .s { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat .state-low { color: var(--bad); }
+.stat .state-charging { color: var(--good); }
+
+.mood-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mood-half { background: var(--bg); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; text-align: left; }
+.mood-half .who { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.mood-half .who .av { width: 18px; height: 18px; font-size: 10px; }
+.mood-half .em { font-size: 30px; line-height: 1.2; }
+.mood-half .lb { font-weight: 700; }
+.mood-half .nt { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.mood-half:hover { background: var(--sunken); }
+.comfort-cta { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--thread-soft); }
+.comfort-cta p { flex: 1; font-size: 13.5px; }
+
+.quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.quick button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px 10px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 12.5px; color: var(--ink-2); text-align: center; }
+.quick button .qi { width: 40px; height: 40px; border-radius: 14px; display: grid; place-items: center; background: var(--thread-soft); color: var(--thread); }
+.quick button:hover { color: var(--ink); }
+.quick .dot-badge { top: 6px; right: 12px; border-color: var(--surface); }
+
+/* ---------- map */
+.map { position: relative; width: 100%; max-width: 100%; aspect-ratio: 1 / 1; border-radius: 20px; overflow: hidden; background: var(--map-land); box-shadow: var(--shadow); touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.map canvas, .map > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.map.adding { cursor: crosshair; box-shadow: 0 0 0 2px var(--thread); }
+.fence { fill: var(--thread); fill-opacity: 0.07; stroke: var(--thread); stroke-opacity: 0.45; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.fence.active { fill-opacity: 0.16; stroke-opacity: 0.95; }
+.fence.watch-me { fill: var(--me); stroke: var(--me); }
+#map-thread { fill: none; stroke: var(--thread); stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.mk { position: absolute; transform: translate(-50%, -50%); transition: left 0.25s linear, top 0.25s linear; }
+.mk .av { width: 34px; height: 34px; font-size: 15px; box-shadow: 0 0 0 3px var(--surface), 0 4px 12px rgba(0, 0, 0, 0.25); position: relative; z-index: 1; }
+.mk.you::before { content: ""; position: absolute; inset: -10px; border-radius: 50%; background: var(--you); opacity: 0.25; animation: ping 2s ease-out infinite; }
+.mk.place { display: flex; flex-direction: column; align-items: center; gap: 2px; transform: translate(-50%, -14px); transition: none; }
+.mk.place .pin { width: 28px; height: 28px; border-radius: 50%; background: var(--surface); color: var(--thread); display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2); }
+.mk.place.watch-me .pin { color: var(--me); }
+.mk.place .nm { font-size: 11px; font-weight: 500; background: var(--surface); color: var(--ink); padding: 0 6px; border-radius: 6px; white-space: nowrap; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.dist-chip { position: absolute; transform: translate(-50%, -50%); background: var(--thread); color: var(--on-thread); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; pointer-events: none; transition: left 0.25s linear, top 0.25s linear; }
+.map-hint { position: absolute; left: 12px; right: 12px; bottom: 12px; text-align: center; background: var(--ink); color: var(--bg); padding: 8px 12px; border-radius: 12px; font-size: 13px; pointer-events: none; }
+@keyframes ping { 0% { transform: scale(0.6); opacity: 0.45; } 100% { transform: scale(1.5); opacity: 0; } }
+
+/* ---------- money */
+.total { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.total .big { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; }
+.bars { display: flex; flex-direction: column; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: 12.5px; }
+.bar-row .lb { color: var(--ink-2); }
+.bar-row .track { height: 10px; position: relative; }
+.bar-row .track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; background: var(--c); min-width: 3px; }
+.bar-row .val { color: var(--ink); font-variant-numeric: tabular-nums; }
+.day-head { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--ink-3); padding: 12px 4px 2px; }
+.amt { font-weight: 700; }
+.amt.hidden { letter-spacing: 0.15em; color: var(--ink-3); }
+.mini { font-size: 11.5px; color: var(--ink-3); }
+.guess-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.guess-stats div { background: var(--bg); border-radius: 12px; padding: 8px 10px; }
+.guess-stats b { display: block; font-size: 18px; }
+.guess-stats span { font-size: 11.5px; color: var(--ink-3); }
+.reveal { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding-block: 8px; }
+.reveal .score { font-family: var(--font-display); font-size: 56px; font-weight: 700; line-height: 1; color: var(--thread); }
+.reveal .verdict { font-size: 18px; font-weight: 700; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; margin-top: 8px; }
+.compare div { background: var(--bg); border-radius: 12px; padding: 10px; }
+.compare span { display: block; font-size: 12px; color: var(--ink-3); }
+.compare b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.parsed { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13.5px; background: var(--bg); border-radius: 14px; padding: 12px; }
+.parsed dt { color: var(--ink-3); }
+.parsed dd { margin: 0; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- calendar */
+.cal-nav { display: flex; align-items: center; justify-content: space-between; }
+.cal-nav h2 { font-family: var(--font-display); font-size: 20px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.dow { font-size: 12px; color: var(--ink-3); text-align: center; padding-bottom: 2px; }
+.day { aspect-ratio: 1 / 1.08; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-variant-numeric: tabular-nums; font-size: 14px; position: relative; border: 1.5px solid transparent; text-align: center; }
+.day:hover { background: var(--sunken); }
+.day.out { color: var(--ink-3); opacity: 0.55; }
+.day.ph-period { background: var(--period-soft); }
+.day.ph-period.pred { background: transparent; border: 1.5px dashed var(--period); }
+.day.ph-fertile { background: var(--fertile-soft); }
+.day.ph-ovulation { background: var(--fertile-soft); border-color: var(--fertile); }
+.day.today .n { color: var(--thread); font-weight: 700; }
+.day.sel { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.day.sel .n { color: var(--bg); }
+.marks { display: flex; gap: 3px; height: 6px; align-items: center; }
+.mark { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-2); }
+.mark.ann { background: var(--thread); }
+.mark.ms { background: var(--you); }
+.day.sel .mark { background: var(--bg); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 4px; display: inline-block; flex: none; }
+.ev-status { font-size: 12px; }
+
+/* ---------- cycle */
+.ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.ring { width: 220px; max-width: 100%; aspect-ratio: 1 / 1; }
+.ring text { fill: var(--ink); font-family: var(--font-body); }
+.ring .c-big { font-family: var(--font-display); font-size: 30px; font-weight: 700; }
+.ring .c-sub { font-size: 12px; fill: var(--ink-2); }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.facts div { background: var(--bg); border-radius: 12px; padding: 10px; min-width: 0; }
+.facts span { display: block; font-size: 11.5px; color: var(--ink-3); }
+.facts b { font-size: 15px; }
+.tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--ink-2); }
+.disclaimer { font-size: 12px; color: var(--ink-3); line-height: 1.6; }
+
+/* ---------- mood */
+.mood-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mood-opt { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 4px; border-radius: 16px; background: var(--bg); font-size: 13px; text-align: center; border: 2px solid transparent; }
+.mood-opt .em { font-size: 30px; line-height: 1.2; }
+.mood-opt[aria-pressed="true"] { border-color: var(--thread); background: var(--thread-soft); }
+.week { display: grid; grid-template-columns: 40px repeat(7, minmax(0, 1fr)); gap: 4px; align-items: center; text-align: center; font-size: 12px; color: var(--ink-3); }
+.week .em { font-size: 20px; line-height: 1.4; }
+.week .who { text-align: left; }
+
+/* ---------- comfort */
+.cf-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cf { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 4px; border-radius: 16px; background: var(--bg); border: 2px solid transparent; font-size: 13px; text-align: center; }
+.cf .em { font-size: 28px; line-height: 1.2; }
+.cf[aria-pressed="true"] { border-color: var(--thread); background: var(--thread-soft); }
+
+/* ---------- history */
+.tl-item { display: flex; gap: 12px; padding-block: 10px; border-bottom: 1px solid var(--line); }
+.tl-item:last-child { border-bottom: 0; }
+.tl-item .ico { width: 32px; height: 32px; border-radius: 10px; }
+.tl-text { flex: 1; min-width: 0; font-size: 14px; }
+.tl-time { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; flex: none; padding-top: 2px; }
+.chips.scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.chips.scroll .chip { flex: none; }
+
+/* ---------- onboarding */
+.onb { min-height: 100%; display: flex; flex-direction: column; gap: 20px; padding-block: 40px 28px; }
+.onb-mark { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding-block: 12px 8px; }
+.onb-mark h1 { font-family: var(--font-display); font-size: 40px; letter-spacing: 0.06em; }
+.onb-mark p { color: var(--ink-2); }
+.steps { display: flex; gap: 6px; justify-content: center; }
+.steps i { width: 24px; height: 4px; border-radius: 2px; background: var(--line-strong); }
+.steps i.on { background: var(--thread); }
+.code-box { display: flex; gap: 6px; justify-content: center; }
+.code-box span { width: 42px; height: 52px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); display: grid; place-items: center; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.or { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-3); }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.onb-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+
+/* ---------- layers: push notifications, sheets, toast */
+.pushes { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 30; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.push {
+  pointer-events: auto; display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-radius: 18px; text-align: left; width: 100%;
+  background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--line); animation: pushIn 0.35s cubic-bezier(.2, .9, .3, 1.2);
+}
+.push.out { animation: pushOut 0.3s forwards; }
+.push-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--thread); color: var(--on-thread); display: grid; place-items: center; flex: none; }
+.push-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.push-app { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-3); }
+.push-title { font-weight: 700; font-size: 14px; }
+.push-text { font-size: 13.5px; color: var(--ink-2); }
+@keyframes pushIn { from { transform: translateY(-120%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes pushOut { to { transform: translateY(-120%); opacity: 0; } }
+
+.sheet-wrap { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; justify-content: flex-end; }
+.sheet-backdrop { position: absolute; inset: 0; background: var(--scrim); animation: fade 0.2s; }
+.sheet { position: relative; max-height: 90%; overflow-y: auto; background: var(--surface); border-radius: 24px 24px 0 0; padding-block: 8px 24px; display: flex; flex-direction: column; gap: 16px; animation: sheetUp 0.28s cubic-bezier(.2, .8, .2, 1); }
+.sheet::before { content: ""; display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--line-strong); margin: 0 auto -6px; flex: none; }
+.sheet-head { display: flex; align-items: center; gap: 8px; }
+.sheet-head h2 { flex: 1; font-family: var(--font-display); font-size: 21px; }
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes fade { from { opacity: 0; } }
+
+.toast { position: absolute; left: 50%; bottom: 86px; transform: translateX(-50%); z-index: 25; max-width: calc(100% - 32px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 13.5px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); animation: fade 0.2s; text-align: center; }
+
+/* ---------- demo console */
+.console h2 { font-family: var(--font-display); font-size: 22px; }
+.console-inner { display: flex; flex-direction: column; gap: 18px; }
+.ctl { display: flex; flex-direction: column; gap: 8px; }
+.ctl h3 { font-size: 12px; letter-spacing: 0.08em; color: var(--ink-3); font-weight: 500; }
+.ctl .btn { justify-content: flex-start; }
+.ctl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ctl-grid .btn { padding: 0 10px; font-size: 13.5px; }
+.sim-state { font-size: 13px; color: var(--ink-2); background: var(--bg); border-radius: 12px; padding: 10px 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+
+<div class="stage">
+  <div class="device" id="device">
+    <div class="pushes" id="pushes" aria-live="polite"></div>
+    <main class="view" id="view"></main>
+    <nav class="tabbar gut" id="tabbar" aria-label="主要分頁"></nav>
+    <div class="sheet-wrap" id="sheet-wrap" hidden>
+      <div class="sheet-backdrop" data-act="close-sheet"></div>
+      <section class="sheet gut" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"></section>
+    </div>
+    <div class="toast" id="toast" role="status" hidden></div>
+  </div>
+  <aside class="console" id="console" aria-label="示範控制台"></aside>
+</div>
+
+<script src="core.js"></script>
+<script src="icons.js"></script>
+<script>
+'use strict';
+const C = window.CoupleCore;
+
+// ============================================================ utils
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ESC[c]);
+const pad = C.pad;
+const today = () => C.localDate();
+const hm = (ts) => { const d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const md = (ds) => { const p = ds.split('-').map(Number); return p[1] + '/' + p[2]; };
+const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
+const wd = (ds) => WEEK[new Date(C.toDayNum(ds) * 86400000).getUTCDay()];
+const tsDate = (ts) => C.localDate(new Date(ts));
+const fmtDist = (m) => (m < 1000 ? Math.max(10, Math.round(m / 10) * 10) + ' 公尺' : (m / 1000).toFixed(1) + ' 公里');
+const lastChar = (s) => Array.from(String(s || '?')).pop();
+const uid = () => Math.random().toString(36).slice(2, 9);
+const money = C.money;
+const rand = (list) => list[Math.floor(Math.random() * list.length)];
+
+function icon(name, size, cls) {
+  size = size || 20;
+  return '<svg class="ic ' + (cls || '') + '" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (window.ICONS[name] || '') + '</svg>';
+}
+function avatar(who, size) {
+  const name = who === 'me' ? S.me.name : S.partner.name;
+  const s = size || 32;
+  return '<span class="av ' + (who === 'me' ? 'me' : 'you') + '" style="width:' + s + 'px;height:' + s + 'px;font-size:' + Math.round(s * 0.45) + 'px" aria-hidden="true">' + esc(lastChar(name)) + '</span>';
+}
+function daysLeftLabel(n) {
+  if (n === 0) return '今天';
+  if (n === 1) return '明天';
+  if (n < 0) return (-n) + ' 天前';
+  return n + ' 天後';
+}
+function dayLabel(ds) {
+  const T = today();
+  if (ds === T) return '今天';
+  if (ds === C.addDays(T, -1)) return '昨天';
+  if (ds === C.addDays(T, 1)) return '明天';
+  return md(ds) + '（' + wd(ds) + '）';
+}
+function knot(size) {
+  // 品牌標誌：一條紅線打成的結
+  const s = size || 22;
+  return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M2 20c6 0 8-12 14-12 5 0 6 7 2 9s-9-1-7-5 9-5 13 2c2 4 4 6 6 6"/></svg>';
+}
+
+// ============================================================ map world (公尺)
+const WORLD = 2000;
+const SPOTS = {
+  home: { x: 400, y: 1600, label: '住家', wifi: '家裡' },
+  mart: { x: 600, y: 1460, label: '便利商店' },
+  mrtA: { x: 800, y: 1200, label: '捷運站' },
+  mrtB: { x: 1400, y: 820, label: '捷運站' },
+  office: { x: 1400, y: 600, label: '公司', wifi: '公司', silent: true },
+  cafe: { x: 1200, y: 760, label: '咖啡店', wifi: '咖啡店' },
+  gym: { x: 600, y: 600, label: '健身房', silent: true }
+};
+const ME_POS = { x: 1800, y: 1400 };
+// 對方一天的行程（循環）。mode: mrt 表示搭捷運前往該點
+const ROUTE = [
+  { spot: 'home', dwell: 24, charge: true },
+  { x: 600, y: 1600 },
+  { spot: 'mart', dwell: 6, spend: 'mart' },
+  { x: 600, y: 1200 },
+  { spot: 'mrtA', dwell: 4 },
+  { spot: 'mrtB', dwell: 3, mode: 'mrt' },
+  { spot: 'office', dwell: 30 },
+  { x: 1200, y: 600 },
+  { spot: 'cafe', dwell: 10, spend: 'cafe' },
+  { x: 1200, y: 600 },
+  { spot: 'office', dwell: 20 },
+  { spot: 'gym', dwell: 14 },
+  { x: 600, y: 1200 },
+  { x: 400, y: 1200 }
+];
+const OFFICE_IDX = 6;
+const wpPos = (w) => (w.spot ? SPOTS[w.spot] : w);
+const SPEED = { walk: 28, mrt: 80 };   // 示範用的加速速度（公尺 / 秒）
+
+const PLACE_ICONS = ['house', 'briefcase', 'dumbbell', 'coffee', 'school', 'utensils', 'shopping-bag', 'heart', 'map-pin'];
+const CAT_ICON = { drink: 'coffee', food: 'utensils', transport: 'train-front', daily: 'store', shopping: 'shopping-bag', fun: 'film', gift: 'gift', other: 'receipt' };
+const SOURCE = { linepay: 'LINE Pay', jkopay: '街口支付', applepay: 'Apple Pay', card: '信用卡通知', einvoice: '發票載具', manual: '手動記帳', other: '付款通知', easywallet: '悠遊付' };
+const SAMPLE_NOTIFS = [
+  { label: 'LINE Pay', text: 'LINE Pay｜付款完成 NT$135 商店：星巴克 信義新天地門市' },
+  { label: '信用卡', text: '【國泰世華】您的卡片末四碼1234於10/15 12:03消費新台幣1,280元，商店：UNIQLO 微風南山店' },
+  { label: '街口支付', text: '街口支付：您已付款 65 元給 全家便利商店 松仁店' },
+  { label: 'Apple Pay', text: 'Apple Pay 交易：台灣高鐵 NT$1,490' }
+];
+const SYMPTOMS = ['經痛', '腰痠', '頭痛', '脹氣', '情緒低落', '疲倦', '想吃甜食', '長痘痘'];
+const NOTIF_KINDS = [
+  ['place', '地點抵達與離開', '對方進出你們設定的標點'],
+  ['mood', '心情更新', '對方設定新的心情'],
+  ['comfort', '安撫與悄悄話', '收到抱抱、摸摸頭等'],
+  ['battery_low', '對方電量低', '低於 20% 且沒有在充電'],
+  ['guess', '猜花費', '有新開銷可以猜、對方猜了你的花費'],
+  ['expense', '對方每一筆開銷', '預設關閉，避免太吵'],
+  ['event', '約會邀請與回覆', '新增、答應或婉拒約會'],
+  ['anniversary', '紀念日與里程碑', '依每個紀念日的提醒設定'],
+  ['cycle_care', '經期關懷提醒', '經期前兩天提醒多關心']
+];
+
+// ============================================================ state
+const STORE = 'xiaoliangkou-demo-v1';
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE);
+    const s = raw && JSON.parse(raw);
+    return s && s.v === 1 ? s : null;
+  } catch (e) { return null; }
+}
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) { /* 無痕模式等情況 */ } }, 200);
+}
+function genCode() {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint8Array(6);
+  if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(bytes);
+  else for (let i = 0; i < 6; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (b) => A[b % 32]).join('');
+}
+
+function seed() {
+  const T = today(), now = Date.now();
+  // 「今天稍早」的示範資料：凌晨打開時壓縮到今天 0 點之後，維持先後順序
+  const startOfDay = new Date().setHours(0, 0, 0, 0);
+  const ago = (min) => { const t = now - min * 60000; return t >= startOfDay ? t : startOfDay + (now - startOfDay) * Math.max(0.05, 1 - min / 240); };
+  const at = (d, h, m) => { const x = new Date(); x.setDate(x.getDate() - d); x.setHours(h, m, 0, 0); return x.getTime(); };
+  const since = C.addDays(T, -513);
+  const yearOf = (y, offset) => y + C.addDays(T, offset).slice(4);
+  let n = 0;
+  const ex = (who, ts, merchant, amount, source, more) => Object.assign(
+    { id: 'x' + (++n), who: who, ts: ts, merchant: merchant, amount: amount, source: source, category: C.categorize(merchant), visibility: 'shared', guessable: false },
+    more || {});
+  const myBirthday = C.nextOccurrence(yearOf('1998', 160), T, 'yearly').date;
+  const dow = new Date(C.toDayNum(T) * 86400000).getUTCDay();
+  const saturday = C.addDays(T, ((6 - dow + 7) % 7) || 7);
+  const h = (ts, kind, who, text) => ({ id: uid(), ts: ts, kind: kind, who: who, text: text });
+  const moods = [{ who: 'partner', ts: ago(80), mood: 'tired', note: '開了一整天的會' }];
+  ['happy', 'sweet', 'calm', 'tired', 'happy', 'missyou'].forEach((m, i) => moods.push({ who: 'partner', ts: at(i + 1, 21, 10), mood: m, note: '' }));
+  ['calm', 'happy', 'tired', 'happy', 'sweet', 'calm'].forEach((m, i) => moods.push({ who: 'me', ts: at(i + 1, 22, 0), mood: m, note: '' }));
+
+  return {
+    v: 1,
+    paired: true,
+    me: { name: '阿哲', code: genCode() },
+    partner: { name: '小雨', device: 'iPhone 15 · iOS 18' },
+    togetherSince: since,
+    pairedAt: at(500, 20, 0),
+    sharing: { location: true, device: true, expenses: true, mood: true, cycle: true, pausedUntil: null, hiddenCats: [] },
+    partnerSharing: { location: true, device: true, expenses: true, mood: true, cycle: true, pausedUntil: null },
+    notif: { place: true, mood: true, comfort: true, battery_low: true, guess: true, expense: false, event: true, anniversary: true, cycle_care: true },
+    places: [
+      { id: 'p1', name: '小雨家', icon: 'house', x: 400, y: 1600, r: 140, arrive: true, leave: true, watch: 'partner', by: 'partner' },
+      { id: 'p2', name: '小雨公司', icon: 'briefcase', x: 1400, y: 600, r: 250, arrive: true, leave: true, watch: 'partner', by: 'me' },
+      { id: 'p3', name: '健身房', icon: 'dumbbell', x: 600, y: 600, r: 110, arrive: true, leave: false, watch: 'partner', by: 'partner' }
+    ],
+    expenses: [
+      ex('partner', ago(15), '星巴克 信義新天地', 165, 'card', { guessable: true, raw: '【國泰世華】您的卡片末四碼5678消費新台幣165元，商店：星巴克 信義新天地' }),
+      ex('partner', ago(170), '全家便利商店 松仁店', 89, 'linepay'),
+      ex('partner', at(1, 12, 30), '鼎泰豐 101 店', 680, 'card'),
+      ex('partner', at(1, 19, 5), 'UNIQLO 微風南山店', 1280, 'card'),
+      ex('partner', at(2, 8, 40), '路易莎咖啡', 95, 'linepay', { guessable: true, guess: { value: 90, points: 80, ts: at(2, 9, 0) } }),
+      ex('partner', at(2, 12, 15), '池上便當', 110, 'jkopay'),
+      ex('partner', at(3, 18, 20), '台灣高鐵', 1490, 'applepay'),
+      ex('partner', at(4, 8, 30), '星巴克 信義新天地', 150, 'einvoice'),
+      ex('partner', at(4, 21, 0), 'Netflix', 390, 'card'),
+      ex('partner', at(5, 14, 0), '香水專櫃', 2400, 'card', { category: 'gift', visibility: 'surprise', revealOn: myBirthday }),
+      ex('partner', at(6, 13, 0), '全聯福利中心', 432, 'linepay'),
+      ex('partner', at(8, 20, 10), '威秀影城', 640, 'card', { guessable: true, guess: { value: 500, points: 50, ts: at(8, 21, 0) } }),
+      ex('partner', at(9, 8, 20), '路易莎咖啡', 85, 'linepay'),
+      ex('partner', at(12, 12, 40), '麥當勞', 189, 'jkopay'),
+      ex('partner', at(15, 15, 30), '屈臣氏', 356, 'card'),
+      ex('partner', at(18, 19, 0), '蝦皮購物', 799, 'einvoice'),
+      ex('me', ago(200), '麥當勞', 159, 'jkopay'),
+      ex('me', at(1, 9, 0), 'cama café', 75, 'linepay'),
+      ex('me', at(1, 19, 30), '好樂迪 KTV', 1200, 'card', { guessable: true, theirGuess: { value: 1000, points: 50, ts: at(1, 22, 0) } }),
+      ex('me', at(3, 10, 0), '中油 加油站', 1050, 'card'),
+      ex('me', at(5, 18, 0), '誠品書店', 520, 'card', { category: 'gift', visibility: 'surprise', revealOn: C.addDays(T, 37) }),
+      ex('me', at(7, 12, 0), '一蘭拉麵', 280, 'applepay')
+    ],
+    moods: moods,
+    anniversaries: [
+      { id: 'a1', title: '在一起紀念日', date: since, kind: 'together', repeat: 'yearly', remind: [0, 1, 7] },
+      { id: 'a2', title: '小雨生日', date: yearOf('1999', 37), kind: 'birthday', repeat: 'yearly', remind: [0, 1, 7] },
+      { id: 'a3', title: '阿哲生日', date: yearOf('1998', 160), kind: 'birthday', repeat: 'yearly', remind: [0, 1, 7] },
+      { id: 'a4', title: '第一次約會', date: C.addDays(since, -24), kind: 'first_date', repeat: 'yearly', remind: [0, 1] }
+    ],
+    events: [
+      { id: 'e1', title: '週六晚餐', date: saturday, time: '18:30', place: '樂埔町 信義店', note: '已訂位 2 位', status: 'confirmed', by: 'me', remind: 60 },
+      { id: 'e2', title: '看電影', date: C.addDays(T, 9), time: '20:00', place: '威秀影城', note: '', status: 'proposed', by: 'partner', remind: 60 },
+      { id: 'e3', title: 'IKEA 買書櫃', date: C.addDays(T, 13), time: '14:00', place: '', note: '記得先量尺寸', status: 'confirmed', by: 'partner', remind: 1440 },
+      { id: 'e4', title: '野餐', date: C.addDays(T, -6), time: '11:00', place: '大安森林公園', note: '', status: 'confirmed', by: 'me', remind: 60 }
+    ],
+    cycle: {
+      owner: 'partner',
+      periods: [
+        { start: C.addDays(T, -136), end: C.addDays(T, -132) },
+        { start: C.addDays(T, -108), end: C.addDays(T, -103) },
+        { start: C.addDays(T, -79), end: C.addDays(T, -74) },
+        { start: C.addDays(T, -51), end: C.addDays(T, -47) },
+        { start: C.addDays(T, -23), end: C.addDays(T, -18) }
+      ],
+      settings: { cycleLength: null, periodLength: null },
+      care: true,
+      partnerCanEdit: true,
+      logs: {}
+    },
+    history: [
+      h(ago(15), 'money', 'partner', '小雨 在 星巴克 信義新天地 有一筆新開銷，猜猜看花了多少？'),
+      h(ago(80), 'mood', 'partner', '小雨 現在覺得好累：開了一整天的會'),
+      h(ago(95), 'place', 'partner', '小雨 已抵達 小雨公司'),
+      h(ago(150), 'place', 'partner', '小雨 已離開 小雨家'),
+      h(at(1, 22, 40), 'comfort', 'partner', '小雨 回覆：收到抱抱了，晚安'),
+      h(at(1, 22, 35), 'comfort', 'me', '你給 小雨 一個抱抱'),
+      h(at(1, 22, 0), 'money', 'partner', '小雨 猜你在 好樂迪 KTV 花了 NT$1,000，實際 NT$1,200（50 分）'),
+      h(at(1, 17, 50), 'device', 'partner', '小雨 的手機電量剩 18%'),
+      h(at(1, 12, 5), 'date', 'partner', '小雨 答應了：週六晚餐'),
+      h(at(2, 9, 0), 'money', 'me', '你猜 小雨 在 路易莎咖啡 花了 NT$90，實際 NT$95（80 分）'),
+      h(at(6, 11, 0), 'date', 'me', '一起去野餐 · 大安森林公園')
+    ],
+    unread: 3,
+    sim: { i: OFFICE_IDX, state: 'dwell', dwell: 30, x: 1400, y: 600, battery: 34, steps: 4286, lowSent: false, lastActive: ago(3), inside: ['p2'], updated: now }
+  };
+}
+
+let S = load() || seed();
+
+const ui = {
+  tab: 'home', stack: [], onb: 1, calMonth: today().slice(0, 7), calSel: today(),
+  moneyWho: 'partner', histFilter: 'all', addingPlace: false, simOn: true, speed: 1,
+  comfortPick: 'hug', moodPick: null, sheet: null
+};
+try { const t = localStorage.getItem(STORE + ':tab'); if (t) ui.tab = t; } catch (e) { /* ignore */ }
+
+// ============================================================ derived data
+function partnerStatus() {
+  const ps = S.partnerSharing, sim = S.sim, now = Date.now();
+  const paused = !!(ps.pausedUntil && ps.pausedUntil > now);
+  const w = ROUTE[sim.i];
+  const dwelling = sim.state === 'dwell';
+  const spot = dwelling && w.spot ? SPOTS[w.spot] : null;
+  const mode = dwelling ? 'still' : (w.mode === 'mrt' ? 'mrt' : 'walk');
+  const charging = dwelling && !!w.charge;
+  return {
+    paused: paused, pausedUntil: ps.pausedUntil,
+    shareDevice: ps.device && !paused,
+    shareLoc: ps.location && !paused,
+    battery: Math.round(sim.battery), charging: charging,
+    batteryState: C.batteryState(Math.round(sim.battery), charging),
+    net: spot && spot.wifi ? { wifi: true, label: 'Wi-Fi · ' + spot.wifi } : { wifi: false, label: '5G' },
+    screenOn: mode === 'mrt' || (dwelling && w.spot === 'cafe') || now - sim.lastActive < 90000,
+    lastActive: sim.lastActive,
+    silent: !!(spot && spot.silent),
+    steps: Math.round(sim.steps),
+    mode: mode, spot: spot,
+    pos: { x: sim.x, y: sim.y },
+    updated: sim.updated || now
+  };
+}
+function partnerWhere(st) {
+  const names = S.sim.inside.map((id) => S.places.find((p) => p.id === id)).filter(Boolean).map((p) => p.name);
+  if (names.length) return '在 ' + names.join('、');
+  if (st.mode === 'walk') return '步行中';
+  if (st.mode === 'mrt') return '搭捷運中';
+  return st.spot ? '在 ' + st.spot.label + '附近' : '停留中';
+}
+function distanceToPartner() { return C.distance(ME_POS, S.sim); }
+
+function myPaused() { return !!(S.sharing.pausedUntil && S.sharing.pausedUntil > Date.now()); }
+function moodToday(who) {
+  const T = today();
+  const list = S.moods.filter((m) => m.who === who && tsDate(m.ts) === T);
+  return list.length ? list.reduce((a, b) => (a.ts > b.ts ? a : b)) : null;
+}
+function moodOn(who, ds) {
+  const list = S.moods.filter((m) => m.who === who && tsDate(m.ts) === ds);
+  return list.length ? list.reduce((a, b) => (a.ts > b.ts ? a : b)) : null;
+}
+function canSeePartnerExpense(e) {
+  if (e.visibility === 'shared') return true;
+  return e.visibility === 'surprise' && e.revealOn <= today();
+}
+function pendingGuesses() {
+  if (!S.partnerSharing.expenses) return [];
+  return S.expenses.filter((e) => e.who === 'partner' && e.guessable && !e.guess && canSeePartnerExpense(e));
+}
+function guessStats() {
+  const done = S.expenses.filter((e) => e.who === 'partner' && e.guess);
+  const points = done.reduce((s, e) => s + e.guess.points, 0);
+  const err = done.length ? done.reduce((s, e) => s + Math.abs(e.guess.value - e.amount) / e.amount, 0) / done.length : 0;
+  return { count: done.length, points: points, err: err };
+}
+function cycleVisible() { const cy = S.cycle; return cy.owner === 'me' || (cy.owner === 'partner' && S.partnerSharing.cycle); }
+function cycleCanEdit() { const cy = S.cycle; return cy.owner === 'me' || (cy.owner === 'partner' && cy.partnerCanEdit); }
+function cycleOwnerName() { return S.cycle.owner === 'me' ? '我' : S.partner.name; }
+function prediction() { return cycleVisible() && S.cycle.periods.length ? C.predictCycle(S.cycle.periods, S.cycle.settings, today()) : null; }
+const PHASE_LABEL = { period: '月經期', fertile: '易孕期', ovulation: '排卵日', safe: '相對安全期', late: '經期延遲' };
+
+function anniversaryOccurrences() {
+  const T = today();
+  return S.anniversaries.map((a) => Object.assign({}, a, C.nextOccurrence(a.date, T, a.repeat))).filter((a) => a.daysLeft >= 0);
+}
+function upcomingItems() {
+  const T = today(), P = S.partner.name, items = [];
+  S.events.filter((e) => C.diffDays(T, e.date) >= 0 && e.status !== 'declined').forEach((e) => items.push({
+    icon: 'calendar-heart', title: e.title + (e.status === 'proposed' ? (e.by === 'me' ? '（等對方回覆）' : '（等你回覆）') : ''),
+    sub: dayLabel(e.date) + ' ' + e.time + (e.place ? ' · ' + e.place : ''), left: C.diffDays(T, e.date), to: 'cal', date: e.date
+  }));
+  anniversaryOccurrences().forEach((a) => items.push({
+    icon: a.kind === 'birthday' ? 'cake' : 'heart', title: a.title + (a.years > 0 && a.kind !== 'birthday' ? ' ' + a.years + ' 週年' : ''),
+    sub: md(a.date) + '（' + wd(a.date) + '）', left: a.daysLeft, to: 'anniv'
+  }));
+  const ms = C.upcomingMilestones(S.togetherSince, T, 1)[0];
+  items.push({ icon: 'sparkles', title: '在一起第 ' + ms.day + ' 天', sub: md(ms.date) + '（' + wd(ms.date) + '）', left: ms.daysLeft, to: 'anniv' });
+  const pr = prediction();
+  if (pr && pr.lateDays === 0 && pr.daysUntilNext >= 0) {
+    items.push({ icon: 'droplets', title: (S.cycle.owner === 'me' ? '我' : P) + ' 的經期預計開始', sub: md(pr.nextStart) + '（' + wd(pr.nextStart) + '）· 依過去 ' + (pr.stats.samples || 0) + ' 個週期推算', left: pr.daysUntilNext, to: 'cycle' });
+  }
+  return items.sort((a, b) => a.left - b.left);
+}
+
+// ============================================================ notifications, history, toast
+const KIND_ICON = { place: 'map-pin', mood: 'smile', comfort: 'hand-heart', money: 'coins', date: 'calendar-heart', device: 'battery-low', pair: 'shield-check', cycle: 'droplets' };
+
+function log(kind, who, text) {
+  S.history.unshift({ id: uid(), ts: Date.now(), kind: kind, who: who, text: text });
+  if (S.history.length > 300) S.history.length = 300;
+  if (who === 'partner') S.unread = (S.unread || 0) + 1;
+  save();
+}
+function push(notifKind, title, body, to, iconName) {
+  if (notifKind && S.notif[notifKind] === false) return;
+  const el = document.createElement('button');
+  el.className = 'push';
+  el.type = 'button';
+  el.innerHTML = '<span class="push-icon">' + icon(iconName || 'heart', 20) + '</span><span class="push-body"><span class="push-app"><span>小倆口</span><span>現在</span></span><span class="push-title">' + esc(title) + '</span>' + (body ? '<span class="push-text">' + esc(body) + '</span>' : '') + '</span>';
+  el.addEventListener('click', () => { el.remove(); if (to) navigate(to); });
+  const box = $('#pushes');
+  box.prepend(el);
+  while (box.children.length > 3) box.lastChild.remove();
+  setTimeout(() => el.classList.add('out'), 4600);
+  setTimeout(() => el.remove(), 4950);
+}
+let toastTimer = null;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2400);
+}
+
+// ============================================================ navigation & render
+const TABS = [['home', '首頁', 'house'], ['map', '地圖', 'map'], ['money', '帳本', 'wallet'], ['cal', '日曆', 'calendar-days'], ['more', '我的', 'user']];
+const TAB_IDS = TABS.map((t) => t[0]);
+
+function currentView() { return ui.stack.length ? ui.stack[ui.stack.length - 1] : ui.tab; }
+function go(tab) {
+  ui.tab = tab; ui.stack = []; ui.addingPlace = false;
+  try { localStorage.setItem(STORE + ':tab', tab); } catch (e) { /* ignore */ }
+  render(true);
+}
+function open(view) { ui.addingPlace = false; ui.stack.push(view); render(true); }
+function back() { ui.stack.pop(); render(true); }
+function navigate(to) {
+  closeSheet();
+  if (TAB_IDS.indexOf(to) >= 0) go(to);
+  else { ui.stack = []; open(to); }
+}
+
+function render(resetScroll) {
+  const view = $('#view');
+  const keep = view.scrollTop;
+  if (!S.paired) {
+    view.innerHTML = vOnboarding();
+    $('#tabbar').hidden = true;
+    renderConsole();
+    return;
+  }
+  $('#tabbar').hidden = false;
+  const v = currentView();
+  view.innerHTML = (VIEWS[v] || VIEWS.home)();
+  view.scrollTop = resetScroll ? 0 : keep;
+  renderTabbar();
+  if (v === 'map') afterMap();
+  renderConsole();
+}
+function renderTabbar() {
+  $('#tabbar').innerHTML = TABS.map((t) => '<button class="tab" data-act="tab" data-tab="' + t[0] + '"' + (ui.tab === t[0] ? ' aria-current="page"' : '') + '>' + icon(t[2], 22) + '<span>' + t[1] + '</span></button>').join('');
+}
+function header(title, opts) {
+  opts = opts || {};
+  if (ui.stack.length) {
+    return '<header class="hdr gut"><button class="icon-btn back" data-act="back" aria-label="返回">' + icon('chevron-left', 24) + '</button><h1>' + esc(title) + '</h1>' + (opts.right || '<span class="hdr-spacer"></span>') + '</header>';
+  }
+  return '<header class="hdr gut"><h1>' + esc(title) + '</h1>' + (opts.right || '') + '</header>';
+}
+
+// ============================================================ views: home
+function vHome() {
+  const T = today(), P = S.partner.name;
+  const days = C.daysTogether(S.togetherSince, T);
+  const unread = S.unread || 0;
+  return '<header class="hdr gut"><div class="brand">' + knot(24) + '<span>小倆口</span><span class="pill" title="畫面上的人物與數字都是示範資料">示範資料</span></div>' +
+    '<button class="icon-btn" data-act="open" data-to="history" aria-label="歷史紀錄' + (unread ? '，' + unread + ' 則新動態' : '') + '">' + icon('bell', 22) + (unread ? '<span class="dot-badge">' + (unread > 9 ? '9+' : unread) + '</span>' : '') + '</button></header>' +
+    '<div class="content gut">' +
+    '<section class="hero" aria-label="我們">' +
+      '<div class="duo"><div class="duo-person">' + avatar('me', 56) + '<span>' + esc(S.me.name) + '</span></div>' +
+      '<div class="duo-thread"><svg viewBox="0 0 100 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0,22 C22,2 40,42 50,22 S78,2 100,22"/></svg><span class="knot">' + icon('heart', 14) + '</span></div>' +
+      '<div class="duo-person">' + avatar('you', 56) + '<span>' + esc(P) + '</span></div></div>' +
+      '<div class="hero-days"><span class="lbl">在一起</span><span class="big">第 ' + days + ' 天</span></div>' +
+      '<p class="hero-line" id="live-hero">' + heroLine() + '</p>' +
+    '</section>' +
+    pauseBanners() +
+    '<section class="card" id="live-status" aria-live="off">' + statusCard() + '</section>' +
+    moodCard() +
+    '<nav class="quick" aria-label="快速功能">' +
+      '<button data-act="sheet" data-sheet="comfort"><span class="qi">' + icon('hand-heart', 22) + '</span>安撫</button>' +
+      '<button data-act="guess-tab"><span class="qi">' + icon('coins', 22) + '</span>猜花費' + (pendingGuesses().length ? '<span class="dot-badge">' + pendingGuesses().length + '</span>' : '') + '</button>' +
+      '<button data-act="open" data-to="cycle"><span class="qi">' + icon('droplets', 22) + '</span>經期</button>' +
+      '<button data-act="open" data-to="anniv"><span class="qi">' + icon('calendar-heart', 22) + '</span>紀念日</button>' +
+    '</nav>' +
+    careCard() +
+    upcomingCard() +
+    recentCard() +
+    '</div>';
+}
+function heroLine() {
+  const st = partnerStatus(), P = S.partner.name;
+  if (!st.shareLoc) return esc(P) + (st.paused ? ' 暫停分享位置至 ' + hm(st.pausedUntil) : ' 沒有分享位置');
+  return esc(P) + ' ' + esc(partnerWhere(st)) + ' · 相距 ' + fmtDist(distanceToPartner());
+}
+function pauseBanners() {
+  let out = '';
+  if (myPaused()) {
+    out += '<div class="banner">' + icon('eye-off', 20) + '<span class="grow">你已暫停分享位置、手機狀態與開銷，到 ' + hm(S.sharing.pausedUntil) + ' 自動恢復。' + esc(S.partner.name) + ' 看得到你暫停了。</span><button class="btn sm" data-act="resume-sharing">恢復</button></div>';
+  }
+  return out;
+}
+function batteryIconName(st) {
+  if (st.charging) return 'battery-charging';
+  if (st.batteryState === 'low' || st.batteryState === 'critical') return 'battery-low';
+  return 'battery';
+}
+function statusCard() {
+  const st = partnerStatus(), P = S.partner.name;
+  const head = '<div class="card-head"><div class="ttl">' + avatar('you', 28) + '<h2>' + esc(P) + ' 的手機</h2></div><span class="meta">' + esc(S.partner.device) + '</span></div>';
+  if (!st.shareDevice) {
+    return head + '<p class="empty">' + esc(P) + (st.paused ? ' 暫停分享至 ' + hm(st.pausedUntil) + '，時間到會自動恢復。' : ' 目前沒有分享手機狀態。') + '</p>';
+  }
+  const meterColor = st.charging ? 'var(--good)' : st.batteryState === 'ok' ? 'var(--good)' : 'var(--bad)';
+  const battCls = st.charging ? 'state-charging' : st.batteryState === 'ok' ? '' : 'state-low';
+  return head +
+    '<div class="stat-grid">' +
+      '<div class="stat"><span class="k">電量</span><span class="v ' + battCls + '">' + icon(batteryIconName(st), 18) + '<span class="num">' + st.battery + '%</span></span>' +
+        '<div class="meter" style="--m:' + meterColor + '" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + st.battery + '" aria-label="電量"><i style="width:' + st.battery + '%"></i></div>' +
+        '<span class="s">' + (st.charging ? '充電中' : st.batteryState === 'ok' ? '未充電' : '電量偏低') + '</span></div>' +
+      '<div class="stat"><span class="k">網路</span><span class="v">' + icon(st.net.wifi ? 'wifi' : 'signal', 18) + '<span>' + (st.net.wifi ? 'Wi-Fi' : '5G') + '</span></span><span class="s">' + (st.net.wifi ? esc(st.net.label.replace('Wi-Fi · ', '')) : '行動網路') + '</span></div>' +
+      '<div class="stat"><span class="k">螢幕</span><span class="v">' + icon(st.screenOn ? 'smartphone' : 'moon', 18) + '<span>' + (st.screenOn ? '使用中' : '已關閉') + '</span></span><span class="s">' + (st.silent ? '通知靜音中' : st.screenOn ? '剛剛' : C.relTime(st.lastActive)) + '</span></div>' +
+      '<div class="stat span2"><span class="k">位置</span><span class="v">' + icon(st.mode === 'still' ? 'map-pin' : st.mode === 'mrt' ? 'train-front' : 'footprints', 18) + '<span>' + (st.shareLoc ? esc(partnerWhere(st)) : '未分享位置') + '</span></span><span class="s">' + (st.shareLoc ? '距離你 ' + fmtDist(distanceToPartner()) : '—') + '</span></div>' +
+      '<div class="stat"><span class="k">今日步數</span><span class="v"><span class="num">' + st.steps.toLocaleString('zh-TW') + '</span></span><span class="s">步</span></div>' +
+    '</div>' +
+    '<p class="foot">更新於 ' + C.relTime(st.updated) + ' · 只顯示 ' + esc(P) + ' 選擇分享的項目</p>';
+}
+function moodCard() {
+  const P = S.partner.name;
+  const pm = S.partnerSharing.mood ? moodToday('partner') : null;
+  const mm = moodToday('me');
+  const half = (who, m) => {
+    const md0 = m && C.mood(m.mood);
+    const name = who === 'me' ? '我' : P;
+    if (who === 'partner' && !S.partnerSharing.mood) return '<div class="mood-half"><span class="who">' + avatar('you', 18) + esc(name) + '</span><span class="nt">沒有分享心情</span></div>';
+    if (!md0) {
+      return who === 'me'
+        ? '<button class="mood-half" data-act="open" data-to="mood"><span class="who">' + avatar('me', 18) + '我</span><span class="em" aria-hidden="true">＋</span><span class="lb">設定今天的心情</span><span class="nt">對方會收到通知</span></button>'
+        : '<div class="mood-half"><span class="who">' + avatar('you', 18) + esc(name) + '</span><span class="em" aria-hidden="true">·</span><span class="lb">還沒設定</span><span class="nt">今天還沒更新</span></div>';
+    }
+    const inner = '<span class="who">' + avatar(who === 'me' ? 'me' : 'you', 18) + esc(name) + ' · ' + hm(m.ts) + '</span><span class="em" aria-hidden="true">' + md0.emoji + '</span><span class="lb">' + md0.label + '</span><span class="nt">' + (m.note ? esc(m.note) : '—') + '</span>';
+    return who === 'me' ? '<button class="mood-half" data-act="open" data-to="mood">' + inner + '</button>' : '<div class="mood-half">' + inner + '</div>';
+  };
+  const needs = pm && C.needsComfort(pm.mood);
+  return '<section class="card"><div class="card-head"><h2>今天的心情</h2><button class="link" data-act="open" data-to="mood">心情紀錄' + icon('chevron-right', 16) + '</button></div>' +
+    '<div class="mood-pair">' + half('partner', pm) + half('me', mm) + '</div>' +
+    (needs ? '<div class="comfort-cta"><p>' + esc(P) + ' 覺得' + C.mood(pm.mood).label + '，要不要安撫一下？</p><button class="btn sm primary" data-act="sheet" data-sheet="comfort">' + icon('hand-heart', 16) + '安撫</button></div>' : '') +
+    '</section>';
+}
+function careCard() {
+  const pr = prediction();
+  if (!pr || S.cycle.owner !== 'partner' || !S.cycle.care) return '';
+  const P = S.partner.name;
+  if (pr.today.phase === 'period' && !pr.today.predicted) {
+    return '<section class="banner" style="background:var(--period-soft)">' + icon('droplets', 20) + '<span class="grow">' + esc(P) + ' 經期第 ' + pr.cycleDay + ' 天。幫忙準備熱水袋、少讓對方碰冰的吧。</span></section>';
+  }
+  if (pr.lateDays === 0 && pr.daysUntilNext >= 0 && pr.daysUntilNext <= 5) {
+    return '<section class="banner" style="background:var(--period-soft)">' + icon('droplets', 20) + '<span class="grow">' + esc(P) + ' 的經期預計 ' + daysLeftLabel(pr.daysUntilNext) + '開始。情緒起伏是正常的，多一點耐心和熱飲。</span><button class="btn sm" data-act="open" data-to="cycle">查看</button></section>';
+  }
+  return '';
+}
+function upcomingCard() {
+  const items = upcomingItems().slice(0, 4);
+  return '<section class="card"><div class="card-head"><h2>接下來</h2><button class="link" data-act="tab" data-tab="cal">日曆' + icon('chevron-right', 16) + '</button></div><ul class="list">' +
+    items.map((it) => '<li><button class="li" data-act="nav" data-to="' + it.to + '"' + (it.date ? ' data-date="' + it.date + '"' : '') + '><span class="ico red">' + icon(it.icon, 18) + '</span><span class="li-body"><span class="li-title">' + esc(it.title) + '</span><span class="li-sub">' + esc(it.sub) + '</span></span><span class="li-end"><span class="pill' + (it.left <= 3 ? ' red' : '') + '">' + daysLeftLabel(it.left) + '</span></span></button></li>').join('') +
+    '</ul></section>';
+}
+function recentCard() {
+  const items = S.history.slice(0, 3);
+  return '<section class="card"><div class="card-head"><h2>最近動態</h2><button class="link" data-act="open" data-to="history">全部紀錄' + icon('chevron-right', 16) + '</button></div>' +
+    (items.length ? '<div>' + items.map(tlItem).join('') + '</div>' : '<p class="empty">還沒有紀錄</p>') + '</section>';
+}
+function tlItem(h) {
+  return '<div class="tl-item"><span class="ico ' + (h.who === 'me' ? 'me' : h.who === 'partner' ? 'you' : '') + '">' + icon(KIND_ICON[h.kind] || 'sparkles', 16) + '</span><span class="tl-text">' + esc(h.text) + '</span><span class="tl-time">' + C.relTime(h.ts) + '</span></div>';
+}
+
+// ============================================================ views: map
+function vMap() {
+  const P = S.partner.name;
+  const fences = S.places.map((p) => '<circle class="fence' + (p.watch === 'me' ? ' watch-me' : '') + (S.sim.inside.indexOf(p.id) >= 0 ? ' active' : '') + '" data-fence="' + p.id + '" cx="' + p.x + '" cy="' + p.y + '" r="' + p.r + '"/>').join('');
+  const pins = S.places.map((p) => '<button class="mk place' + (p.watch === 'me' ? ' watch-me' : '') + '" data-act="sheet" data-sheet="place" data-id="' + p.id + '" style="left:' + (p.x / WORLD * 100) + '%;top:' + (p.y / WORLD * 100) + '%" aria-label="編輯標點 ' + esc(p.name) + '"><span class="pin">' + icon(p.icon, 15) + '</span><span class="nm">' + esc(p.name) + '</span></button>').join('');
+  return header('地圖', { right: '<button class="btn sm' + (ui.addingPlace ? '' : ' primary') + '" data-act="toggle-add-place">' + icon(ui.addingPlace ? 'x' : 'plus', 16) + (ui.addingPlace ? '取消' : '新增標點') + '</button>' }) +
+    '<div class="content gut">' +
+    '<div class="map' + (ui.addingPlace ? ' adding' : '') + '" id="map" data-act="map-tap" role="application" aria-label="地圖：顯示你、' + esc(P) + ' 與標點">' +
+      '<canvas id="map-canvas" aria-hidden="true"></canvas>' +
+      '<svg viewBox="0 0 ' + WORLD + ' ' + WORLD + '" preserveAspectRatio="none" aria-hidden="true">' + fences + '<path id="map-thread" d=""/></svg>' +
+      pins +
+      '<div class="mk me" style="left:' + (ME_POS.x / WORLD * 100) + '%;top:' + (ME_POS.y / WORLD * 100) + '%" title="我">' + avatar('me', 34) + '</div>' +
+      '<div class="mk you" id="mk-you" title="' + esc(P) + '">' + avatar('you', 34) + '</div>' +
+      '<div class="dist-chip" id="dist-chip"></div>' +
+      (ui.addingPlace ? '<div class="map-hint">點一下地圖，在那裡放一個標點</div>' : '') +
+    '</div>' +
+    '<section class="card" id="live-map">' + mapLine() + '</section>' +
+    '<div class="sec-head"><h2>標點與通知</h2><span class="meta">' + S.places.length + ' 個標點</span></div>' +
+    '<section class="card" style="padding-block:4px"><ul class="list">' + S.places.map(placeRow).join('') + '</ul></section>' +
+    '<p class="note">' + icon('shield-check', 16) + '<span>標點兩個人都看得到。你新增會偵測 ' + esc(P) + ' 的標點時，' + esc(P) + ' 一定會收到通知，也可以隨時關閉位置分享。</span></p>' +
+    '</div>';
+}
+function mapLine() {
+  const st = partnerStatus(), P = S.partner.name;
+  if (!st.shareLoc) return '<div class="card-head"><div class="ttl">' + avatar('you', 28) + '<h2>' + esc(P) + '</h2></div><span class="pill">' + (st.paused ? '暫停分享至 ' + hm(st.pausedUntil) : '未分享位置') + '</span></div>';
+  return '<div class="card-head"><div class="ttl">' + avatar('you', 28) + '<div><h2>' + esc(P) + ' ' + esc(partnerWhere(st)) + '</h2><p class="sub">距離你 ' + fmtDist(distanceToPartner()) + ' · 更新於 ' + C.relTime(st.updated) + '</p></div></div>' +
+    '<span class="pill' + (st.mode === 'still' ? '' : ' warn') + '">' + (st.mode === 'walk' ? '移動中' : st.mode === 'mrt' ? '捷運上' : '停留') + '</span></div>';
+}
+function placeRow(p) {
+  const P = S.partner.name;
+  const watch = p.watch === 'me' ? '偵測我' : p.watch === 'both' ? '偵測兩人' : '偵測 ' + P;
+  const flags = [p.arrive ? '抵達' : '', p.leave ? '離開' : ''].filter(Boolean).join('、') || '不通知';
+  const here = S.sim.inside.indexOf(p.id) >= 0 && partnerStatus().shareLoc;
+  return '<li><button class="li" data-act="sheet" data-sheet="place" data-id="' + p.id + '"><span class="ico red">' + icon(p.icon, 18) + '</span><span class="li-body"><span class="li-title">' + esc(p.name) + '</span><span class="li-sub">' + watch + ' · 半徑 ' + p.r + ' 公尺 · ' + flags + '通知</span></span><span class="li-end">' + (here ? '<span class="pill ok">' + esc(P) + ' 在這</span>' : icon('chevron-right', 18)) + '</span></button></li>';
+}
+function afterMap() { drawMap(); liveMap(); }
+function drawMap() {
+  const cv = $('#map-canvas');
+  if (!cv) return;
+  const box = cv.getBoundingClientRect();
+  if (!box.width) return;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(box.width * dpr);
+  cv.height = Math.round(box.height * dpr);
+  const ctx = cv.getContext('2d');
+  const k = (box.width / WORLD) * dpr;
+  ctx.setTransform(k, 0, 0, k, 0, 0);
+  const css = getComputedStyle(document.documentElement);
+  const col = (n) => css.getPropertyValue(n).trim();
+  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  ctx.fillStyle = col('--map-land');
+  ctx.fillRect(0, 0, WORLD, WORLD);
+  ctx.fillStyle = col('--map-block');
+  for (let x = 0; x < WORLD; x += 200) for (let y = 0; y < WORLD; y += 200) { rr(x + 20, y + 20, 160, 160, 16); ctx.fill(); }
+  ctx.fillStyle = col('--map-park');
+  rr(1010, 1210, 380, 380, 40); ctx.fill();
+  ctx.strokeStyle = col('--map-water');
+  ctx.lineWidth = 90; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-60, 1060); ctx.bezierCurveTo(600, 900, 1300, 1130, 2060, 960); ctx.stroke();
+  ctx.strokeStyle = col('--map-road');
+  ctx.lineWidth = 30; ctx.lineCap = 'butt';
+  [600, 1400].forEach((x) => { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, WORLD); ctx.stroke(); });
+  [600, 1200].forEach((y) => { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD, y); ctx.stroke(); });
+  ctx.strokeStyle = col('--map-transit');
+  ctx.lineWidth = 12; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(SPOTS.mrtA.x, SPOTS.mrtA.y); ctx.lineTo(SPOTS.mrtB.x, SPOTS.mrtB.y); ctx.stroke();
+  [SPOTS.mrtA, SPOTS.mrtB].forEach((s) => {
+    ctx.beginPath(); ctx.arc(s.x, s.y, 22, 0, Math.PI * 2); ctx.fillStyle = col('--map-road'); ctx.fill();
+    ctx.lineWidth = 8; ctx.strokeStyle = col('--map-transit'); ctx.stroke();
+  });
+  ctx.fillStyle = col('--map-label');
+  ctx.font = '500 ' + Math.round(12 / (k / dpr)) + 'px ' + col('--font-body');
+  ctx.textAlign = 'center';
+  ctx.fillText('公園', 1200, 1410);
+  ctx.fillText('河濱', 260, 1000);
+  ctx.fillText('咖啡店', SPOTS.cafe.x - 100, SPOTS.cafe.y + 60);
+  ctx.fillText('便利商店', SPOTS.mart.x + 120, SPOTS.mart.y + 10);
+}
+function liveMap() {
+  const mk = $('#mk-you');
+  if (!mk) return;
+  const st = partnerStatus();
+  const chip = $('#dist-chip'), thread = $('#map-thread');
+  mk.hidden = !st.shareLoc;
+  chip.hidden = !st.shareLoc;
+  if (st.shareLoc) {
+    const x = S.sim.x, y = S.sim.y;
+    mk.style.left = (x / WORLD * 100) + '%';
+    mk.style.top = (y / WORLD * 100) + '%';
+    const mx = (x + ME_POS.x) / 2, my = (y + ME_POS.y) / 2;
+    const dx = ME_POS.x - x, dy = ME_POS.y - y, len = Math.hypot(dx, dy) || 1;
+    const cx = mx - (dy / len) * len * 0.18, cy = my + (dx / len) * len * 0.18;
+    thread.setAttribute('d', 'M' + x + ',' + y + ' Q' + cx + ',' + cy + ' ' + ME_POS.x + ',' + ME_POS.y);
+    // 二次貝茲曲線 t=0.5 的位置
+    const lx = 0.25 * x + 0.5 * cx + 0.25 * ME_POS.x, ly = 0.25 * y + 0.5 * cy + 0.25 * ME_POS.y;
+    chip.style.left = (lx / WORLD * 100) + '%';
+    chip.style.top = (ly / WORLD * 100) + '%';
+    chip.textContent = fmtDist(distanceToPartner());
+  } else {
+    thread.setAttribute('d', '');
+  }
+  $$('[data-fence]').forEach((c) => c.classList.toggle('active', st.shareLoc && S.sim.inside.indexOf(c.getAttribute('data-fence')) >= 0));
+  const line = $('#live-map');
+  if (line) line.innerHTML = mapLine();
+}
+
+// ============================================================ views: money
+function vMoney() {
+  const who = ui.moneyWho, P = S.partner.name;
+  const seg = '<div class="seg" role="group" aria-label="切換帳本"><button data-act="money-who" data-who="partner" aria-pressed="' + (who === 'partner') + '">' + esc(P) + ' 的帳本</button><button data-act="money-who" data-who="me" aria-pressed="' + (who === 'me') + '">我的帳本</button></div>';
+  let body = '';
+  if (who === 'partner' && !S.partnerSharing.expenses) {
+    body = '<section class="card"><p class="empty">' + esc(P) + ' 目前沒有分享開銷。</p></section>';
+  } else {
+    const since = Date.now() - 30 * 86400000;
+    const mine = who === 'me';
+    const all = S.expenses.filter((e) => e.who === who && e.ts >= since);
+    const visible = mine ? all : all.filter(canSeePartnerExpense);
+    const hiddenSurprise = mine ? [] : all.filter((e) => !canSeePartnerExpense(e));
+    const masked = (e) => !mine && e.guessable && !e.guess;
+    const counted = visible.filter((e) => !masked(e));
+    const sum = C.summarizeExpenses(counted);
+    const max = sum.byCategory.length ? sum.byCategory[0].amount : 1;
+    const pend = visible.filter(masked);
+    const color = mine ? 'var(--me)' : 'var(--you)';
+    body += '<section class="card"><div class="card-head"><h2>近 30 天</h2><span class="meta">' + sum.count + ' 筆' + (pend.length ? ' · 另有 ' + pend.length + ' 筆待猜' : '') + '</span></div>' +
+      '<div class="total"><span class="big">' + money(sum.total) + '</span><span class="sub">' + (mine ? '我的支出' : esc(P) + ' 的支出') + '</span></div>' +
+      '<div class="bars" role="list" aria-label="依類別">' + sum.byCategory.map((c) =>
+        '<div class="bar-row" role="listitem" title="' + c.label + ' ' + money(c.amount) + '"><span class="lb">' + c.label + '</span><span class="track"><i style="width:' + Math.max(2, c.amount / max * 100) + '%;--c:' + color + '"></i></span><span class="val">' + money(c.amount) + '</span></div>').join('') + '</div></section>';
+    if (!mine) {
+      const gs = guessStats();
+      body += '<section class="card"><div class="card-head"><h2>猜猜看</h2><span class="meta">猜得越準分數越高</span></div>' +
+        (pend.length ? '<ul class="list">' + pend.map((e) => expenseRow(e, false)).join('') + '</ul>' : '<p class="empty">目前沒有等你猜的開銷。' + esc(P) + ' 開放猜金額的消費會出現在這裡。</p>') +
+        '<div class="guess-stats"><div><b class="num">' + gs.points + '</b><span>總分</span></div><div><b class="num">' + gs.count + '</b><span>猜過</span></div><div><b class="num">' + Math.round(gs.err * 100) + '%</b><span>平均誤差</span></div></div></section>';
+    } else {
+      body += '<div class="btn-row"><button class="btn primary" data-act="sheet" data-sheet="expense">' + icon('plus', 18) + '記一筆</button><button class="btn" data-act="sheet" data-sheet="parse">' + icon('bell-ring', 18) + '模擬付款通知</button></div>';
+    }
+    const groups = {};
+    visible.filter((e) => mine || !masked(e)).sort((a, b) => b.ts - a.ts).forEach((e) => { const d = tsDate(e.ts); (groups[d] = groups[d] || []).push(e); });
+    body += '<section>' + Object.keys(groups).map((d) => '<div class="day-head"><span>' + dayLabel(d) + '</span><span class="num">' + money(groups[d].reduce((s, e) => s + e.amount, 0)) + '</span></div><div class="card" style="padding-block:2px"><ul class="list">' + groups[d].map((e) => expenseRow(e, mine)).join('') + '</ul></div>').join('') + '</section>';
+    if (hiddenSurprise.length) {
+      body += '<p class="note">' + icon('gift', 16) + '<span>' + esc(P) + ' 有 ' + hiddenSurprise.length + ' 筆開銷設成禮物模式，到 ' + md(hiddenSurprise[0].revealOn) + ' 才會出現。</span></p>';
+    }
+    if (mine) {
+      body += '<p class="note">' + icon('info', 16) + '<span>自動記帳來源：Android 讀取 LINE Pay、街口、銀行的付款通知；iOS 用「捷徑」的交易自動化把 Apple Pay 交易傳進來；也可以綁定財政部雲端發票載具。同一筆交易重複進來會自動合併。</span></p>';
+    }
+  }
+  return header('帳本') + '<div class="content gut">' + seg + body + '</div>';
+}
+function expenseRow(e, mine) {
+  const masked = !mine && e.guessable && !e.guess;
+  const tags = [];
+  if (mine && e.visibility === 'private') tags.push('不給看');
+  if (mine && e.visibility === 'surprise') tags.push('禮物 · ' + md(e.revealOn) + ' 公開');
+  if (mine && e.guessable) tags.push(e.theirGuess ? '對方猜 ' + money(e.theirGuess.value) : '開放猜');
+  if (!mine && e.guess) tags.push('你猜 ' + money(e.guess.value) + ' · ' + e.guess.points + ' 分');
+  const sub = SOURCE[e.source] + ' · ' + hm(e.ts) + (tags.length ? ' · ' + tags.join(' · ') : '');
+  const act = masked ? 'data-act="sheet" data-sheet="guess" data-id="' + e.id + '"' : mine ? 'data-act="sheet" data-sheet="expense" data-id="' + e.id + '"' : 'data-act="sheet" data-sheet="expense-view" data-id="' + e.id + '"';
+  return '<li><button class="li" ' + act + '><span class="ico ' + (mine ? 'me' : 'you') + '">' + icon(CAT_ICON[e.category] || 'receipt', 18) + '</span><span class="li-body"><span class="li-title">' + esc(e.merchant) + '</span><span class="li-sub">' + esc(C.categoryLabel(e.category) + ' · ' + sub) + '</span></span><span class="li-end">' +
+    (masked ? '<span class="btn sm primary">猜</span>' : '<span class="amt">' + money(e.amount) + '</span>') + '</span></button></li>';
+}
+
+// ============================================================ views: calendar
+function vCal() {
+  const T = today(), P = S.partner.name;
+  const parts = ui.calMonth.split('-').map(Number);
+  const Y = parts[0], M = parts[1];
+  const first = Y + '-' + pad(M) + '-01';
+  const startW = new Date(Y, M - 1, 1).getDay();
+  const daysIn = new Date(Y, M, 0).getDate();
+  const total = Math.ceil((startW + daysIn) / 7) * 7;
+  const showCycle = cycleVisible() && S.cycle.periods.length;
+  const evByDate = {};
+  S.events.forEach((e) => { (evByDate[e.date] = evByDate[e.date] || []).push(e); });
+  const annByDate = {};
+  S.anniversaries.forEach((a) => {
+    const occ = a.repeat === 'yearly' ? C.nextOccurrence(a.date, Y + '-01-01', 'yearly').date : a.date;
+    (annByDate[occ] = annByDate[occ] || []).push(a);
+  });
+  let cells = '';
+  for (let i = 0; i < total; i++) {
+    const ds = C.addDays(first, i - startW);
+    const out = ds.slice(0, 7) !== ui.calMonth;
+    const cls = ['day'];
+    if (out) cls.push('out');
+    if (ds === T) cls.push('today');
+    if (ds === ui.calSel) cls.push('sel');
+    let phaseText = '';
+    if (showCycle) {
+      const ph = C.dayPhase(ds, S.cycle.periods, S.cycle.settings, T);
+      if (ph.phase === 'period') { cls.push('ph-period'); if (ph.predicted) cls.push('pred'); phaseText = ph.predicted ? '預測經期' : '經期'; }
+      else if (ph.phase === 'fertile') { cls.push('ph-fertile'); phaseText = '易孕期'; }
+      else if (ph.phase === 'ovulation') { cls.push('ph-ovulation'); phaseText = '排卵日'; }
+    }
+    const dayNo = C.daysTogether(S.togetherSince, ds);
+    const ms = dayNo > 0 && (dayNo % 100 === 0 || dayNo === 520 || dayNo === 1314);
+    const marks = (evByDate[ds] ? '<i class="mark"></i>' : '') + (annByDate[ds] ? '<i class="mark ann"></i>' : '') + (ms ? '<i class="mark ms"></i>' : '');
+    const label = md(ds) + (phaseText ? '，' + phaseText : '') + (evByDate[ds] ? '，有約會' : '') + (annByDate[ds] ? '，紀念日' : '');
+    cells += '<button class="' + cls.join(' ') + '" data-act="cal-sel" data-d="' + ds + '" aria-label="' + label + '"' + (ds === ui.calSel ? ' aria-pressed="true"' : '') + '><span class="n">' + Number(ds.slice(8)) + '</span><span class="marks">' + marks + '</span></button>';
+  }
+  const legend = '<div class="legend">' +
+    '<span><i class="sw" style="background:var(--ink-2);border-radius:50%;width:8px;height:8px"></i>約會</span>' +
+    '<span><i class="sw" style="background:var(--thread);border-radius:50%;width:8px;height:8px"></i>紀念日</span>' +
+    '<span><i class="sw" style="background:var(--you);border-radius:50%;width:8px;height:8px"></i>里程碑</span>' +
+    (showCycle ? '<span><i class="sw" style="background:var(--period-soft)"></i>經期</span><span><i class="sw" style="border:1.5px dashed var(--period)"></i>預測經期</span><span><i class="sw" style="background:var(--fertile-soft)"></i>易孕期</span><span><i class="sw" style="background:var(--fertile-soft);border:1.5px solid var(--fertile)"></i>排卵日</span>' : '') +
+    '</div>';
+  return header('日曆', { right: '<button class="btn sm primary" data-act="sheet" data-sheet="event" data-date="' + ui.calSel + '">' + icon('plus', 16) + '約會</button>' }) +
+    '<div class="content gut">' +
+    '<section class="card"><div class="cal-nav"><button class="icon-btn" data-act="cal-month" data-d="-1" aria-label="上個月">' + icon('chevron-left', 22) + '</button><h2>' + Y + ' 年 ' + M + ' 月</h2><button class="icon-btn" data-act="cal-month" data-d="1" aria-label="下個月">' + icon('chevron-right', 22) + '</button></div>' +
+    '<div class="cal-grid">' + WEEK.map((w) => '<span class="dow">' + w + '</span>').join('') + cells + '</div>' + legend + '</section>' +
+    dayPanel(ui.calSel, evByDate, annByDate) +
+    eventsList() +
+    '</div>';
+}
+function dayPanel(ds, evByDate, annByDate) {
+  const T = today(), items = [];
+  (annByDate[ds] || []).forEach((a) => items.push('<li class="li"><span class="ico red">' + icon(a.kind === 'birthday' ? 'cake' : 'heart', 18) + '</span><span class="li-body"><span class="li-title">' + esc(a.title) + '</span><span class="li-sub">紀念日 · 每年提醒</span></span></li>'));
+  const dayNo = C.daysTogether(S.togetherSince, ds);
+  if (dayNo > 0 && (dayNo % 100 === 0 || dayNo === 520 || dayNo === 1314)) items.push('<li class="li"><span class="ico you">' + icon('sparkles', 18) + '</span><span class="li-body"><span class="li-title">在一起第 ' + dayNo + ' 天</span><span class="li-sub">里程碑</span></span></li>');
+  (evByDate[ds] || []).forEach((e) => items.push(eventRow(e)));
+  if (cycleVisible() && S.cycle.periods.length) {
+    const ph = C.dayPhase(ds, S.cycle.periods, S.cycle.settings, T);
+    if (ph.phase) items.push('<li class="li"><span class="ico" style="background:var(--period-soft)">' + icon('droplets', 18) + '</span><span class="li-body"><span class="li-title">' + esc(cycleOwnerName()) + ' · ' + PHASE_LABEL[ph.phase] + (ph.predicted && ph.phase === 'period' ? '（預測）' : '') + '</span><span class="li-sub">週期第 ' + ph.cycleDay + ' 天' + (ph.sub ? ' · ' + (ph.sub === 'follicular' ? '濾泡期' : '黃體期') : '') + '</span></span></li>');
+  }
+  return '<section class="card"><div class="card-head"><h2>' + Number(ds.slice(5, 7)) + ' 月 ' + Number(ds.slice(8)) + ' 日（' + wd(ds) + '）</h2><span class="meta">' + (ds === T ? '今天' : daysLeftLabel(C.diffDays(T, ds))) + '</span></div>' +
+    (items.length ? '<ul class="list">' + items.join('') + '</ul>' : '<p class="empty">這天還沒有安排。</p>') +
+    '<button class="btn ghost block" data-act="sheet" data-sheet="event" data-date="' + ds + '">' + icon('plus', 18) + '在這天約會</button></section>';
+}
+function eventRow(e, withDate) {
+  const P = S.partner.name;
+  let status = '<span class="pill ok">已確認</span>';
+  let actions = '';
+  if (e.status === 'proposed' && e.by === 'me') status = '<span class="pill warn">等 ' + esc(P) + ' 回覆</span>';
+  if (e.status === 'proposed' && e.by === 'partner') {
+    status = '<span class="pill red">' + esc(P) + ' 約你</span>';
+    actions = '<div class="btn-row" style="margin-top:8px"><button class="btn sm primary" data-act="event-answer" data-id="' + e.id + '" data-v="confirmed">' + icon('check', 16) + '答應</button><button class="btn sm" data-act="event-answer" data-id="' + e.id + '" data-v="declined">婉拒</button></div>';
+  }
+  if (e.status === 'declined') status = '<span class="pill">已婉拒</span>';
+  return '<li class="li" style="align-items:flex-start"><span class="ico">' + icon('calendar-heart', 18) + '</span><span class="li-body"><span class="li-title">' + esc(e.title) + '</span><span class="li-sub">' + (withDate ? dayLabel(e.date) + ' ' : '') + esc(e.time + (e.place ? ' · ' + e.place : '') + (e.note ? ' · ' + e.note : '')) + '</span>' + actions + '</span><span class="li-end">' + status + '</span></li>';
+}
+function eventsList() {
+  const T = today();
+  const list = S.events.filter((e) => C.diffDays(T, e.date) >= 0).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  return '<div class="sec-head"><h2>接下來的約會</h2><span class="meta">' + list.length + ' 個</span></div><section class="card" style="padding-block:4px">' +
+    (list.length ? '<ul class="list">' + list.map((e) => eventRow(e, true)).join('') + '</ul>' : '<p class="empty" style="padding-block:12px">還沒有約會，約一下吧。</p>') +
+    '</section>';
+}
+
+// ============================================================ views: more & sub pages
+function vMore() {
+  const T = today(), P = S.partner.name;
+  const row = (to, ic, title, sub) => '<li><button class="li" data-act="open" data-to="' + to + '"><span class="ico">' + icon(ic, 18) + '</span><span class="li-body"><span class="li-title">' + title + '</span>' + (sub ? '<span class="li-sub">' + sub + '</span>' : '') + '</span>' + icon('chevron-right', 18) + '</button></li>';
+  return header('我的') + '<div class="content gut">' +
+    '<section class="card"><div class="card-head"><div class="ttl">' + avatar('me', 44) + '<div><h2>' + esc(S.me.name) + '</h2><p class="sub">我的配對碼 <b class="num">' + S.me.code + '</b></p></div></div></div>' +
+    '<div class="li" style="border:0;padding-block:0">' + avatar('you', 32) + '<span class="li-body"><span class="li-title">已與 ' + esc(P) + ' 配對</span><span class="li-sub">在一起 ' + C.daysTogether(S.togetherSince, T) + ' 天 · 從 ' + S.togetherSince.replace(/-/g, '/') + ' 開始</span></span></div></section>' +
+    '<section class="card" style="padding-block:4px"><ul class="list">' +
+      row('mood', 'smile', '心情紀錄', '設定今天的心情，看看這週') +
+      row('anniv', 'calendar-heart', '紀念日', '生日、週年、里程碑提醒') +
+      row('cycle', 'droplets', '經期', cycleVisible() ? '預測、排卵日、易孕期' : '尚未設定') +
+      row('history', 'history', '歷史紀錄', '所有互動與通知') +
+    '</ul></section>' +
+    '<section class="card" style="padding-block:4px"><ul class="list">' +
+      row('privacy', 'shield-check', '分享與隱私', myPaused() ? '暫停分享中' : '決定 ' + esc(P) + ' 能看到什麼') +
+      row('notif', 'bell', '通知設定', '') +
+      row('demo', 'flask-conical', '示範控制台', '模擬 ' + esc(P) + ' 的手機') +
+    '</ul></section>' +
+    '<button class="btn ghost block" data-act="sheet" data-sheet="unpair">' + icon('log-out', 18) + '解除配對</button>' +
+    '</div>';
+}
+
+function vMood() {
+  const T = today(), P = S.partner.name;
+  const cur = moodToday('me');
+  const pick = ui.moodPick || (cur && cur.mood) || null;
+  const days = [];
+  for (let i = 6; i >= 0; i--) days.push(C.addDays(T, -i));
+  const rowFor = (who) => '<span class="who">' + (who === 'me' ? '我' : esc(P)) + '</span>' + days.map((d) => {
+    const m = who === 'partner' && !S.partnerSharing.mood ? null : moodOn(who, d);
+    const mm = m && C.mood(m.mood);
+    return '<span class="em" title="' + md(d) + (mm ? ' ' + mm.label : '') + '">' + (mm ? mm.emoji : '·') + '</span>';
+  }).join('');
+  return header('心情') + '<div class="content gut">' +
+    '<section class="card"><div class="card-head"><h2>你現在覺得…</h2>' + (cur ? '<span class="meta">' + hm(cur.ts) + ' 更新過</span>' : '') + '</div>' +
+    '<div class="mood-grid">' + C.MOODS.map((m) => '<button class="mood-opt" data-act="pick-mood" data-k="' + m.key + '" aria-pressed="' + (pick === m.key) + '"><span class="em" aria-hidden="true">' + m.emoji + '</span>' + m.label + '</button>').join('') + '</div>' +
+    '<label class="field" for="mood-note"><span>想多說一點（選填，' + esc(P) + ' 看得到）</span><input id="mood-note" maxlength="100" placeholder="例如：今天被誇獎了" value="' + esc(cur && cur.note || '') + '"></label>' +
+    '<button class="btn primary block" data-act="save-mood">' + icon('send', 18) + '更新心情</button>' +
+    '<p class="foot">' + (S.sharing.mood ? esc(P) + ' 會收到通知。心情不好時，' + esc(P) + ' 會看到「安撫一下」的提示。' : '你目前沒有分享心情，' + esc(P) + ' 看不到。') + '</p></section>' +
+    '<section class="card"><div class="card-head"><h2>這 7 天</h2></div><div class="week"><span></span>' + days.map((d) => '<span>' + (d === T ? '今' : wd(d)) + '</span>').join('') + rowFor('me') + rowFor('partner') + '</div></section>' +
+    '</div>';
+}
+
+function vAnniv() {
+  const T = today();
+  const occ = anniversaryOccurrences().sort((a, b) => a.daysLeft - b.daysLeft);
+  const ms = C.upcomingMilestones(S.togetherSince, T, 3);
+  const KIND = { together: '在一起', birthday: '生日', first_date: '第一次約會', custom: '自訂' };
+  return header('紀念日', { right: '<button class="icon-btn" data-act="sheet" data-sheet="anniv" aria-label="新增紀念日">' + icon('plus', 22) + '</button>' }) + '<div class="content gut">' +
+    '<section class="card" style="align-items:center;text-align:center"><span class="sub">從 ' + S.togetherSince.replace(/-/g, '/') + ' 開始</span><span style="font-family:var(--font-display);font-size:44px;font-weight:700;line-height:1.1">' + C.daysTogether(S.togetherSince, T) + ' 天</span><span class="sub">在一起的每一天都算數</span></section>' +
+    '<div class="sec-head"><h2>里程碑</h2></div><section class="card" style="padding-block:4px"><ul class="list">' + ms.map((m) => '<li class="li"><span class="ico you">' + icon('sparkles', 18) + '</span><span class="li-body"><span class="li-title">第 ' + m.day + ' 天</span><span class="li-sub">' + m.date.replace(/-/g, '/') + '（' + wd(m.date) + '）</span></span><span class="li-end"><span class="pill' + (m.daysLeft <= 7 ? ' red' : '') + '">' + daysLeftLabel(m.daysLeft) + '</span></span></li>').join('') + '</ul></section>' +
+    '<div class="sec-head"><h2>紀念日</h2><span class="meta">' + S.anniversaries.length + ' 個</span></div><section class="card" style="padding-block:4px"><ul class="list">' + occ.map((a) =>
+      '<li class="li"><span class="ico red">' + icon(a.kind === 'birthday' ? 'cake' : 'heart', 18) + '</span><span class="li-body"><span class="li-title">' + esc(a.title) + (a.years > 0 ? '<span class="mini"> · ' + (a.kind === 'birthday' ? a.years + ' 歲' : '第 ' + a.years + ' 年') + '</span>' : '') + '</span><span class="li-sub">' + KIND[a.kind] + ' · ' + a.date.replace(/-/g, '/') + '（' + wd(a.date) + '）· 提醒：' + a.remind.map((r) => (r === 0 ? '當天' : '前 ' + r + ' 天')).join('、') + '</span></span><span class="li-end"><span class="pill' + (a.daysLeft <= 7 ? ' red' : '') + '">' + daysLeftLabel(a.daysLeft) + '</span></span></li>').join('') + '</ul></section>' +
+    '<p class="note">' + icon('info', 16) + '<span>兩個人都會收到提醒。正式版支援農曆生日，每年自動換算成國曆日期。</span></p>' +
+    '</div>';
+}
+
+function cycleRing(pr) {
+  const L = pr.stats.cycleLength, R = 78, CX = 100, CY = 100;
+  const pt = (a) => { const r = (a - 90) * Math.PI / 180; return (CX + R * Math.cos(r)).toFixed(2) + ' ' + (CY + R * Math.sin(r)).toFixed(2); };
+  const color = { period: 'var(--period)', fertile: 'var(--fertile)', ovulation: 'var(--ovulation)', safe: 'var(--safe)' };
+  let arcs = '';
+  for (let k = 1; k <= L; k++) {
+    const ds = C.addDays(pr.cycleStart, k - 1);
+    const ph = C.dayPhase(ds, S.cycle.periods, S.cycle.settings, today()).phase || 'safe';
+    const a0 = (k - 1) * 360 / L + 0.9, a1 = k * 360 / L - 0.9;
+    arcs += '<path d="M' + pt(a0) + ' A' + R + ' ' + R + ' 0 0 1 ' + pt(a1) + '" stroke="' + color[ph] + '" stroke-width="16" fill="none"><title>第 ' + k + ' 天 · ' + PHASE_LABEL[ph] + '</title></path>';
+  }
+  let marker = '';
+  if (pr.cycleDay <= L) {
+    const a = (pr.cycleDay - 0.5) * 360 / L;
+    const r = (a - 90) * Math.PI / 180;
+    marker = '<circle cx="' + (CX + R * Math.cos(r)).toFixed(2) + '" cy="' + (CY + R * Math.sin(r)).toFixed(2) + '" r="9" fill="var(--ink)" stroke="var(--surface)" stroke-width="3"/>';
+  }
+  const ph = pr.today.phase;
+  const big = pr.lateDays ? '延遲 ' + pr.lateDays + ' 天' : '第 ' + pr.cycleDay + ' 天';
+  const sub = pr.lateDays ? '週期第 ' + pr.cycleDay + ' 天' : PHASE_LABEL[ph] + (pr.today.sub ? ' · ' + (pr.today.sub === 'follicular' ? '濾泡期' : '黃體期') : '');
+  return '<svg class="ring" viewBox="0 0 200 200" role="img" aria-label="週期 ' + L + ' 天，今天' + big + '，' + sub + '">' + arcs + marker +
+    '<text x="100" y="98" text-anchor="middle" class="c-big">' + big + '</text><text x="100" y="122" text-anchor="middle" class="c-sub">' + sub + '</text></svg>';
+}
+function vCycle() {
+  const cy = S.cycle, P = S.partner.name, T = today();
+  const ownerSeg = '<div class="seg" role="group" aria-label="記錄誰的週期"><button data-act="cycle-owner" data-v="me" aria-pressed="' + (cy.owner === 'me') + '">記錄我的</button><button data-act="cycle-owner" data-v="partner" aria-pressed="' + (cy.owner === 'partner') + '">' + esc(P) + ' 的</button><button data-act="cycle-owner" data-v="none" aria-pressed="' + (cy.owner === 'none') + '">不使用</button></div>';
+  const disclaimer = '<p class="note">' + icon('info', 16) + '<span class="disclaimer">預測依過去週期推算：排卵日約在下次經期前 14 天，易孕期為排卵日前 5 天到後 1 天。<b>安全期不是可靠的避孕方法</b>，排卵可能提前或延後；如需避孕請使用保險套等方式，週期異常請諮詢醫師。</span></p>';
+  if (cy.owner === 'none') {
+    return header('經期') + '<div class="content gut">' + ownerSeg + '<section class="card"><p class="empty">目前沒有使用經期功能。選擇要記錄誰的週期即可開始。</p></section>' + disclaimer + '</div>';
+  }
+  if (!cycleVisible()) {
+    return header('經期') + '<div class="content gut">' + ownerSeg + '<section class="card"><p class="empty">' + esc(P) + ' 沒有分享經期資訊。</p></section></div>';
+  }
+  const pr = prediction();
+  const canEdit = cycleCanEdit();
+  const who = cy.owner === 'me' ? '我' : P;
+  if (!pr) {
+    return header('經期') + '<div class="content gut">' + ownerSeg + '<section class="card"><p class="empty">還沒有任何紀錄。記下最近一次經期開始的日子，就能開始預測。</p>' +
+      (canEdit ? '<button class="btn primary block" data-act="sheet" data-sheet="period">' + icon('plus', 18) + '記錄經期</button>' : '') + '</section>' + disclaimer + '</div>';
+  }
+  const last = cy.periods.slice().sort((a, b) => a.start.localeCompare(b.start)).pop();
+  const inPeriod = last && (!last.end || last.end >= T) && last.start <= T;
+  const status = pr.lateDays
+    ? '經期已延遲 ' + pr.lateDays + ' 天' + (pr.lateDays >= 7 ? '，延遲超過一週可以考慮驗孕或諮詢醫師' : '')
+    : pr.today.phase === 'period' && !pr.today.predicted ? '經期第 ' + pr.cycleDay + ' 天'
+    : '距離下次經期 ' + pr.daysUntilNext + ' 天（' + md(pr.nextStart) + '）';
+  const history = cy.periods.slice().sort((a, b) => b.start.localeCompare(a.start));
+  let html = header('經期') + '<div class="content gut">' + ownerSeg +
+    '<section class="card"><div class="card-head"><h2>' + esc(who) + ' 的週期</h2><span class="meta">平均 ' + pr.stats.cycleLength + ' 天 · 經期 ' + pr.stats.periodLength + ' 天</span></div>' +
+    '<div class="ring-wrap">' + cycleRing(pr) +
+    '<div class="legend" style="justify-content:center"><span><i class="sw" style="background:var(--period)"></i>月經期</span><span><i class="sw" style="background:var(--fertile)"></i>易孕期</span><span><i class="sw" style="background:var(--ovulation)"></i>排卵日</span><span><i class="sw" style="background:var(--safe)"></i>相對安全期</span></div></div>' +
+    '<p style="text-align:center;font-weight:500">' + status + '</p>' +
+    '<div class="facts"><div><span>下次經期</span><b>' + md(pr.nextStart) + '</b></div><div><span>本週期排卵日</span><b>' + md(pr.ovulation) + '</b></div><div><span>易孕期</span><b>' + md(pr.fertileStart) + '–' + md(pr.fertileEnd) + '</b></div></div>' +
+    (pr.stats.irregular ? '<p class="foot">最近幾個週期長短差異較大，預測可能不準。</p>' : '') +
+    (canEdit ? '<div class="btn-row">' + (inPeriod ? '<button class="btn" data-act="period-end">' + icon('check', 18) + '經期結束了</button>' : '<button class="btn primary" data-act="period-start">' + icon('droplets', 18) + '經期今天開始</button>') + '<button class="btn" data-act="sheet" data-sheet="period">補記</button></div>' : '') +
+    (cy.owner === 'partner' && canEdit ? '<p class="foot">' + esc(P) + ' 允許你幫忙記錄，記錄後 ' + esc(P) + ' 會收到通知。</p>' : '') +
+    '</section>';
+  if (cy.owner === 'partner') {
+    html += '<section class="card"><div class="card-head"><h2>貼心提醒</h2></div><ul class="tips">' +
+      (pr.today.phase === 'period' ? '<li>準備熱水袋或暖暖包，少約冰品</li><li>經痛時陪著就好，不用急著給建議</li>'
+        : pr.daysUntilNext <= 5 ? '<li>經前幾天情緒起伏是正常的，多一點耐心</li><li>包包裡幫忙備一片衛生棉</li><li>約會可以改成在家看電影</li>'
+        : '<li>這段時間通常精神比較好，適合安排出遊</li><li>經期前兩天 App 會再提醒你</li>') + '</ul></section>';
+  } else {
+    const todayLog = cy.logs[T] || { flow: '', symptoms: [] };
+    html += '<section class="card"><div class="card-head"><h2>今天的身體狀況</h2><span class="meta">只有你看得到</span></div>' +
+      '<div class="seg" role="group" aria-label="流量">' + [['', '無'], ['light', '少'], ['medium', '中'], ['heavy', '多']].map((f) => '<button data-act="cycle-flow" data-v="' + f[0] + '" aria-pressed="' + (todayLog.flow === f[0]) + '">' + f[1] + '</button>').join('') + '</div>' +
+      '<div class="chips">' + SYMPTOMS.map((s) => '<button class="chip" data-act="cycle-symptom" data-v="' + s + '" aria-pressed="' + (todayLog.symptoms.indexOf(s) >= 0) + '">' + s + '</button>').join('') + '</div></section>' +
+      '<section class="card" style="padding-block:4px">' +
+        tgRow('cy-care', '經期前提醒 ' + esc(P) + ' 多關心', '經期預計開始前 2 天通知對方', cy.care, 'cycle-toggle', 'care') +
+        tgRow('cy-edit', '讓 ' + esc(P) + ' 幫忙記錄', '對方可以記錄開始與結束日期，不能看症狀', cy.partnerCanEdit, 'cycle-toggle', 'partnerCanEdit') +
+        tgRow('cy-share', '分享經期給 ' + esc(P), '關閉後對方看不到任何經期資訊', S.sharing.cycle, 'share-toggle', 'cycle') +
+      '</section>';
+  }
+  html += '<div class="sec-head"><h2>紀錄</h2><span class="meta">' + history.length + ' 次</span></div><section class="card" style="padding-block:4px"><ul class="list">' + history.map((p, i) => {
+    const len = p.end ? C.diffDays(p.start, p.end) + 1 : null;
+    const prev = history[i + 1];
+    const cyc = prev ? C.diffDays(prev.start, p.start) : null;
+    return '<li class="li"><span class="ico" style="background:var(--period-soft)">' + icon('droplets', 18) + '</span><span class="li-body"><span class="li-title">' + md(p.start) + (p.end ? '–' + md(p.end) : ' 開始') + '</span><span class="li-sub">' + (len ? '經期 ' + len + ' 天' : '進行中') + (cyc ? ' · 週期 ' + cyc + ' 天' : '') + '</span></span></li>';
+  }).join('') + '</ul></section>' + disclaimer + '</div>';
+  return html;
+}
+
+const HIST_FILTERS = [['all', '全部'], ['place', '位置'], ['mood', '心情'], ['comfort', '安撫'], ['money', '開銷'], ['date', '約會'], ['device', '手機'], ['cycle', '經期'], ['pair', '分享']];
+function vHistory() {
+  const list = S.history.filter((h) => ui.histFilter === 'all' || h.kind === ui.histFilter);
+  const groups = {};
+  list.forEach((h) => { const d = tsDate(h.ts); (groups[d] = groups[d] || []).push(h); });
+  return header('歷史紀錄') + '<div class="content gut">' +
+    '<div class="chips scroll" role="group" aria-label="篩選">' + HIST_FILTERS.map((f) => '<button class="chip" data-act="hist-filter" data-v="' + f[0] + '" aria-pressed="' + (ui.histFilter === f[0]) + '">' + f[1] + '</button>').join('') + '</div>' +
+    (list.length ? Object.keys(groups).map((d) => '<div class="day-head"><span>' + dayLabel(d) + '</span><span>' + groups[d].length + ' 則</span></div><section class="card" style="padding-block:2px">' + groups[d].map(tlItem).join('') + '</section>').join('')
+      : '<section class="card"><p class="empty">這個分類還沒有紀錄。</p></section>') +
+    '<p class="note">' + icon('info', 16) + '<span>歷史紀錄保留一年，可以匯出。位置只記錄抵達與離開標點的事件，不保存移動軌跡。</span></p>' +
+    '</div>';
+}
+
+function tgRow(id, label, desc, on, act, key, disabled) {
+  return '<div class="tg"><div class="tg-text"><div class="tg-label" id="' + id + '-l">' + label + '</div>' + (desc ? '<div class="tg-desc">' + desc + '</div>' : '') + '</div><button class="switch" role="switch" id="' + id + '" aria-labelledby="' + id + '-l" aria-checked="' + !!on + '" data-act="' + act + '" data-k="' + key + '"' + (disabled ? ' disabled' : '') + '></button></div>';
+}
+function vPrivacy() {
+  const P = S.partner.name, ps = S.partnerSharing, sh = S.sharing;
+  const theirs = [['location', '位置'], ['device', '手機狀態'], ['expenses', '開銷'], ['mood', '心情'], ['cycle', '經期']];
+  const partnerPaused = ps.pausedUntil && ps.pausedUntil > Date.now();
+  return header('分享與隱私') + '<div class="content gut">' +
+    '<div class="sec-head"><h2>我分享給 ' + esc(P) + '</h2></div>' +
+    '<section class="card" style="padding-block:4px">' +
+      tgRow('sh-location', '位置', '即時位置與標點的抵達、離開', sh.location, 'share-toggle', 'location') +
+      tgRow('sh-device', '手機狀態', '電量、充電、網路、螢幕、步數', sh.device, 'share-toggle', 'device') +
+      tgRow('sh-expenses', '開銷', '自動記帳的消費紀錄（私人與禮物模式除外）', sh.expenses, 'share-toggle', 'expenses') +
+      tgRow('sh-mood', '心情', '你設定的心情與備註', sh.mood, 'share-toggle', 'mood') +
+      (S.cycle.owner === 'me' ? tgRow('sh-cycle', '經期', '預測與經期日期，不含症狀', sh.cycle, 'share-toggle', 'cycle') : '') +
+    '</section>' +
+    '<section class="card"><div class="card-head"><h2>暫停分享</h2>' + (myPaused() ? '<span class="pill warn">到 ' + hm(sh.pausedUntil) + '</span>' : '') + '</div>' +
+      '<p class="sub">暫停位置、手機狀態與開銷。' + esc(P) + ' 會看到「暫停中」與恢復時間，不會以為你失聯。</p>' +
+      '<div class="btn-row">' + (myPaused() ? '<button class="btn primary" data-act="resume-sharing">立即恢復</button>' : '<button class="btn" data-act="pause-sharing" data-min="60">暫停 1 小時</button><button class="btn" data-act="pause-sharing" data-min="tonight">到今天結束</button>') + '</div></section>' +
+    '<section class="card"><div class="card-head"><h2>開銷不給看的類別</h2></div><div class="chips">' + C.CATEGORIES.map((c) => '<button class="chip" data-act="hide-cat" data-v="' + c.key + '" aria-pressed="' + (sh.hiddenCats.indexOf(c.key) >= 0) + '">' + c.label + '</button>').join('') + '</div><p class="foot">選取的類別不會出現在 ' + esc(P) + ' 的帳本裡。單筆消費也可以設成「不給看」或「禮物模式」。</p></section>' +
+    '<div class="sec-head"><h2>' + esc(P) + ' 分享給我</h2>' + (partnerPaused ? '<span class="pill warn">暫停至 ' + hm(ps.pausedUntil) + '</span>' : '') + '</div>' +
+    '<section class="card"><div class="chips">' + theirs.map((t) => '<span class="pill ' + (ps[t[0]] ? 'ok' : '') + '">' + icon(ps[t[0]] ? 'check' : 'x', 12) + t[1] + '</span>').join('') + '</div><p class="foot">由 ' + esc(P) + ' 自己決定，只能在對方的手機上更改。</p></section>' +
+    '<p class="note">' + icon('shield-check', 16) + '<span>每次更改分享設定，對方都會收到通知。解除配對後所有分享立即停止，30 天後刪除共同資料。經期症狀與筆記只有本人看得到。</span></p>' +
+    '<p class="note">' + icon('hand-heart', 16) + '<span>分享應該是兩個人都願意的事。如果你覺得被要求或被迫分享，可以先暫停或解除配對，也可以撥打 113 保護專線（24 小時）。</span></p>' +
+    '</div>';
+}
+function vNotif() {
+  return header('通知設定') + '<div class="content gut"><section class="card" style="padding-block:4px">' +
+    NOTIF_KINDS.map((k) => tgRow('nt-' + k[0], k[1], k[2], S.notif[k[0]] !== false, 'notif-toggle', k[0])).join('') +
+    '</section><p class="note">' + icon('info', 16) + '<span>對方新增會偵測你的標點、更改分享設定時的通知無法關閉，這是為了讓雙方都知道自己分享了什麼。</span></p></div>';
+}
+function vDemo() { return header('示範控制台') + '<div class="content gut">' + consoleBody() + '</div>'; }
+
+const VIEWS = { home: vHome, map: vMap, money: vMoney, cal: vCal, more: vMore, mood: vMood, anniv: vAnniv, cycle: vCycle, history: vHistory, privacy: vPrivacy, notif: vNotif, demo: vDemo };
+
+// ============================================================ onboarding
+function vOnboarding() {
+  const step = ui.onb, P = S.partner.name;
+  const dots = '<div class="steps" aria-label="第 ' + step + ' 步，共 3 步">' + [1, 2, 3].map((i) => '<i class="' + (i <= step ? 'on' : '') + '"></i>').join('') + '</div>';
+  if (step === 1) {
+    return '<div class="onb gut"><div class="onb-mark"><span style="color:var(--thread)">' + knot(64) + '</span><h1>小倆口</h1><p>把兩個人的日常，用一條紅線牽起來</p></div>' + dots +
+      '<label class="field" for="onb-name"><span>你的暱稱</span><input id="onb-name" maxlength="12" value="' + esc(S.me.name) + '" autocomplete="nickname"></label>' +
+      '<div class="onb-foot"><button class="btn primary block" data-act="onb-next">下一步</button><p class="foot" style="text-align:center">正式版用 Apple、Google 或手機號碼登入</p></div></div>';
+  }
+  if (step === 2) {
+    return '<div class="onb gut"><div class="onb-mark"><h1 style="font-size:28px">配對另一半</h1><p>把配對碼給對方，或輸入對方的配對碼</p></div>' + dots +
+      '<section class="card" style="align-items:center"><span class="sub">我的配對碼 · 24 小時內有效</span><div class="code-box">' + Array.from(S.me.code).map((c) => '<span>' + c + '</span>').join('') + '</div><button class="btn sm" data-act="copy-code">' + icon('copy', 16) + '複製</button></section>' +
+      '<div class="or">或</div>' +
+      '<label class="field" for="onb-code"><span>輸入對方的配對碼</span><input id="onb-code" maxlength="6" placeholder="例如 K7Q2M9" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em"></label>' +
+      '<p class="foot" id="onb-err" hidden></p>' +
+      '<div class="onb-foot"><button class="btn primary block" data-act="onb-pair">配對</button><button class="btn block" data-act="onb-demo">用示範伴侶「' + esc(P) + '」體驗</button></div></div>';
+  }
+  return '<div class="onb gut"><div class="onb-mark"><span class="pill ok">' + icon('check', 12) + '已和 ' + esc(P) + ' 配對</span><h1 style="font-size:28px">決定要分享什麼</h1><p>每一項都可以之後再改，改了對方會知道</p></div>' + dots +
+    '<section class="card" style="padding-block:4px">' +
+      tgRow('ob-location', '位置', '對方看得到你在哪、抵達或離開標點', S.sharing.location, 'share-toggle', 'location') +
+      tgRow('ob-device', '手機狀態', '電量、網路、螢幕、步數', S.sharing.device, 'share-toggle', 'device') +
+      tgRow('ob-expenses', '開銷', '自動記帳，可以玩猜花費', S.sharing.expenses, 'share-toggle', 'expenses') +
+      tgRow('ob-mood', '心情', '對方會知道你今天過得如何', S.sharing.mood, 'share-toggle', 'mood') +
+    '</section>' +
+    '<div class="field"><span>經期功能</span><div class="seg" role="group" aria-label="經期功能"><button data-act="cycle-owner" data-v="me" aria-pressed="' + (S.cycle.owner === 'me') + '">記錄我的</button><button data-act="cycle-owner" data-v="partner" aria-pressed="' + (S.cycle.owner === 'partner') + '">記錄對方的</button><button data-act="cycle-owner" data-v="none" aria-pressed="' + (S.cycle.owner === 'none') + '">先不用</button></div></div>' +
+    '<label class="field" for="onb-since"><span>在一起的日子</span><input id="onb-since" type="date" data-input="since" value="' + S.togetherSince + '" max="' + today() + '"></label>' +
+    '<div class="onb-foot"><button class="btn primary block" data-act="onb-finish">開始使用</button></div></div>';
+}
+
+// ============================================================ sheets
+const SHEETS = {};
+function sheetHead(title) { return '<div class="sheet-head"><h2 id="sheet-title">' + title + '</h2><button class="icon-btn" data-act="close-sheet" aria-label="關閉">' + icon('x', 22) + '</button></div>'; }
+function openSheet(name, params) {
+  ui.sheet = { name: name, params: params || {} };
+  $('#sheet').innerHTML = SHEETS[name](params || {});
+  $('#sheet-wrap').hidden = false;
+  const f = $('#sheet input:not([type=hidden]), #sheet textarea');
+  if (f && window.matchMedia('(pointer: fine)').matches) f.focus();
+}
+function closeSheet() { ui.sheet = null; $('#sheet-wrap').hidden = true; $('#sheet').innerHTML = ''; }
+
+SHEETS.comfort = () => {
+  const P = S.partner.name;
+  return sheetHead('安撫 ' + esc(P)) + '<p class="sub">' + esc(P) + ' 的手機會立刻跳出通知</p>' +
+    '<div class="cf-grid">' + C.COMFORTS.map((c) => '<button class="cf" data-act="pick-comfort" data-k="' + c.key + '" aria-pressed="' + (ui.comfortPick === c.key) + '"><span class="em" aria-hidden="true">' + c.emoji + '</span>' + c.label + '</button>').join('') + '</div>' +
+    '<label class="field" for="cf-msg"><span>悄悄話（選填）</span><textarea id="cf-msg" rows="2" maxlength="200" placeholder="辛苦了，晚上帶你去吃好吃的"></textarea></label>' +
+    '<button class="btn primary block" data-act="send-comfort">' + icon('send', 18) + '送出</button>';
+};
+SHEETS.guess = (p) => {
+  const e = S.expenses.find((x) => x.id === p.id);
+  const P = S.partner.name;
+  if (!e) return sheetHead('猜花費') + '<p class="empty">找不到這筆開銷。</p>';
+  const same = S.expenses.filter((x) => x.who === 'partner' && x.category === e.category && x.id !== e.id && (!x.guessable || x.guess));
+  const avg = same.length ? same.reduce((s, x) => s + x.amount, 0) / same.length : null;
+  return sheetHead('猜猜 ' + esc(P) + ' 花了多少') +
+    '<div class="li" style="border:0"><span class="ico you">' + icon(CAT_ICON[e.category], 18) + '</span><span class="li-body"><span class="li-title">' + esc(e.merchant) + '</span><span class="li-sub">' + C.categoryLabel(e.category) + ' · ' + SOURCE[e.source] + ' · ' + dayLabel(tsDate(e.ts)) + ' ' + hm(e.ts) + '</span></span></div>' +
+    (avg ? '<p class="note">' + icon('circle-help', 16) + '<span>提示：' + esc(P) + ' 在「' + C.categoryLabel(e.category) + '」平均每筆 ' + money(avg) + '</span></p>' : '') +
+    '<label class="field" for="guess-amt"><span>你猜</span><span class="money-input"><span>NT$</span><input id="guess-amt" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></span></label>' +
+    '<p class="foot" id="guess-err" hidden>請輸入金額</p>' +
+    '<button class="btn primary block" data-act="submit-guess" data-id="' + e.id + '">送出答案</button>' +
+    '<p class="foot">誤差 3% 內 100 分、10% 內 80 分、25% 內 50 分、50% 內 20 分。每筆只能猜一次。</p>';
+};
+SHEETS.guessResult = (p) => {
+  const e = S.expenses.find((x) => x.id === p.id), g = e.guess, sc = C.scoreGuess(g.value, e.amount);
+  return sheetHead('揭曉') + '<div class="reveal"><span class="score num">' + g.points + '</span><span class="sub">分</span><span class="verdict">' + sc.label + '</span>' +
+    '<div class="compare"><div><span>你猜</span><b>' + money(g.value) + '</b></div><div><span>實際</span><b>' + money(e.amount) + '</b></div></div>' +
+    '<p class="sub">' + (sc.direction === 'exact' ? '一塊錢都不差' : '猜' + (sc.direction === 'high' ? '高' : '低') + '了 ' + money(Math.abs(sc.diff)) + '（' + Math.round(sc.ratio * 100) + '%）') + '</p></div>' +
+    '<button class="btn primary block" data-act="close-sheet">好</button>';
+};
+SHEETS['expense-view'] = (p) => {
+  const e = S.expenses.find((x) => x.id === p.id);
+  return sheetHead(esc(e.merchant)) + '<dl class="parsed"><dt>金額</dt><dd>' + money(e.amount) + '</dd><dt>類別</dt><dd>' + C.categoryLabel(e.category) + '</dd><dt>時間</dt><dd>' + dayLabel(tsDate(e.ts)) + ' ' + hm(e.ts) + '</dd><dt>來源</dt><dd>' + SOURCE[e.source] + '（自動記錄）</dd>' + (e.guess ? '<dt>你猜</dt><dd>' + money(e.guess.value) + ' · ' + e.guess.points + ' 分</dd>' : '') + '</dl>' +
+    (e.raw ? '<p class="foot">原始通知：' + esc(e.raw) + '</p>' : '') + '<button class="btn block" data-act="close-sheet">關閉</button>';
+};
+SHEETS.expense = (p) => {
+  const e = p.id ? S.expenses.find((x) => x.id === p.id) : null;
+  const P = S.partner.name;
+  const vis = e ? e.visibility : 'shared';
+  ui.expVis = vis;
+  return sheetHead(e ? '編輯開銷' : '記一筆') + '<div class="form">' +
+    '<label class="field" for="exp-merchant"><span>商家或項目</span><input id="exp-merchant" maxlength="60" value="' + esc(e ? e.merchant : '') + '" placeholder="例如：鼎泰豐"></label>' +
+    '<div class="field-row"><label class="field" for="exp-amount"><span>金額（NT$）</span><input id="exp-amount" type="number" inputmode="numeric" min="1" step="1" value="' + (e ? e.amount : '') + '"></label>' +
+    '<label class="field" for="exp-cat"><span>類別</span><select id="exp-cat"><option value="">自動判斷</option>' + C.CATEGORIES.map((c) => '<option value="' + c.key + '"' + (e && e.category === c.key ? ' selected' : '') + '>' + c.label + '</option>').join('') + '</select></label></div>' +
+    '<div class="field"><span>' + esc(P) + ' 看得到嗎</span><div class="seg" role="group" aria-label="誰看得到"><button data-act="exp-vis" data-v="shared" aria-pressed="' + (vis === 'shared') + '">看得到</button><button data-act="exp-vis" data-v="private" aria-pressed="' + (vis === 'private') + '">不給看</button><button data-act="exp-vis" data-v="surprise" aria-pressed="' + (vis === 'surprise') + '">禮物模式</button></div></div>' +
+    '<label class="field" for="exp-reveal" id="exp-reveal-wrap"' + (vis === 'surprise' ? '' : ' hidden') + '><span>這天之後才讓 ' + esc(P) + ' 看到</span><input id="exp-reveal" type="date" value="' + (e && e.revealOn ? e.revealOn : C.addDays(today(), 30)) + '" min="' + today() + '"></label>' +
+    '<div class="card" style="padding-block:0;box-shadow:none;background:var(--bg)">' + tgRow('exp-guess', '開放 ' + esc(P) + ' 猜金額', '猜之前對方看不到金額', e ? e.guessable : false, 'local-switch', 'guess', vis !== 'shared') + '</div>' +
+    '<button class="btn primary block" data-act="save-expense"' + (e ? ' data-id="' + e.id + '"' : '') + '>儲存</button>' +
+    (e ? '<button class="btn ghost block" data-act="delete-expense" data-id="' + e.id + '">' + icon('trash-2', 18) + '刪除</button>' : '') +
+    '</div>';
+};
+function parseResultHTML(text) {
+  const r = C.parseNotification(text);
+  if (!r) return '<p class="note">' + icon('info', 16) + '<span>找不到金額，這則通知不會被記帳。</span></p>';
+  return '<dl class="parsed"><dt>金額</dt><dd>' + money(r.amount) + '</dd><dt>商家</dt><dd>' + esc(r.merchant) + '</dd><dt>類別</dt><dd>' + C.categoryLabel(r.category) + '</dd><dt>來源</dt><dd>' + esc(r.sourceLabel) + '</dd></dl>';
+}
+SHEETS.parse = () => sheetHead('模擬付款通知') +
+  '<p class="sub">正式版在背景自動處理。選一則範例或貼上自己的通知文字，看看會怎麼被記下來。</p>' +
+  '<div class="chips">' + SAMPLE_NOTIFS.map((s, i) => '<button class="chip" data-act="parse-sample" data-i="' + i + '">' + s.label + '</button>').join('') + '</div>' +
+  '<label class="field" for="parse-text"><span>通知內容</span><textarea id="parse-text" rows="3" data-input="parse">' + esc(SAMPLE_NOTIFS[0].text) + '</textarea></label>' +
+  '<div id="parse-out">' + parseResultHTML(SAMPLE_NOTIFS[0].text) + '</div>' +
+  '<button class="btn primary block" data-act="parse-add">加入我的帳本</button>';
+SHEETS.place = (p) => {
+  const pl = p.id ? S.places.find((x) => x.id === p.id) : { name: '', icon: 'map-pin', x: p.x, y: p.y, r: 150, arrive: true, leave: true, watch: 'partner' };
+  const P = S.partner.name;
+  ui.placeIcon = pl.icon; ui.placeWatch = pl.watch;
+  return sheetHead(p.id ? '編輯標點' : '新增標點') + '<div class="form">' +
+    '<label class="field" for="pl-name"><span>名稱</span><input id="pl-name" maxlength="20" value="' + esc(pl.name) + '" placeholder="例如：公司、學校、我家"></label>' +
+    '<div class="field"><span>圖示</span><div class="chips">' + PLACE_ICONS.map((ic) => '<button class="chip" data-act="pl-icon" data-v="' + ic + '" aria-pressed="' + (pl.icon === ic) + '" aria-label="' + ic + '">' + icon(ic, 18) + '</button>').join('') + '</div></div>' +
+    '<label class="field" for="pl-r"><span>範圍半徑 <b id="pl-r-v">' + pl.r + '</b> 公尺</span><input id="pl-r" type="range" min="50" max="500" step="10" value="' + pl.r + '" data-input="pl-r" style="height:auto;padding:0;border:0;background:none"></label>' +
+    '<div class="field"><span>偵測誰</span><div class="seg" role="group" aria-label="偵測誰"><button data-act="pl-watch" data-v="partner" aria-pressed="' + (pl.watch === 'partner') + '">' + esc(P) + '</button><button data-act="pl-watch" data-v="me" aria-pressed="' + (pl.watch === 'me') + '">我</button><button data-act="pl-watch" data-v="both" aria-pressed="' + (pl.watch === 'both') + '">兩個人</button></div></div>' +
+    '<div class="card" style="padding-block:0;box-shadow:none;background:var(--bg)">' + tgRow('pl-arrive', '抵達時通知', '', pl.arrive, 'local-switch', 'arrive') + tgRow('pl-leave', '離開時通知', '', pl.leave, 'local-switch', 'leave') + '</div>' +
+    '<p class="foot">' + (pl.watch === 'me' ? '你進出這裡時 ' + esc(P) + ' 會收到通知。' : esc(P) + ' 會收到「你新增了這個標點」的通知，看得到範圍與通知設定。') + '</p>' +
+    '<button class="btn primary block" data-act="save-place"' + (p.id ? ' data-id="' + p.id + '"' : ' data-x="' + Math.round(pl.x) + '" data-y="' + Math.round(pl.y) + '"') + '>儲存</button>' +
+    (p.id ? '<button class="btn ghost block" data-act="delete-place" data-id="' + p.id + '">' + icon('trash-2', 18) + '刪除標點</button>' : '') + '</div>';
+};
+SHEETS.event = (p) => {
+  const P = S.partner.name;
+  return sheetHead('約 ' + esc(P)) + '<div class="form">' +
+    '<label class="field" for="ev-title"><span>要做什麼</span><input id="ev-title" maxlength="40" placeholder="例如：吃火鍋、看夜景"></label>' +
+    '<div class="field-row"><label class="field" for="ev-date"><span>日期</span><input id="ev-date" type="date" value="' + (p.date || today()) + '"></label><label class="field" for="ev-time"><span>時間</span><input id="ev-time" type="time" value="19:00"></label></div>' +
+    '<label class="field" for="ev-place"><span>地點</span><input id="ev-place" maxlength="40" list="ev-places" placeholder="選一個標點或自己輸入"><datalist id="ev-places">' + S.places.map((pl) => '<option value="' + esc(pl.name) + '">').join('') + '</datalist></label>' +
+    '<label class="field" for="ev-note"><span>備註</span><input id="ev-note" maxlength="100" placeholder="選填"></label>' +
+    '<label class="field" for="ev-remind"><span>提醒</span><select id="ev-remind"><option value="30">30 分鐘前</option><option value="60" selected>1 小時前</option><option value="1440">前一天</option></select></label>' +
+    '<p class="foot" id="ev-err" hidden>請輸入要做什麼</p>' +
+    '<button class="btn primary block" data-act="save-event">' + icon('send', 18) + '送出邀請</button><p class="foot">' + esc(P) + ' 答應後，兩個人的日曆都會出現，並同步到手機內建行事曆。</p></div>';
+};
+SHEETS.anniv = () => sheetHead('新增紀念日') + '<div class="form">' +
+  '<label class="field" for="an-title"><span>名稱</span><input id="an-title" maxlength="30" placeholder="例如：第一次出國"></label>' +
+  '<div class="field-row"><label class="field" for="an-date"><span>日期</span><input id="an-date" type="date" value="' + today() + '"></label>' +
+  '<label class="field" for="an-kind"><span>類型</span><select id="an-kind"><option value="custom">自訂</option><option value="birthday">生日</option><option value="first_date">第一次約會</option></select></label></div>' +
+  '<div class="field"><span>提醒時間</span><div class="chips">' + [[0, '當天'], [1, '前 1 天'], [3, '前 3 天'], [7, '前 7 天']].map((r) => '<button class="chip" data-act="toggle-chip" data-v="' + r[0] + '" aria-pressed="' + (r[0] === 0 || r[0] === 1) + '">' + r[1] + '</button>').join('') + '</div></div>' +
+  '<div class="card" style="padding-block:0;box-shadow:none;background:var(--bg)">' + tgRow('an-yearly', '每年重複', '', true, 'local-switch', 'yearly') + tgRow('an-lunar', '農曆日期', '正式版支援', false, 'local-switch', 'lunar', true) + '</div>' +
+  '<p class="foot" id="an-err" hidden>請輸入名稱</p>' +
+  '<button class="btn primary block" data-act="save-anniv">儲存</button></div>';
+SHEETS.period = () => sheetHead('記錄經期') + '<div class="form">' +
+  '<div class="field-row"><label class="field" for="pd-start"><span>開始</span><input id="pd-start" type="date" value="' + today() + '" max="' + today() + '"></label>' +
+  '<label class="field" for="pd-end"><span>結束（選填）</span><input id="pd-end" type="date" max="' + today() + '"></label></div>' +
+  '<p class="foot" id="pd-err" hidden></p>' +
+  '<button class="btn primary block" data-act="save-period">儲存</button></div>';
+SHEETS.unpair = () => {
+  const P = S.partner.name;
+  return sheetHead('解除配對？') + '<p>解除後，你和 ' + esc(P) + ' 之間的位置、手機狀態、開銷、心情與經期分享會<b>立即停止</b>。共同的標點、紀念日與約會保留 30 天，期間重新配對可以復原。</p>' +
+    '<p class="sub">' + esc(P) + ' 會收到通知。</p><div class="btn-row"><button class="btn" data-act="close-sheet">取消</button><button class="btn primary" data-act="unpair">解除配對</button></div>';
+};
+
+// ============================================================ partner simulation
+let tickCount = 0;
+function simTick(dt) {
+  const sim = S.sim, now = Date.now();
+  const w = ROUTE[sim.i];
+  if (sim.state === 'dwell') {
+    sim.dwell -= dt;
+    if (w.charge) sim.battery = Math.min(100, sim.battery + dt / 0.8);
+    else drain(dt);
+    if (sim.dwell <= 0) { sim.i = (sim.i + 1) % ROUTE.length; sim.state = 'move'; }
+  } else {
+    const target = wpPos(w);
+    const speed = w.mode === 'mrt' ? SPEED.mrt : SPEED.walk;
+    const d = Math.hypot(target.x - sim.x, target.y - sim.y);
+    const step = speed * dt;
+    const moved = Math.min(d, step);
+    if (d <= step) { sim.x = target.x; sim.y = target.y; }
+    else { sim.x += (target.x - sim.x) / d * step; sim.y += (target.y - sim.y) / d * step; }
+    if (w.mode !== 'mrt') sim.steps += moved * 1.33;
+    drain(dt);
+    if (d <= step) arriveWaypoint(w);
+  }
+  if (sim.battery > 30) sim.lowSent = false;
+  sim.updated = now;
+  runGeofence(true);
+}
+function drain(dt) {
+  const sim = S.sim, before = sim.battery;
+  sim.battery = Math.max(1, sim.battery - dt / 8);
+  if (before > 20 && sim.battery <= 20 && !sim.lowSent) batteryLow();
+}
+function batteryLow() {
+  const P = S.partner.name;
+  S.sim.lowSent = true;
+  if (!partnerStatus().shareDevice) return;
+  const pct = Math.round(S.sim.battery);
+  log('device', 'partner', P + ' 的手機電量剩 ' + pct + '%');
+  push('battery_low', P + ' 的手機電量剩 ' + pct + '%', '可能快聯絡不到了，提醒對方充電吧', 'home', 'battery-low');
+}
+function arriveWaypoint(w) {
+  const sim = S.sim;
+  if (w.dwell) { sim.state = 'dwell'; sim.dwell = w.dwell; }
+  else { sim.i = (sim.i + 1) % ROUTE.length; }
+  if (w.spot === 'cafe' || w.mode === 'mrt') sim.lastActive = Date.now();
+  if (w.spend) partnerSpend(w.spend);
+}
+function runGeofence(notifyEvents) {
+  const st = partnerStatus();
+  const fences = S.places.filter((p) => p.watch !== 'me').map((p) => ({ id: p.id, x: p.x, y: p.y, radius: p.r }));
+  const res = C.geofenceStep(fences, S.sim.inside, S.sim);
+  S.sim.inside = res.inside;
+  if (!notifyEvents || !st.shareLoc) return;
+  const P = S.partner.name;
+  res.events.forEach((ev) => {
+    const pl = S.places.find((p) => p.id === ev.placeId);
+    const verb = ev.type === 'arrive' ? '已抵達' : '已離開';
+    log('place', 'partner', P + ' ' + verb + ' ' + pl.name);
+    if ((ev.type === 'arrive' && pl.arrive) || (ev.type === 'leave' && pl.leave)) {
+      push('place', P + ' ' + verb + ' ' + pl.name, hm(Date.now()), 'map', 'map-pin');
+    }
+  });
+}
+const SPENDS = {
+  mart: { merchant: '全家便利商店 松仁店', amounts: [45, 65, 89, 120], tpl: (a, m) => 'LINE Pay｜付款完成 NT$' + a + ' 商店：' + m },
+  cafe: { merchant: '星巴克 信義新天地', amounts: [135, 150, 165, 180], tpl: (a, m) => '【國泰世華】您的卡片末四碼5678消費新台幣' + a + '元，商店：' + m },
+  random: { merchant: '', amounts: [], tpl: null }
+};
+function partnerSpend(kind) {
+  const P = S.partner.name;
+  let text;
+  if (kind === 'random') text = rand(SAMPLE_NOTIFS).text;
+  else { const sp = SPENDS[kind]; text = sp.tpl(rand(sp.amounts), sp.merchant); }
+  const r = C.parseNotification(text);
+  if (!r) return;
+  const guessable = pendingGuesses().length < 2 && (kind === 'cafe' || kind === 'random');
+  const e = { id: 'x' + uid(), who: 'partner', ts: Date.now(), merchant: r.merchant, amount: r.amount, source: r.source === 'other' ? 'card' : r.source, category: r.category, visibility: 'shared', guessable: guessable, raw: text };
+  S.sim.lastActive = Date.now();
+  S.expenses.push(e);
+  if (!S.partnerSharing.expenses) { save(); return; }
+  if (guessable) {
+    log('money', 'partner', P + ' 在 ' + r.merchant + ' 有一筆新開銷，猜猜看花了多少？');
+    push('guess', P + ' 有一筆開銷等你猜', r.merchant + ' · ' + C.categoryLabel(r.category), 'money', 'coins');
+  } else {
+    log('money', 'partner', P + ' 在 ' + r.merchant + ' 消費 ' + money(r.amount));
+    push('expense', P + ' 在 ' + r.merchant + ' 消費 ' + money(r.amount), '由' + (SOURCE[e.source] || '付款通知') + '自動記錄', 'money', 'receipt');
+  }
+  save();
+}
+function teleport(placeId) {
+  const pl = S.places.find((p) => p.id === placeId);
+  if (!pl) return;
+  let best = 0, bestD = Infinity;
+  ROUTE.forEach((w, i) => { if (!w.dwell) return; const d = C.distance(wpPos(w), pl); if (d < bestD) { bestD = d; best = i; } });
+  S.sim.i = best;
+  const wp = wpPos(ROUTE[best]);
+  const useWp = C.distance(wp, pl) <= pl.r;
+  S.sim.x = useWp ? wp.x : pl.x;
+  S.sim.y = useWp ? wp.y : pl.y;
+  S.sim.state = 'dwell';
+  S.sim.dwell = 20;
+  runGeofence(true);
+  liveUpdate(true);
+}
+function liveUpdate(full) {
+  const v = currentView();
+  if (!S.paired) return;
+  if (v === 'map') liveMap();
+  if (v === 'home' && (full || tickCount % 4 === 0)) {
+    const st = $('#live-status'); if (st) st.innerHTML = statusCard();
+    const hl = $('#live-hero'); if (hl) hl.innerHTML = heroLine();
+  }
+  if (tickCount % 4 === 0) { const sim = $('#sim-state'); if (sim) sim.innerHTML = simStateHTML(); }
+}
+setInterval(() => {
+  if (!S.paired || !ui.simOn || document.hidden) return;
+  tickCount++;
+  simTick(0.25 * ui.speed);
+  liveUpdate(false);
+  if (tickCount % 8 === 0) save();
+}, 250);
+
+// 對方的回應（示範）
+function partnerReplyToComfort(kind) {
+  const P = S.partner.name;
+  setTimeout(() => {
+    const reply = rand(['收到了，好多了', '嘿嘿謝謝你', '晚點見面再抱一次', '有你真好']);
+    log('comfort', 'partner', P + ' 回覆：' + reply);
+    push('comfort', P + ' 回覆了你', reply, 'history', 'message-circle-heart');
+    const pm = moodToday('partner');
+    if (pm && C.needsComfort(pm.mood)) {
+      setTimeout(() => {
+        S.moods.push({ who: 'partner', ts: Date.now(), mood: 'calm', note: '被安撫了' });
+        log('mood', 'partner', P + ' 現在覺得平靜：被安撫了');
+        push('mood', P + ' 的心情變成平靜', '被安撫了', 'home', 'smile');
+        refresh();
+      }, 3500);
+    }
+    refresh();
+  }, 2600);
+}
+function demoMood(key, note) {
+  const P = S.partner.name, m = C.mood(key);
+  S.moods.push({ who: 'partner', ts: Date.now(), mood: key, note: note || '' });
+  S.sim.lastActive = Date.now();
+  if (!S.partnerSharing.mood) return refresh();
+  log('mood', 'partner', P + ' 現在覺得' + m.label + (note ? '：' + note : ''));
+  push('mood', P + ' 現在覺得' + m.label + ' ' + m.emoji, C.needsComfort(key) ? (note ? note + '。' : '') + '要不要安撫一下？' : note, 'home', 'smile');
+  refresh();
+}
+function demoComfortMe() {
+  const P = S.partner.name, c = rand(C.COMFORTS);
+  log('comfort', 'partner', P + ' ' + c.push);
+  push('comfort', P + ' ' + c.push + ' ' + c.emoji, '點開回應一下吧', 'history', 'hand-heart');
+  refresh();
+}
+function demoInvite() {
+  const P = S.partner.name;
+  const ev = { id: 'e' + uid(), title: rand(['吃火鍋', '看夜景', '逛夜市', '去貓咖啡']), date: C.addDays(today(), 3), time: '19:30', place: '', note: '', status: 'proposed', by: 'partner', remind: 60 };
+  S.events.push(ev);
+  log('date', 'partner', P + ' 約你：' + ev.title + '（' + md(ev.date) + ' ' + ev.time + '）');
+  push('event', P + ' 約你：' + ev.title, dayLabel(ev.date) + ' ' + ev.time + ' · 到日曆回覆', 'cal', 'calendar-heart');
+  ui.calSel = ev.date; ui.calMonth = ev.date.slice(0, 7);
+  refresh();
+}
+function demoPauseToggle() {
+  const P = S.partner.name, ps = S.partnerSharing;
+  if (ps.pausedUntil && ps.pausedUntil > Date.now()) {
+    ps.pausedUntil = null;
+    log('pair', 'partner', P + ' 恢復分享位置與手機狀態');
+    push(null, P + ' 恢復分享了', '可以再看到位置與手機狀態', 'home', 'eye');
+  } else {
+    ps.pausedUntil = Date.now() + 3600000;
+    log('pair', 'partner', P + ' 暫停分享 1 小時');
+    push(null, P + ' 暫停分享 1 小時', '到 ' + hm(ps.pausedUntil) + ' 自動恢復', 'home', 'eye-off');
+  }
+  refresh();
+}
+function refresh() {
+  save();
+  // 使用者正在畫面上打字時不重畫，避免輸入內容被清掉
+  const a = document.activeElement;
+  if (a && $('#view').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { renderConsole(); return; }
+  render(false);
+}
+
+function simStateHTML() {
+  const st = partnerStatus();
+  return esc(S.partner.name) + '：' + esc(partnerWhere(st)) + ' · 電量 ' + st.battery + '%' + (st.charging ? '（充電中）' : '') + ' · 步數 ' + st.steps.toLocaleString('zh-TW');
+}
+function consoleBody() {
+  const P = S.partner.name;
+  const partnerPaused = S.partnerSharing.pausedUntil && S.partnerSharing.pausedUntil > Date.now();
+  return '<div class="console-inner">' +
+    '<p class="sub">模擬「' + esc(P) + '」那一端的手機。按下按鈕，看看 App 會出現哪些通知與變化。</p>' +
+    '<div class="ctl"><h3>行程模擬</h3><div class="sim-state" id="sim-state">' + simStateHTML() + '</div>' +
+      '<div class="btn-row"><button class="btn sm" data-act="sim-toggle">' + icon(ui.simOn ? 'pause' : 'play', 16) + (ui.simOn ? '暫停' : '繼續') + '</button>' +
+      '<div class="seg" role="group" aria-label="速度" style="flex:1"><button data-act="sim-speed" data-v="1" aria-pressed="' + (ui.speed === 1) + '">1×</button><button data-act="sim-speed" data-v="4" aria-pressed="' + (ui.speed === 4) + '">4×</button></div></div>' +
+      '<div class="ctl-grid">' + S.places.filter((p) => p.watch !== 'me').map((p) => '<button class="btn sm" data-act="demo-go" data-id="' + p.id + '">' + icon('navigation', 15) + '到' + esc(p.name) + '</button>').join('') + '</div></div>' +
+    '<div class="ctl"><h3>讓 ' + esc(P) + '…</h3><div class="ctl-grid">' +
+      '<button class="btn sm" data-act="demo" data-v="sad">' + icon('smile', 15) + '心情不好</button>' +
+      '<button class="btn sm" data-act="demo" data-v="happy">' + icon('sun', 15) + '心情很好</button>' +
+      '<button class="btn sm" data-act="demo" data-v="hug">' + icon('hand-heart', 15) + '安撫你</button>' +
+      '<button class="btn sm" data-act="demo" data-v="battery">' + icon('battery-low', 15) + '電量剩 19%</button>' +
+      '<button class="btn sm" data-act="demo" data-v="spend">' + icon('receipt', 15) + '刷卡消費</button>' +
+      '<button class="btn sm" data-act="demo" data-v="invite">' + icon('calendar-heart', 15) + '約你出去</button>' +
+      '<button class="btn sm" data-act="demo" data-v="pause">' + icon(partnerPaused ? 'eye' : 'eye-off', 15) + (partnerPaused ? '恢復分享' : '暫停分享') + '</button>' +
+      '<button class="btn sm" data-act="demo" data-v="guess">' + icon('coins', 15) + '猜你的花費</button>' +
+    '</div></div>' +
+    '<div class="ctl"><h3>示範資料</h3><div class="ctl-grid"><button class="btn sm" data-act="demo-reset">' + icon('rotate-ccw', 15) + '重設資料</button><button class="btn sm" data-act="demo-onboard">' + icon('link-2', 15) + '重新配對</button></div>' +
+    '<p class="foot">資料只存在這個瀏覽器。地圖是虛構的街區，正式版使用 Google Maps / Apple MapKit。</p></div>' +
+    '</div>';
+}
+function renderConsole() {
+  const c = $('#console');
+  if (getComputedStyle(c).display === 'none') return;
+  c.innerHTML = '<h2 style="margin-bottom:8px">示範控制台</h2>' + consoleBody();
+}
+
+// ============================================================ actions
+function setSwitch(btn, on) { btn.setAttribute('aria-checked', String(on)); }
+function pressIn(group, btn) { $$('[data-act="' + btn.getAttribute('data-act') + '"]', group).forEach((b) => b.setAttribute('aria-pressed', String(b === btn))); }
+
+const A = {
+  tab: (el) => go(el.dataset.tab),
+  open: (el) => open(el.dataset.to),
+  back: () => back(),
+  nav: (el) => { if (el.dataset.date) { ui.calSel = el.dataset.date; ui.calMonth = el.dataset.date.slice(0, 7); } navigate(el.dataset.to); },
+  sheet: (el) => openSheet(el.dataset.sheet, { id: el.dataset.id, date: el.dataset.date }),
+  'close-sheet': () => closeSheet(),
+  'guess-tab': () => { ui.moneyWho = 'partner'; go('money'); },
+
+  // comfort
+  'pick-comfort': (el) => { ui.comfortPick = el.dataset.k; pressIn($('#sheet'), el); },
+  'send-comfort': () => {
+    const c = C.comfort(ui.comfortPick), msg = $('#cf-msg').value.trim(), P = S.partner.name;
+    log('comfort', 'me', '你給 ' + P + ' ' + c.label + (msg ? '：' + msg : ''));
+    closeSheet();
+    toast('已送出' + c.label + '，' + P + ' 收到通知了');
+    render(false);
+    partnerReplyToComfort(c.key);
+  },
+
+  // mood
+  'pick-mood': (el) => { ui.moodPick = el.dataset.k; pressIn($('#view'), el); },
+  'save-mood': () => {
+    const key = ui.moodPick || (moodToday('me') || {}).mood;
+    if (!key) { toast('先選一個心情'); return; }
+    const note = $('#mood-note').value.trim();
+    S.moods.push({ who: 'me', ts: Date.now(), mood: key, note: note });
+    log('mood', 'me', '你覺得' + C.mood(key).label + (note ? '：' + note : ''));
+    ui.moodPick = null;
+    toast(S.sharing.mood ? '已更新，' + S.partner.name + ' 收到通知了' : '已更新（沒有分享給對方）');
+    save();
+    if (S.sharing.mood && C.needsComfort(key)) {
+      setTimeout(() => {
+        const c = C.comfort(rand(['hug', 'pat', 'here']));
+        log('comfort', 'partner', S.partner.name + ' ' + c.push);
+        push('comfort', S.partner.name + ' ' + c.push + ' ' + c.emoji, '看到你心情不好', 'history', 'hand-heart');
+        render(false);
+      }, 3500);
+    }
+    back();
+  },
+
+  // map & places
+  'toggle-add-place': () => { ui.addingPlace = !ui.addingPlace; render(false); },
+  'map-tap': (el, ev) => {
+    if (!ui.addingPlace) return;
+    const box = el.getBoundingClientRect();
+    const x = (ev.clientX - box.left) / box.width * WORLD, y = (ev.clientY - box.top) / box.height * WORLD;
+    openSheet('place', { x: x, y: y });
+  },
+  'pl-icon': (el) => { ui.placeIcon = el.dataset.v; pressIn($('#sheet'), el); },
+  'pl-watch': (el) => { ui.placeWatch = el.dataset.v; pressIn($('#sheet'), el); },
+  'local-switch': (el) => setSwitch(el, el.getAttribute('aria-checked') !== 'true'),
+  'save-place': (el) => {
+    const name = $('#pl-name').value.trim() || '新標點';
+    const data = { name: name, icon: ui.placeIcon, r: Number($('#pl-r').value), watch: ui.placeWatch, arrive: $('#pl-arrive').getAttribute('aria-checked') === 'true', leave: $('#pl-leave').getAttribute('aria-checked') === 'true' };
+    const P = S.partner.name;
+    if (el.dataset.id) {
+      Object.assign(S.places.find((p) => p.id === el.dataset.id), data);
+      toast('已更新「' + name + '」');
+    } else {
+      const pl = Object.assign({ id: 'p' + uid(), x: Number(el.dataset.x), y: Number(el.dataset.y), by: 'me' }, data);
+      S.places.push(pl);
+      log('place', 'me', '你新增了標點「' + name + '」');
+      toast(pl.watch === 'me' ? '已新增「' + name + '」' : '已新增，並通知 ' + P + ' 這個標點');
+      runGeofence(true);
+    }
+    ui.addingPlace = false;
+    closeSheet(); save(); render(false);
+  },
+  'delete-place': (el) => {
+    const pl = S.places.find((p) => p.id === el.dataset.id);
+    S.places = S.places.filter((p) => p.id !== el.dataset.id);
+    S.sim.inside = S.sim.inside.filter((id) => id !== el.dataset.id);
+    log('place', 'me', '你刪除了標點「' + pl.name + '」');
+    closeSheet(); save(); render(false); toast('已刪除');
+  },
+
+  // money
+  'money-who': (el) => { ui.moneyWho = el.dataset.who; render(true); },
+  'submit-guess': (el) => {
+    const v = Number($('#guess-amt').value);
+    if (!$('#guess-amt').value || !(v >= 0)) { $('#guess-err').hidden = false; return; }
+    const e = S.expenses.find((x) => x.id === el.dataset.id);
+    const sc = C.scoreGuess(v, e.amount);
+    e.guess = { value: v, points: sc.points, ts: Date.now() };
+    log('money', 'me', '你猜 ' + S.partner.name + ' 在 ' + e.merchant + ' 花了 ' + money(v) + '，實際 ' + money(e.amount) + '（' + sc.points + ' 分）');
+    save();
+    $('#sheet').innerHTML = SHEETS.guessResult({ id: e.id });
+    render(false);
+  },
+  'exp-vis': (el) => {
+    ui.expVis = el.dataset.v; pressIn($('#sheet'), el);
+    $('#exp-reveal-wrap').hidden = ui.expVis !== 'surprise';
+    const g = $('#exp-guess');
+    g.disabled = ui.expVis !== 'shared';
+    if (g.disabled) setSwitch(g, false);
+  },
+  'save-expense': (el) => {
+    const merchant = $('#exp-merchant').value.trim(), amount = Number($('#exp-amount').value);
+    if (!merchant || !(amount > 0)) { toast('請輸入商家與金額'); return; }
+    const data = {
+      merchant: merchant, amount: amount, category: $('#exp-cat').value || C.categorize(merchant), visibility: ui.expVis,
+      revealOn: ui.expVis === 'surprise' ? $('#exp-reveal').value : null, guessable: $('#exp-guess').getAttribute('aria-checked') === 'true'
+    };
+    let e;
+    if (el.dataset.id) { e = Object.assign(S.expenses.find((x) => x.id === el.dataset.id), data); }
+    else { e = Object.assign({ id: 'x' + uid(), who: 'me', ts: Date.now(), source: 'manual' }, data); S.expenses.push(e); }
+    closeSheet(); save(); render(false);
+    toast(data.visibility === 'surprise' ? '已儲存，' + md(data.revealOn) + ' 前對方看不到' : '已儲存');
+    if (e.guessable && !e.theirGuess && data.visibility === 'shared') partnerGuesses(e);
+  },
+  'delete-expense': (el) => { S.expenses = S.expenses.filter((x) => x.id !== el.dataset.id); closeSheet(); save(); render(false); toast('已刪除'); },
+  'parse-sample': (el) => { const t = SAMPLE_NOTIFS[Number(el.dataset.i)].text; $('#parse-text').value = t; $('#parse-out').innerHTML = parseResultHTML(t); },
+  'parse-add': () => {
+    const text = $('#parse-text').value, r = C.parseNotification(text);
+    if (!r) { toast('這則通知沒有金額，不會記帳'); return; }
+    S.expenses.push({ id: 'x' + uid(), who: 'me', ts: Date.now(), merchant: r.merchant, amount: r.amount, source: r.source === 'other' ? 'other' : r.source, category: r.category, visibility: 'shared', guessable: false, raw: text });
+    closeSheet(); save(); ui.moneyWho = 'me'; render(false);
+    toast('已記下 ' + r.merchant + ' ' + money(r.amount));
+  },
+
+  // calendar
+  'cal-sel': (el) => { ui.calSel = el.dataset.d; if (ui.calSel.slice(0, 7) !== ui.calMonth) ui.calMonth = ui.calSel.slice(0, 7); render(false); },
+  'cal-month': (el) => {
+    const p = ui.calMonth.split('-').map(Number);
+    const d = new Date(p[0], p[1] - 1 + Number(el.dataset.d), 1);
+    ui.calMonth = d.getFullYear() + '-' + pad(d.getMonth() + 1);
+    render(false);
+  },
+  'save-event': () => {
+    const title = $('#ev-title').value.trim();
+    if (!title) { $('#ev-err').hidden = false; return; }
+    const P = S.partner.name;
+    const ev = { id: 'e' + uid(), title: title, date: $('#ev-date').value || today(), time: $('#ev-time').value || '19:00', place: $('#ev-place').value.trim(), note: $('#ev-note').value.trim(), status: 'proposed', by: 'me', remind: Number($('#ev-remind').value) };
+    S.events.push(ev);
+    log('date', 'me', '你約 ' + P + '：' + title + '（' + md(ev.date) + ' ' + ev.time + '）');
+    ui.calSel = ev.date; ui.calMonth = ev.date.slice(0, 7);
+    closeSheet(); save(); render(false);
+    toast('已送出邀請');
+    setTimeout(() => {
+      ev.status = 'confirmed';
+      log('date', 'partner', P + ' 答應了：' + title);
+      push('event', P + ' 答應了：' + title, dayLabel(ev.date) + ' ' + ev.time, 'cal', 'calendar-heart');
+      refresh();
+    }, 3200);
+  },
+  'event-answer': (el) => {
+    const ev = S.events.find((e) => e.id === el.dataset.id);
+    ev.status = el.dataset.v;
+    log('date', 'me', (ev.status === 'confirmed' ? '你答應了：' : '你婉拒了：') + ev.title);
+    save(); render(false);
+    toast(ev.status === 'confirmed' ? '已答應，' + S.partner.name + ' 收到通知了' : '已婉拒');
+  },
+  'save-anniv': () => {
+    const title = $('#an-title').value.trim();
+    if (!title) { $('#an-err').hidden = false; return; }
+    const remind = $$('#sheet [data-act="toggle-chip"][aria-pressed="true"]').map((b) => Number(b.dataset.v));
+    S.anniversaries.push({ id: 'a' + uid(), title: title, date: $('#an-date').value || today(), kind: $('#an-kind').value, repeat: $('#an-yearly').getAttribute('aria-checked') === 'true' ? 'yearly' : 'none', remind: remind.length ? remind : [0] });
+    log('date', 'me', '你新增了紀念日「' + title + '」');
+    closeSheet(); save(); render(false); toast('已新增，兩個人都會收到提醒');
+  },
+  'toggle-chip': (el) => el.setAttribute('aria-pressed', String(el.getAttribute('aria-pressed') !== 'true')),
+
+  // cycle
+  'cycle-owner': (el) => {
+    const v = el.dataset.v, cy = S.cycle;
+    if (cy.owner !== v) {
+      cy.owner = v;
+      if (v === 'me') cy.partnerCanEdit = false;
+    }
+    save(); render(false);
+  },
+  'period-start': () => {
+    const T = today(), P = S.partner.name;
+    S.cycle.periods = S.cycle.periods.filter((p) => p.start !== T);
+    S.cycle.periods.push({ start: T, end: null });
+    log('cycle', 'me', S.cycle.owner === 'me' ? '你記錄了經期開始' : '你幫 ' + P + ' 記錄了經期開始');
+    save(); render(false); toast('已記錄，預測已更新');
+  },
+  'period-end': () => {
+    const sorted = S.cycle.periods.slice().sort((a, b) => a.start.localeCompare(b.start));
+    const last = sorted[sorted.length - 1];
+    last.end = today() < last.start ? last.start : today();
+    log('cycle', 'me', '記錄經期結束（' + (C.diffDays(last.start, last.end) + 1) + ' 天）');
+    save(); render(false); toast('已記錄經期結束');
+  },
+  'save-period': () => {
+    const s = $('#pd-start').value, e = $('#pd-end').value || null;
+    const err = $('#pd-err');
+    if (!s) { err.textContent = '請選擇開始日期'; err.hidden = false; return; }
+    if (e && e < s) { err.textContent = '結束日期不能早於開始日期'; err.hidden = false; return; }
+    S.cycle.periods = S.cycle.periods.filter((p) => p.start !== s);
+    S.cycle.periods.push({ start: s, end: e });
+    log('cycle', 'me', '補記經期 ' + md(s) + (e ? '–' + md(e) : ''));
+    closeSheet(); save(); render(false); toast('已記錄，預測已更新');
+  },
+  'cycle-flow': (el) => {
+    const T = today(), logs = S.cycle.logs;
+    logs[T] = logs[T] || { flow: '', symptoms: [] };
+    logs[T].flow = el.dataset.v; pressIn(el.parentElement, el); save();
+  },
+  'cycle-symptom': (el) => {
+    const T = today(), logs = S.cycle.logs, v = el.dataset.v;
+    logs[T] = logs[T] || { flow: '', symptoms: [] };
+    const i = logs[T].symptoms.indexOf(v);
+    if (i >= 0) logs[T].symptoms.splice(i, 1); else logs[T].symptoms.push(v);
+    el.setAttribute('aria-pressed', String(i < 0)); save();
+  },
+  'cycle-toggle': (el) => { S.cycle[el.dataset.k] = !S.cycle[el.dataset.k]; setSwitch(el, S.cycle[el.dataset.k]); save(); },
+
+  // sharing & privacy
+  'share-toggle': (el) => {
+    const k = el.dataset.k, P = S.partner.name;
+    S.sharing[k] = !S.sharing[k];
+    setSwitch(el, S.sharing[k]);
+    if (S.paired) {
+      const LABEL = { location: '位置', device: '手機狀態', expenses: '開銷', mood: '心情', cycle: '經期' };
+      log('pair', 'me', '你' + (S.sharing[k] ? '開啟' : '關閉') + '了' + LABEL[k] + '分享');
+      toast('已' + (S.sharing[k] ? '開啟' : '關閉') + '，' + P + ' 會收到通知');
+    }
+    save();
+  },
+  'pause-sharing': (el) => {
+    const P = S.partner.name;
+    let until;
+    if (el.dataset.min === 'tonight') { const d = new Date(); d.setHours(23, 59, 0, 0); until = d.getTime(); }
+    else until = Date.now() + Number(el.dataset.min) * 60000;
+    S.sharing.pausedUntil = until;
+    log('pair', 'me', '你暫停分享到 ' + hm(until));
+    save(); render(false); toast(P + ' 會看到你暫停到 ' + hm(until));
+  },
+  'resume-sharing': () => { S.sharing.pausedUntil = null; log('pair', 'me', '你恢復了分享'); save(); render(false); toast('已恢復分享'); },
+  'hide-cat': (el) => {
+    const v = el.dataset.v, list = S.sharing.hiddenCats, i = list.indexOf(v);
+    if (i >= 0) list.splice(i, 1); else list.push(v);
+    el.setAttribute('aria-pressed', String(i < 0)); save();
+  },
+  'notif-toggle': (el) => { const k = el.dataset.k; S.notif[k] = S.notif[k] === false; setSwitch(el, S.notif[k]); save(); },
+  'hist-filter': (el) => { ui.histFilter = el.dataset.v; render(false); },
+
+  // pairing
+  'onb-next': () => { const n = $('#onb-name').value.trim(); if (n) S.me.name = n; ui.onb = 2; render(true); },
+  'copy-code': () => {
+    const code = S.me.code;
+    const done = () => toast('已複製配對碼 ' + code);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(done, () => toast('配對碼：' + code));
+    else toast('配對碼：' + code);
+  },
+  'onb-pair': () => {
+    const v = $('#onb-code').value.trim().toUpperCase();
+    const err = $('#onb-err');
+    if (!/^[A-HJ-NP-Z2-9]{6}$/.test(v)) { err.textContent = '配對碼是 6 個英數字（不含 I、O、0、1）'; err.hidden = false; return; }
+    if (v === S.me.code) { err.textContent = '這是你自己的配對碼，請輸入對方的'; err.hidden = false; return; }
+    pairDone();
+  },
+  'onb-demo': () => pairDone(),
+  'onb-finish': () => {
+    const since = $('#onb-since').value;
+    if (since) S.togetherSince = since;
+    S.paired = true;
+    S.pairedAt = Date.now();
+    log('pair', 'system', '你和 ' + S.partner.name + ' 配對成功');
+    ui.onb = 1; ui.stack = []; ui.tab = 'home';
+    save(); render(true);
+    setTimeout(() => push('comfort', S.partner.name + ' 傳了悄悄話', '以後請多指教', 'home', 'message-circle-heart'), 1200);
+  },
+  unpair: () => {
+    const P = S.partner.name;
+    S.paired = false;
+    log('pair', 'me', '你解除了與 ' + P + ' 的配對');
+    closeSheet(); ui.onb = 1; ui.stack = []; save(); render(true);
+  },
+
+  // demo console
+  'sim-toggle': () => { ui.simOn = !ui.simOn; renderConsole(); if (currentView() === 'demo') render(false); },
+  'sim-speed': (el) => { ui.speed = Number(el.dataset.v); renderConsole(); if (currentView() === 'demo') render(false); },
+  'demo-go': (el) => { teleport(el.dataset.id); save(); },
+  demo: (el) => {
+    const v = el.dataset.v;
+    if (!S.paired) { toast('先完成配對'); return; }
+    if (v === 'sad') demoMood(rand(['sad', 'anxious', 'tired']), rand(['報告被退回了', '今天好不順', '頭有點痛']));
+    if (v === 'happy') demoMood(rand(['happy', 'sweet', 'missyou']), rand(['想你了', '今天超順利', '']));
+    if (v === 'hug') demoComfortMe();
+    if (v === 'battery') {
+      if (S.sim.state === 'dwell' && ROUTE[S.sim.i].charge) { S.sim.i = (S.sim.i + 1) % ROUTE.length; S.sim.state = 'move'; }
+      S.sim.battery = 19; batteryLow(); refresh();
+    }
+    if (v === 'spend') { partnerSpend('random'); refresh(); }
+    if (v === 'invite') demoInvite();
+    if (v === 'pause') demoPauseToggle();
+    if (v === 'guess') {
+      const mine = S.expenses.filter((e) => e.who === 'me' && e.visibility === 'shared' && !e.theirGuess);
+      if (!mine.length) { toast('你沒有可以給對方猜的開銷'); return; }
+      const e = mine[mine.length - 1];
+      e.guessable = true;
+      partnerGuesses(e, true);
+    }
+  },
+  'demo-reset': () => {
+    S = seed(); ui.stack = []; ui.tab = 'home'; ui.moneyWho = 'partner'; ui.calMonth = today().slice(0, 7); ui.calSel = today();
+    closeSheet(); save(); render(true); toast('示範資料已重設');
+  },
+  'demo-onboard': () => { S.paired = false; ui.onb = 1; ui.stack = []; closeSheet(); save(); render(true); }
+};
+function pairDone() { ui.onb = 3; render(true); }
+function partnerGuesses(e, now) {
+  const P = S.partner.name;
+  setTimeout(() => {
+    if (!S.expenses.includes(e)) return;
+    const g = Math.max(1, Math.round(e.amount * (0.7 + Math.random() * 0.6) / 5) * 5);
+    const sc = C.scoreGuess(g, e.amount);
+    e.theirGuess = { value: g, points: sc.points, ts: Date.now() };
+    log('money', 'partner', P + ' 猜你在 ' + e.merchant + ' 花了 ' + money(g) + '，實際 ' + money(e.amount) + '（' + sc.points + ' 分）');
+    push('guess', P + ' 猜了你的花費', e.merchant + '：猜 ' + money(g) + '，' + sc.label, 'money', 'coins');
+    refresh();
+  }, now ? 600 : 4000);
+}
+
+document.addEventListener('click', (ev) => {
+  const el = ev.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  const fn = A[el.dataset.act];
+  if (fn) fn(el, ev);
+});
+document.addEventListener('input', (ev) => {
+  const k = ev.target.dataset && ev.target.dataset.input;
+  if (k === 'parse') $('#parse-out').innerHTML = parseResultHTML(ev.target.value);
+  if (k === 'pl-r') $('#pl-r-v').textContent = ev.target.value;
+  if (k === 'since' && /^\d{4}-\d{2}-\d{2}$/.test(ev.target.value)) S.togetherSince = ev.target.value;
+});
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && ui.sheet) closeSheet(); });
+
+// 視窗大小或主題改變時重畫地圖底圖
+let resizeTimer = null;
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (currentView() === 'map') drawMap(); renderConsole(); }, 120); });
+if (window.matchMedia) {
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  if (mq.addEventListener) mq.addEventListener('change', () => { if (currentView() === 'map') drawMap(); });
+}
+new MutationObserver(() => { if (currentView() === 'map') drawMap(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (currentView() === 'map') drawMap(); });
+
+// 首次載入：依目前位置算出圍欄狀態（不發通知）
+runGeofence(false);
+render(true);
+</script>
