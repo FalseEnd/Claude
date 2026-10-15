@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 把 supabase/migrations/*.sql 依序串成一個 supabase/setup.sql（包在同一個交易裡），
 # 讓使用者在 Supabase 後台的 SQL Editor 貼上執行一次就設定好。
-#   bash supabase/scripts/build-setup.sh           產生 / 更新 setup.sql
+#   bash supabase/scripts/build-setup.sh           產生 / 更新 setup.sql 與分成小份的 setup-parts/
 #   bash supabase/scripts/build-setup.sh --check   只檢查 setup.sql 是否和遷移檔一致（測試用）
 set -euo pipefail
 
@@ -38,7 +38,9 @@ if [ "${1:-}" = "--check" ]; then
     exit 1
   fi
   echo "setup.sql 和 migrations 一致"
+  node "$dir/scripts/split-setup.js" --check
 else
   build > "$out"
   echo "已產生 $out"
+  node "$dir/scripts/split-setup.js"
 fi
