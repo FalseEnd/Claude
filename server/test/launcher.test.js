@@ -78,11 +78,13 @@ test('列出網址時略過手機連不到的虛擬網卡', () => {
     'Wi-Fi': nic('192.168.1.23'),
     'vEthernet (WSL (Hyper-V firewall))': nic('172.20.0.1'),
     'VirtualBox Host-Only Network': nic('192.168.56.1'),
+    'vEthernet (External Switch)': nic('192.168.1.40'),
+    veth12ab: nic('172.18.0.1'),
     Tailscale: nic('100.101.102.103'),
     lo: [{ family: 'IPv4', internal: true, address: '127.0.0.1' }]
   });
-  assert.deepEqual(list.map((a) => a.url), ['http://192.168.1.23:8080', 'http://100.101.102.103:8080']);
-  assert.equal(list[1].tailscale, true);
+  assert.deepEqual(list.map((a) => a.url), ['http://192.168.1.23:8080', 'http://192.168.1.40:8080', 'http://100.101.102.103:8080']);
+  assert.equal(list[2].tailscale, true);
   assert.equal(addresses(8080, { docker0: nic('172.17.0.1') }).length, 1, '只有虛擬網卡時還是列出來');
 });
 

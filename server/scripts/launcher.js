@@ -587,7 +587,9 @@ async function isOurServer(port) {
 
 /** 怎麼停止正在執行的伺服器 */
 function stopHint() {
-  if (!IS_WIN && !IS_MAC && fs.existsSync(autostartFile())) return '它在背景執行，要停止請執行：systemctl --user stop xiaoliangkou';
+  if (!IS_WIN && !IS_MAC && fs.existsSync(autostartFile())) {
+    return '要停止的話，關掉執行它的終端機視窗；如果是開機自動在背景執行的，請執行：systemctl --user stop xiaoliangkou';
+  }
   return '要停止的話，關掉原本那個伺服器視窗（Docker 版請執行 docker compose down）。';
 }
 

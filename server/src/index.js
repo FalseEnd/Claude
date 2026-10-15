@@ -10,8 +10,10 @@ const { createJobs } = require('./jobs');
 const registerRoutes = require('./routes');
 const loadConfig = require('./config');
 
-// 只在這台電腦內部用的虛擬網卡（WSL、Hyper-V、VirtualBox、VMware、Docker），手機連不到
-const VIRTUAL_ADAPTER = /^vEthernet \((Default Switch|WSL)|VirtualBox|Host-Only|VMware|VMnet|^vboxnet|^docker|^br-|^virbr|^veth/i;
+// 只在這台電腦內部用的虛擬網卡（WSL、Hyper-V 預設交換器、VirtualBox、VMware、Docker），手機連不到。
+// Hyper-V 的外部交換器（vEthernet (External…)）帶的是真正的區網位址，不能藏。Linux 的網卡名稱是小寫，分開比對。
+const VIRTUAL_ADAPTER = /^vEthernet \((Default Switch|WSL)|VirtualBox|Host-Only|VMware|VMnet/i;
+const VIRTUAL_LINUX = /^(vboxnet|docker|br-|virbr|veth)/;
 
 /** 這台電腦的區網 / Tailscale 位址，讓使用者知道 App 要填哪個網址 */
 function addresses(port, interfaces = os.networkInterfaces()) {
@@ -20,7 +22,7 @@ function addresses(port, interfaces = os.networkInterfaces()) {
     for (const a of list || []) {
       if (a.family !== 'IPv4' || a.internal) continue;
       const tailscale = a.address.startsWith('100.') && Number(a.address.split('.')[1]) >= 64 && Number(a.address.split('.')[1]) < 128;
-      out.push({ name, url: `http://${a.address}:${port}`, tailscale, virtual: !tailscale && VIRTUAL_ADAPTER.test(name) });
+      out.push({ name, url: `http://${a.address}:${port}`, tailscale, virtual: !tailscale && (VIRTUAL_ADAPTER.test(name) || VIRTUAL_LINUX.test(name)) });
     }
   }
   const real = out.filter((a) => !a.virtual);
