@@ -65,6 +65,13 @@ test('pg_dump／psql 挑跟資料庫伺服器相配的版本', () => {
   assert.equal(L.pickTool([], 16), null);
 });
 
+test('還原前先認出是不是 pg_dump 的備份檔', () => {
+  assert.equal(L.looksLikeDump('--\n-- PostgreSQL database dump\n--\n\nSET statement_timeout = 0;\n'), true);
+  assert.equal(L.looksLikeDump('--\r\n-- PostgreSQL database dump\r\n--\r\n'), true);
+  assert.equal(L.looksLikeDump('select 1;'), false);
+  assert.equal(L.looksLikeDump(''), false);
+});
+
 test('新版 pg_dump 的備份還原到舊版 PostgreSQL 前拿掉不認得的設定', () => {
   const sql = 'SET statement_timeout = 0;\nSET transaction_timeout = 0;\r\nSET lock_timeout = 0;\n';
   assert.equal(L.stripNewerSettings(sql, 16), 'SET statement_timeout = 0;\nSET lock_timeout = 0;\n');

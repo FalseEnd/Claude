@@ -163,6 +163,11 @@ function pickTool(tools, serverMajor) {
   return sorted.find((t) => t.major === serverMajor) || sorted.find((t) => t.major > serverMajor) || sorted[sorted.length - 1];
 }
 
+/** pg_dump 產生的純文字備份開頭都有這行註解 */
+function looksLikeDump(sql) {
+  return /^--\s*\n--\s*PostgreSQL database dump\b/m.test(String(sql).slice(0, 4096));
+}
+
 /** 新版 pg_dump（17 起）會寫入舊版 PostgreSQL 不認得的設定，還原到舊版前拿掉 */
 function stripNewerSettings(sql, serverMajor) {
   if (serverMajor >= 17) return sql;
@@ -741,6 +746,15 @@ async function restore(args) {
   if (!args.restore) throw new Fatal(IS_WIN ? '請把備份檔（.sql）拖曳到 restore-windows.bat 上面。' : `用法：./${START_FILE} --restore 備份檔.sql`);
   const file = path.resolve(args.restore);
   if (!fs.existsSync(file)) throw new Fatal(`找不到備份檔：${file}`);
+  // 刪掉任何資料之前，先確定這真的是一個讀得到的備份檔
+  let sql;
+  try {
+    if (!fs.statSync(file).isFile()) throw new Error('這是資料夾，不是檔案');
+    sql = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    throw new Fatal(`無法讀取備份檔 ${file}（${e.message}）。請選 backups 資料夾裡的 .sql 檔案。`);
+  }
+  if (!looksLikeDump(sql)) throw new Fatal(`這個檔案不是小倆口的備份檔：${file}\n請選 backups 資料夾裡、檔名是 xiaoliangkou-日期.sql 的檔案。`);
   const env = readEnvFile();
   if (!env.DATABASE_URL) {
     throw new Fatal(`還沒設定過資料庫：請先雙擊 ${START_FILE} 完成第一次設定，停止伺服器後再還原。`);
@@ -752,13 +766,22 @@ async function restore(args) {
   if (!args.yes && !(await confirm('確定嗎？'))) { say('已取消，沒有改動任何資料。'); return; }
 
   const saved = pgEnv(env.DATABASE_URL);
+  if ((args.pgHost && args.pgHost !== saved.PGHOST) || (args.pgPort && args.pgPort !== Number(saved.PGPORT))) {
+    throw new Fatal(`目前的設定用的是 ${saved.PGHOST}:${saved.PGPORT} 的 PostgreSQL。要還原到另一個，請先執行 ${START_FILE} --setup --pg-port 埠號 切換過去。`);
+  }
   const admin = await connectAdmin(Object.assign({ pgHost: saved.PGHOST, pgPort: Number(saved.PGPORT) }, args));
   let url = env.DATABASE_URL;
-  let major;
   let psql;
+  let source = file;
   try {
-    major = await versionOf(admin.client);
+    const major = await versionOf(admin.client);
     psql = requirePgTool('psql', major);
+    // 用新版 PostgreSQL 備份、還原到舊版時，拿掉舊版不認得的設定（也在刪資料之前準備好）
+    const fixed = stripNewerSettings(sql, major);
+    if (fixed !== sql) {
+      source = path.join(os.tmpdir(), `xiaoliangkou-restore-${process.pid}.sql`);
+      fs.writeFileSync(source, fixed);
+    }
     // 存的帳號密碼不能用（例如重灌過、在別的資料夾重新設定過）：先修好，才能在還原前備份
     const check = await tryConnect({ connectionString: url });
     if (check.client) await check.client.end();
@@ -773,19 +796,14 @@ async function restore(args) {
     const db = admin.client.escapeIdentifier(conn.PGDATABASE);
     await admin.client.query(`drop database if exists ${db} with (force)`);
     await admin.client.query(`create database ${db} owner ${admin.client.escapeIdentifier(conn.PGUSER)} template template0 encoding 'UTF8' lc_collate 'C' lc_ctype 'C'`);
+  } catch (e) {
+    if (source !== file) try { fs.unlinkSync(source); } catch (_) { /* 暫存檔 */ }
+    throw e;
   } finally {
     await admin.client.end().catch(() => {});
   }
 
   say('正在還原……');
-  // 用新版 PostgreSQL 備份、還原到舊版時，拿掉舊版不認得的設定
-  const sql = fs.readFileSync(file, 'utf8');
-  const fixed = stripNewerSettings(sql, major);
-  let source = file;
-  if (fixed !== sql) {
-    source = path.join(os.tmpdir(), `xiaoliangkou-restore-${process.pid}.sql`);
-    fs.writeFileSync(source, fixed);
-  }
   const r = spawnSync(psql.path, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-f', source], {
     env: Object.assign({}, process.env, pgEnv(url)), stdio: ['ignore', 'ignore', 'inherit'], windowsHide: true
   });
@@ -974,5 +992,5 @@ if (require.main === module) {
 
 module.exports = {
   parseArgs, upsertEnv, buildDatabaseUrl, pgEnv, backupFileName, autoBackupsToPrune, pgVersionText, errKind,
-  escapeXml, systemdQuote, psQuote, createPrompter, macPlist, systemdUnit, autoBackup, findPgTool, tempPassword, pickTool, stripNewerSettings, shQuote, macAutostartCommand, Fatal
+  escapeXml, systemdQuote, psQuote, createPrompter, macPlist, systemdUnit, autoBackup, findPgTool, tempPassword, pickTool, stripNewerSettings, looksLikeDump, shQuote, macAutostartCommand, Fatal
 };
