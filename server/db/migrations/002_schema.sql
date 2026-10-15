@@ -1,13 +1,14 @@
 -- =============================================================================
--- 小倆口 資料庫結構（Supabase / PostgreSQL 15+）
+-- 小倆口 資料庫結構（PostgreSQL 15+）
 --
--- 依賴 Supabase 內建：auth.users、auth.uid()、authenticated 角色、extensions schema。
+-- 依賴 001_platform.sql：auth.users、auth.uid()、authenticated 角色、extensions schema。
+-- 寫法與 Supabase 相容，之後要搬上雲端也可以直接使用。
 -- 原則：
 --   1. 每一筆個人資料（位置、電量、開銷、心情、經期）都屬於「擁有者」，
 --      對方能不能看，由擁有者的 sharing_settings 決定，並且可以隨時暫停。
 --   2. 兩人共用的資料（地點、紀念日、約會、歷史紀錄）掛在 couple 底下。
 --   3. 解除配對後，所有共享立即失效（helper 只認 left_at is null 的配對）。
---   4. 推播一律經由 notification_outbox，由 Edge Function 送 APNs / FCM。
+--   4. 通知一律先寫入 notification_outbox，伺服器再經由 WebSocket 送到 App（見 003_realtime.sql）。
 -- =============================================================================
 
 create extension if not exists pgcrypto with schema extensions;
@@ -283,7 +284,7 @@ create table public.push_tokens (
   updated_at  timestamptz not null default now()
 );
 
--- 只有 service role 讀寫；Database Webhook 在 insert 時呼叫 Edge Function 送推播
+-- 只有伺服器讀寫；新增時觸發 pg_notify，伺服器經由 WebSocket 送給 App，App 回覆收到後填 sent_at
 create table public.notification_outbox (
   id            bigint generated always as identity primary key,
   recipient_id  uuid not null references auth.users(id) on delete cascade,
@@ -689,8 +690,8 @@ create trigger sharing_changed after update on public.sharing_settings
 
 -- =============================================================================
 -- 每日排程：紀念日、交往天數里程碑；解除配對 30 天後清除共享資料
--- （經期關懷提醒需要週期預測，由 Edge Function 用 core.js 同一套演算法處理）
---   select cron.schedule('daily-reminders', '0 1 * * *', 'select public.daily_reminders()');  -- 台灣時間 09:00
+-- 伺服器每天 09:00 呼叫一次（server/src/jobs.js）。
+-- 經期關懷提醒需要週期預測，由伺服器用 prototype/core.js 同一套演算法處理。
 -- =============================================================================
 
 create or replace function public.daily_reminders(p_today date default (now() at time zone 'Asia/Taipei')::date)
@@ -844,7 +845,3 @@ revoke execute on function public.couple_of(uuid) from public, anon, authenticat
 revoke execute on function public.partner_of(uuid) from public, anon, authenticated;
 revoke execute on function public.shares(uuid, text) from public, anon, authenticated;
 revoke execute on function public.display_name_of(uuid) from public, anon, authenticated;
-
--- Realtime：首頁的對方狀態、心情、安撫、歷史紀錄即時更新（RLS 一樣適用）
--- alter publication supabase_realtime add table public.device_status, public.locations, public.moods,
---   public.comforts, public.activity_log, public.events;

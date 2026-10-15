@@ -29,8 +29,8 @@ language sql security definer as $$
 $$;
 grant execute on all functions in schema test to authenticated;
 
-insert into auth.users (id, email) values
-  (test.id('zhe'), 'zhe@example.com'), (test.id('yu'), 'yu@example.com'), (test.id('mia'), 'mia@example.com');
+insert into auth.users (id, username, password_hash) values
+  (test.id('zhe'), 'azhe', 'x'), (test.id('yu'), 'xiaoyu', 'x'), (test.id('mia'), 'miamia', 'x');
 
 set role authenticated;
 
