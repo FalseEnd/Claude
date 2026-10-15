@@ -126,7 +126,7 @@ fun ServerSetupScreen(vm: AppViewModel, back: () -> Unit) {
                     Text("1. 填入電腦的伺服器網址", style = MaterialTheme.typography.titleMedium)
                 }
                 CuteField(url, { url = it.trim(); tested = false }, "伺服器網址", placeholder = "http://192.168.1.23:8080", keyboard = KeyboardType.Uri,
-                    supporting = "電腦上執行 docker compose up -d 後，用瀏覽器打開 http://localhost:8080 會看到要填的網址")
+                    supporting = "在電腦上雙擊啟動檔（Windows 是 start-windows.bat）後，視窗裡會列出要填的網址")
                 CuteButton(if (tested) "連上了 ✅" else "測試連線", Modifier.fillMaxWidth(), icon = Icons.Rounded.Wifi, enabled = url.length > 8 && !vm.busy) {
                     vm.account(onDone = { tested = true; vm.toast("連上你的伺服器了 🎉") }) { vm.container.testServer(url) }
                 }

@@ -94,7 +94,10 @@ async function createApp(cfg = loadConfig(), { log = console.log, startJobs = tr
     jobs,
     hub,
     listen(port = cfg.port) {
-      return new Promise((resolve) => server.listen(port, '0.0.0.0', () => resolve(server.address().port)));
+      return new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(port, '0.0.0.0', () => { server.off('error', reject); resolve(server.address().port); });
+      });
     },
     async close() {
       jobs.stop();
@@ -107,20 +110,39 @@ async function createApp(cfg = loadConfig(), { log = console.log, startJobs = tr
   };
 }
 
-if (require.main === module) {
-  const cfg = loadConfig();
-  createApp(cfg).then(async (app) => {
-    const port = await app.listen(cfg.port);
-    console.log(`小倆口伺服器已啟動：http://localhost:${port}`);
-    if (process.env.IN_DOCKER) console.log(`  ${DOCKER_HINT}`);
-    else for (const a of addresses(port)) console.log(`  App 可以連 ${a.url}${a.tailscale ? '（Tailscale）' : ''}`);
-    const stop = () => app.close().then(() => process.exit(0));
-    process.on('SIGINT', stop);
-    process.on('SIGTERM', stop);
-  }).catch((e) => {
-    console.error('啟動失敗：', e.message);
+/** 啟動伺服器並印出連線說明；npm start 與不用 Docker 的啟動程式都走這裡 */
+async function main(cfg = loadConfig()) {
+  let app;
+  try {
+    app = await createApp(cfg);
+  } catch (e) {
+    console.error(`啟動失敗：${e.message}`);
+    if (/ECONNREFUSED|connect/i.test(e.message)) console.error('連不到資料庫：請確認 PostgreSQL 有在執行。');
     process.exit(1);
-  });
+  }
+  let port;
+  try {
+    port = await app.listen(cfg.port);
+  } catch (e) {
+    await app.close().catch(() => {});
+    if (e.code === 'EADDRINUSE') console.error(`埠號 ${cfg.port} 已經被使用，可能小倆口已經在執行了，或在 .env 改用其他 PORT。`);
+    else console.error(`啟動失敗：${e.message}`);
+    process.exit(1);
+  }
+  console.log(`\n💞 小倆口伺服器已啟動：http://localhost:${port}`);
+  if (process.env.IN_DOCKER) console.log(`  ${DOCKER_HINT}`);
+  else {
+    const list = addresses(port);
+    if (list.length) console.log('  在 App 的「伺服器網址」填入：');
+    for (const a of list) console.log(`    ${a.url}${a.tailscale ? '　← Tailscale（在外面也能連）' : '　← 同一個 Wi-Fi'}`);
+  }
+  console.log('  關掉這個視窗，伺服器就會停止。\n');
+  const stop = () => app.close().then(() => process.exit(0));
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
+  return { app, port };
 }
 
-module.exports = { createApp, addresses };
+if (require.main === module) main();
+
+module.exports = { createApp, addresses, main };

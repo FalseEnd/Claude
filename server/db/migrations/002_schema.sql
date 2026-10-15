@@ -11,7 +11,6 @@
 --   4. 通知一律先寫入 notification_outbox，伺服器再經由 WebSocket 送到 App（見 003_realtime.sql）。
 -- =============================================================================
 
-create extension if not exists pgcrypto with schema extensions;
 
 -- -----------------------------------------------------------------------------
 -- 帳號與配對
@@ -378,7 +377,8 @@ create or replace function public.gen_pair_code() returns text
 language plpgsql volatile as $$
 declare
   alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';  -- 32 個字元
-  bytes bytea := extensions.gen_random_bytes(6);
+  -- gen_random_uuid() 是 PostgreSQL 13 起內建的強隨機數，不需要安裝 pgcrypto
+  bytes bytea := decode(replace(gen_random_uuid()::text, '-', ''), 'hex');
   code text := '';
 begin
   for i in 0..5 loop

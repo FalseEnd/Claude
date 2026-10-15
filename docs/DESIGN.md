@@ -202,7 +202,7 @@ flowchart LR
     UI[Compose 介面] --- SVC[前景服務：位置、標點判斷、手機狀態、WebSocket]
     NL[通知監聽：自動記帳] --- SVC
   end
-  subgraph PC["你的電腦（Docker Compose）"]
+  subgraph PC["你的電腦（雙擊 start 檔，或 Docker Compose）"]
     API[Node.js 伺服器：REST API、WebSocket、排程]
     DB[(PostgreSQL：Row Level Security)]
   end
@@ -221,7 +221,8 @@ flowchart LR
 | 地圖 | osmdroid（OpenStreetMap） | 免 API 金鑰、免費 |
 | 本機設定 | DataStore | 伺服器網址、登入權杖、標點進出狀態、步數基準 |
 | 伺服器 | Node.js（只依賴 `pg`、`ws`） | 輕量，Windows／macOS／Linux 都能跑 |
-| 資料庫 | PostgreSQL 16 | RLS 讓權限寫在資料庫裡；trigger 寫歷史紀錄與通知 |
+| 架設 | 雙擊啟動檔（`server/scripts/launcher.js`）；或 Docker Compose | 第一次用 PostgreSQL 管理員密碼建立專用帳號 `xlk`（非超級使用者）與資料庫，之後直接啟動；每天自動備份 |
+| 資料庫 | PostgreSQL 13 以上（建議最新版） | RLS 讓權限寫在資料庫裡；trigger 寫歷史紀錄與通知 |
 | 通知 | 資料庫 `notification_outbox` → `pg_notify` → WebSocket → App 回 ack | 不需要 Firebase；離線期間的通知在重新連線時補送 |
 | 排程 | 伺服器每分鐘：約會提醒；每天 09:00：紀念日、里程碑、經期關懷 | |
 
@@ -238,7 +239,7 @@ flowchart LR
 | App 核心邏輯 | `cd android && ./gradlew testDebugUnitTest` | 經期預測、地理圍欄、猜花費、付款通知解析、紀念日（與 JS 版相同案例） |
 | App 畫面 | `./gradlew recordRoborazziDebug` | 不需模擬器，把每個畫面（含深色模式）畫成圖片 |
 | App ↔ 伺服器 | `XLK_TEST_SERVER=http://127.0.0.1:18080 ./gradlew testDebugUnitTest` | App 的資料層對真的伺服器走完配對、狀態、通知、標點、記帳、猜花費、約會、經期、解除配對 |
-| 伺服器 | `npm run test:server` | 40 項資料庫權限測試＋13 項 API / WebSocket 端對端測試 |
+| 伺服器 | `npm run test:server` | 40 項資料庫權限測試＋13 項 API / WebSocket 端對端測試＋啟動程式的單元測試 |
 | 共用邏輯（JS） | `npm test` | 17 項 |
 
 ---
@@ -249,4 +250,4 @@ flowchart LR
 - 共同相簿、願望清單。
 - 農曆生日（每年換算成國曆）。
 - 雲端發票載具匯入（需向財政部申請 API）。
-- 伺服器管理頁：備份、還原、重設密碼。
+- 伺服器管理頁：在瀏覽器裡備份、還原、重設密碼（目前用啟動檔的參數）。

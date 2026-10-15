@@ -16,17 +16,22 @@
 
 ## 快速開始
 
-1. **在電腦啟動伺服器**（需要 [Docker Desktop](https://www.docker.com/products/docker-desktop/)）：
-
-   ```sh
-   docker compose up -d
-   ```
-
-   打開 <http://localhost:8080> 看到「小倆口伺服器運作中」就成功了。
+1. **在電腦啟動伺服器**（不需要 Docker）：
+   1. 安裝 [Node.js](https://nodejs.org/zh-tw/download)（LTS 版）與 [PostgreSQL](https://www.enterprisedb.com/downloads/postgres-postgresql-downloads)（安裝時設定的密碼要記下來）。
+   2. 雙擊 `start-windows.bat`（Mac：`start-mac.command`，Linux：`start-linux.sh`）。第一次會問一次 PostgreSQL 的密碼，自動建立資料庫，然後打開瀏覽器顯示「小倆口伺服器運作中」。
+   3. 黑色視窗會列出要填進 App 的網址。關掉視窗，伺服器就會停止。
 2. **安裝 App**：把 `XiaoLiangKou.apk` 傳到兩支手機安裝，或自己建置（見下方）。
 3. 打開 App →「連接我的伺服器」→ 填電腦的網址 → 兩人各自註冊 → 配對。
 
-手機在外面也要能連，建議電腦和手機都裝 Tailscale。完整步驟、權限設定與備份方式見 [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)。
+| 檔案（Windows） | 做什麼 |
+|---|---|
+| `start-windows.bat` | 啟動伺服器（第一次會設定資料庫） |
+| `autostart-windows.bat` | 登入電腦時自動啟動；再執行一次取消 |
+| `backup-windows.bat` | 立刻備份（伺服器開著時每天也會自動備份到 `backups`） |
+| `restore-windows.bat` | 把備份檔拖到它上面就能還原 |
+| `reset-password-windows.bat` | 忘記 App 密碼時產生臨時密碼 |
+
+手機在外面也要能連，建議電腦和手機都裝 Tailscale。防火牆、開機自動啟動、備份還原、Docker 架法等完整說明見 [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)。
 
 不想先架伺服器？App 裡選「先看看示範」就能體驗所有畫面，還可以在「示範控制台」扮演對方。
 
@@ -35,8 +40,9 @@
 | 路徑 | 內容 |
 |---|---|
 | [`android/`](android) | Android App（Kotlin、Jetpack Compose、Material 3） |
-| [`server/`](server) | 自架伺服器（Node.js）與 PostgreSQL 資料庫結構、權限規則、測試 |
-| [`docker-compose.yml`](docker-compose.yml) | 一行指令啟動伺服器＋資料庫 |
+| [`server/`](server) | 自架伺服器（Node.js）與 PostgreSQL 資料庫結構、權限規則、測試；[`server/scripts/launcher.js`](server/scripts/launcher.js) 是雙擊啟動檔背後的啟動程式 |
+| `start-*`、`*-windows.bat` | 不用 Docker 的啟動、自動啟動、備份、還原、重設密碼 |
+| [`docker-compose.yml`](docker-compose.yml) | 用 Docker 架設時使用 |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | 設計文件：介面風格、功能規格、隱私原則、系統架構 |
 | [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) | 架設與連線教學 |
 | [`prototype/`](prototype) | 最早的網頁互動原型；`core.js` 是伺服器也在用的共用邏輯 |
@@ -56,7 +62,7 @@ Windows 用 `gradlew.bat assembleRelease`。正式上架前請換成自己的簽
 
 ```sh
 npm test                                   # 共用邏輯（JS）
-npm run test:server                        # 資料庫權限 + API / WebSocket（需要本機 PostgreSQL）
+npm run test:server                        # 資料庫權限 + API / WebSocket + 啟動程式（需要本機 PostgreSQL）
 cd android && ./gradlew testDebugUnitTest  # App 核心邏輯
 cd android && ./gradlew recordRoborazziDebug  # 不用模擬器，把每個畫面畫成圖片
 ```

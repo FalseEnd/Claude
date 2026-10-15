@@ -6,7 +6,9 @@
   "scripts": {
     "test": "node --test prototype/core.test.js",
     "test:server": "cd server && npm install --no-audit --no-fund && bash scripts/test.sh",
-    "server": "docker compose up -d"
+    "server": "node server/scripts/launcher.js",
+    "server:docker": "docker compose up -d",
+    "backup": "node server/scripts/launcher.js --backup"
   },
   "engines": {
     "node": ">=20"

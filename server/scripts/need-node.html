@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>小倆口：安裝 Node.js</title>
+<style>
+  :root { --bg: #FFF5F7; --ink: #4A2B39; --soft: #8A6575; --pink: #F0607F; --card: #fff; --line: #F8D0DA; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #24161C; --ink: #F8E6EC; --soft: #C8A6B4; --card: #33212A; --line: #5A3443; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.75 system-ui, "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 40px 16px 60px; }
+  h1 { color: var(--pink); font-size: 28px; margin: 0 0 4px; }
+  .mochi { font-size: 56px; animation: bob 2.4s ease-in-out infinite; display: inline-block; }
+  @keyframes bob { 50% { transform: translateY(-6px) rotate(-4deg); } }
+  @media (prefers-reduced-motion: reduce) { .mochi { animation: none; } }
+  p.lead { color: var(--soft); margin-top: 0; }
+  ol { padding: 0; list-style: none; counter-reset: step; }
+  li { counter-increment: step; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 16px 20px 16px 64px; margin: 14px 0; position: relative; box-shadow: 0 4px 20px #f0607f1a; }
+  li::before { content: counter(step); position: absolute; left: 18px; top: 16px; width: 32px; height: 32px; border-radius: 50%; background: var(--pink); color: #fff; font-weight: 700; display: grid; place-items: center; }
+  a.btn { display: inline-block; background: var(--pink); color: #fff; text-decoration: none; padding: 8px 20px; border-radius: 999px; font-weight: 700; margin-top: 6px; }
+  a.btn:hover { filter: brightness(1.08); }
+  code { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 1px 8px; white-space: nowrap; }
+  .tip { color: var(--soft); font-size: 15px; }
+</style>
+<main>
+  <div class="mochi" aria-hidden="true">🍡</div>
+  <h1>還差一步：安裝 Node.js</h1>
+  <p class="lead">小倆口伺服器是用 Node.js 寫的，這台電腦需要先安裝它（免費，大約 2 分鐘）。</p>
+  <ol>
+    <li>打開 Node.js 官網，下載標示 <b>LTS</b> 的安裝程式（Windows 選 .msi，Mac 選 .pkg）。<br>
+      <a class="btn" href="https://nodejs.org/zh-tw/download" target="_blank" rel="noopener">前往 Node.js 下載頁</a></li>
+    <li>打開下載的安裝程式，一路按「Next／繼續」直到完成。<br>
+      <span class="tip">出現「Tools for Native Modules」的勾選框時不用勾。</span></li>
+    <li>回到小倆口的資料夾，再雙擊一次 <code>start-windows.bat</code>（Mac 是 <code>start-mac.command</code>）。</li>
+  </ol>
+  <p class="tip">接下來如果還沒裝 PostgreSQL 資料庫，啟動程式會再打開下一份說明。</p>
+</main>
+</html>
