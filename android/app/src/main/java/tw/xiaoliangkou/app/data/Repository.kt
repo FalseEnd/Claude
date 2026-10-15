@@ -10,7 +10,7 @@ import java.time.LocalDate
 
 data class LatLng(val lat: Double, val lng: Double)
 
-/** 整個 App 畫面需要的資料。伺服器模式與示範模式都產生同樣的結構。 */
+/** 整個 App 畫面需要的資料。Supabase 模式與示範模式都產生同樣的結構。 */
 data class AppState(
     val loaded: Boolean = false,
     val demo: Boolean = false,

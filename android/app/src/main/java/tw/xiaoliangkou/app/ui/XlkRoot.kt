@@ -1,5 +1,6 @@
 package tw.xiaoliangkou.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -67,6 +68,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import tw.xiaoliangkou.app.data.Banner
+import tw.xiaoliangkou.app.data.SettingsStore
 import tw.xiaoliangkou.app.ui.components.BannerCard
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.HeartBurstOverlay
@@ -88,6 +90,8 @@ import tw.xiaoliangkou.app.ui.screens.ExpenseViewSheet
 import tw.xiaoliangkou.app.ui.screens.GuessSheet
 import tw.xiaoliangkou.app.ui.screens.HistoryScreen
 import tw.xiaoliangkou.app.ui.screens.HomeScreen
+import tw.xiaoliangkou.app.ui.screens.InviteConfirmDialog
+import tw.xiaoliangkou.app.ui.screens.LoginScreen
 import tw.xiaoliangkou.app.ui.screens.MapScreen
 import tw.xiaoliangkou.app.ui.screens.MoneyScreen
 import tw.xiaoliangkou.app.ui.screens.MoodScreen
@@ -99,7 +103,8 @@ import tw.xiaoliangkou.app.ui.screens.PeriodSheet
 import tw.xiaoliangkou.app.ui.screens.PermissionsScreen
 import tw.xiaoliangkou.app.ui.screens.PlaceSheet
 import tw.xiaoliangkou.app.ui.screens.PrivacyScreen
-import tw.xiaoliangkou.app.ui.screens.ServerSetupScreen
+import tw.xiaoliangkou.app.ui.screens.RegisterScreen
+import tw.xiaoliangkou.app.ui.screens.SupabaseSetupScreen
 import tw.xiaoliangkou.app.ui.screens.SplashScreen
 import tw.xiaoliangkou.app.ui.screens.WelcomeScreen
 import tw.xiaoliangkou.app.ui.theme.Cute
@@ -140,11 +145,13 @@ fun XlkRoot(vm: AppViewModel, deepLink: String?, onDeepLinkHandled: () -> Unit) 
     val hearts = rememberHeartBurst()
     var banner by remember { mutableStateOf<Banner?>(null) }
     var pendingRoute by remember { mutableStateOf<String?>(null) }
+    val pendingInvite by vm.container.pendingInvite.collectAsState()
 
     LaunchedEffect(vm) {
         vm.messages.collect { msg -> snackbar.currentSnackbarData?.dismiss(); launch { snackbar.showSnackbar(msg) } }
     }
     LaunchedEffect(vm) { vm.hearts.collect { hearts.burst() } }
+    LaunchedEffect(vm) { vm.container.notices.collect { vm.toast(it) } }
     LaunchedEffect(vm) {
         vm.banners.collectLatest { b ->
             banner = b
@@ -172,6 +179,10 @@ fun XlkRoot(vm: AppViewModel, deepLink: String?, onDeepLinkHandled: () -> Unit) 
             }
         }
         HeartBurstOverlay(hearts)
+        // 另一半的邀請連結：先確認要連到哪裡（示範模式、還沒登入時才會出現）
+        pendingInvite?.let { inv ->
+            InviteConfirmDialog(inv, p?.supabaseUrl, demo = p?.mode == SettingsStore.Mode.DEMO, onConfirm = vm.container::confirmInvite, onDismiss = vm.container::dismissInvite)
+        }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 96.dp)) { data ->
             Text(
                 data.visuals.message,
@@ -184,13 +195,28 @@ fun XlkRoot(vm: AppViewModel, deepLink: String?, onDeepLinkHandled: () -> Unit) 
     }
 }
 
+/** 還沒登入：歡迎 → 連接 Supabase → 註冊／登入 */
 @Composable
 private fun StartFlow(vm: AppViewModel) {
-    var setup by rememberSaveable { mutableStateOf(false) }
-    AnimatedContent(setup, Modifier.systemBarsPadding(), transitionSpec = {
-        (slideInHorizontally { if (targetState) it else -it } + fadeIn()) togetherWith (slideOutHorizontally { if (targetState) -it else it } + fadeOut())
-    }, label = "start") { onSetup ->
-        if (onSetup) ServerSetupScreen(vm) { setup = false } else WelcomeScreen(vm) { setup = true }
+    val prefs by vm.prefs.collectAsState()
+    val prefill by vm.container.prefill.collectAsState()
+    // 登出或登入過期後回來：網址、金鑰都還在，直接到登入
+    var page by rememberSaveable { mutableStateOf(if (prefs?.configured == true && prefs?.lastEmail?.isNotEmpty() == true) "login" else "welcome") }
+    // 確認了另一半的邀請：到「連接 Supabase」，網址、金鑰已經填好
+    LaunchedEffect(prefill) { if (prefill != null) page = "setup" }
+    val toWelcome = { vm.container.clearPrefill(); page = "welcome" }
+    BackHandler(page != "welcome") { if (page == "setup") toWelcome() else page = "setup" }
+    val order = listOf("welcome", "setup", "login", "register")
+    AnimatedContent(page, Modifier.systemBarsPadding().imePadding(), transitionSpec = {
+        val forward = order.indexOf(targetState) >= order.indexOf(initialState)
+        (slideInHorizontally { if (forward) it else -it } + fadeIn()) togetherWith (slideOutHorizontally { if (forward) -it else it } + fadeOut())
+    }, label = "start") { p ->
+        when (p) {
+            "setup" -> SupabaseSetupScreen(vm, back = toWelcome) { page = it }
+            "login" -> LoginScreen(vm, back = { page = "setup" }) { page = "register" }
+            "register" -> RegisterScreen(vm, back = { page = "setup" }) { page = "login" }
+            else -> WelcomeScreen(vm) { page = "setup" }
+        }
     }
 }
 
@@ -201,10 +227,10 @@ private fun Connecting(vm: AppViewModel) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)) {
         tw.xiaoliangkou.app.ui.components.CoupleMascots(height = 130.dp)
-        Text("正在連到你的伺服器…", style = MaterialTheme.typography.titleMedium)
+        Text("正在連到你們的 Supabase…", style = MaterialTheme.typography.titleMedium)
         LoadingDots()
         if (slow) {
-            Text("還連不上。請確認電腦開著、伺服器有啟動，手機和電腦在同一個 Wi-Fi 或都開著 Tailscale。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("還連不上。請確認手機有網路；免費的 Supabase 專案一週沒人用會被暫停，到 Supabase 後台按 Resume project 就好 ☁️", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             CuteButton("再試一次", Modifier.fillMaxWidth()) { vm.refresh() }
             SoftButton("登出，重新設定", Modifier.fillMaxWidth()) { scope.launch { vm.container.logout() } }
         }

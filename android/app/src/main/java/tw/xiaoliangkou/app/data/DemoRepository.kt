@@ -35,7 +35,7 @@ import kotlin.math.hypot
 import kotlin.random.Random
 
 /**
- * 示範模式：不需要伺服器，資料存在記憶體裡。
+ * 示範模式：不需要 Supabase，資料存在記憶體裡。
  * 「小雨」會在台北市區照固定行程移動、耗電、在咖啡店消費，也會回應你的安撫與邀約。
  */
 class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
@@ -67,7 +67,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
     private val _banners = MutableSharedFlow<Banner>(extraBufferCapacity = 16)
     override val banners: SharedFlow<Banner> = _banners
 
-    /** 對方開放猜的開銷，真正的金額先藏在這裡（跟伺服器一樣，猜之前拿不到） */
+    /** 對方開放猜的開銷，真正的金額先藏在這裡（跟資料庫一樣，猜之前拿不到） */
     private val hiddenAmounts = mutableMapOf<String, Double>()
     private var nextId = 1000L
     private fun id() = nextId++
@@ -192,7 +192,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
 
         return AppState(
             loaded = true, demo = true, connected = true,
-            me = Profile(ME, "阿哲", username = "demo"),
+            me = Profile(ME, "阿哲", email = "azhe@example.com"),
             partner = Profile(PARTNER, "小雨"),
             couple = Couple("demo-couple", since.toString()),
             mySharing = Sharing(ME, shareLocation = true, shareDevice = true, shareExpenses = true, shareMood = true, shareCycle = false),

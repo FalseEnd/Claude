@@ -223,7 +223,8 @@ fun CycleScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
                     if (pr.stats.irregular) Note("最近幾個週期長短差比較多，預測可能不準。", "🤔")
                     if (canEdit) {
                         val last = s.cycleBundle.periods.maxByOrNull { it.startDate }
-                        val inPeriod = last != null && last.endDate == null && LocalDate.parse(last.startDate) <= today
+                        // 日期看不懂（例如資料庫裡的 infinity）就當作不在經期中，不要讓畫面當掉
+                        val inPeriod = last != null && last.endDate == null && Fmt.parseDate(last.startDate)?.let { it <= today } == true
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (inPeriod && last != null) CuteButton("經期結束了", Modifier.weight(1f), icon = Icons.Rounded.Check) {
                                 vm.act("已記錄經期結束") { it.updatePeriod(last.id, buildJsonObject { put("endDate", today.toString()) }) }
@@ -260,9 +261,10 @@ fun CycleScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
         if (history.isNotEmpty()) {
             item { SectionTitle("紀錄", trailing = "${history.size} 次") }
             items(history, key = { it.id }) { p ->
-                val start = LocalDate.parse(p.startDate)
-                val end = p.endDate?.let(LocalDate::parse)
-                val prev = history.getOrNull(history.indexOf(p) + 1)?.let { LocalDate.parse(it.startDate) }
+                // 看不懂的日期就跳過這一筆
+                val start = Fmt.parseDate(p.startDate) ?: return@items
+                val end = Fmt.parseDate(p.endDate)
+                val prev = history.getOrNull(history.indexOf(p) + 1)?.let { Fmt.parseDate(it.startDate) }
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(c.card).padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -344,7 +346,7 @@ fun PeriodSheet(vm: AppViewModel, forPartner: Boolean, close: () -> Unit) {
         DateField("結束（選填）", end ?: "") { end = it }
         val invalid = end != null && end!! < start
         if (invalid) Text("結束日期不能早於開始日期", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        CuteButton("儲存", Modifier.fillMaxWidth(), enabled = !invalid && !vm.busy && LocalDate.parse(start) <= LocalDate.now()) {
+        CuteButton("儲存", Modifier.fillMaxWidth(), enabled = !invalid && !vm.busy && Fmt.parseDate(start)?.let { it <= LocalDate.now() } == true) {
             vm.act("已記錄，預測更新了", onDone = close) { it.addPeriod(forPartner, start, end) }
         }
     }

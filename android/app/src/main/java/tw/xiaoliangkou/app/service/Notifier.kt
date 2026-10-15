@@ -35,7 +35,7 @@ class Notifier(private val context: Context) {
             NotificationChannel(CH_LOVE, "抱抱、心情與悄悄話", NotificationManager.IMPORTANCE_HIGH).apply { description = "對方安撫你、更新心情、猜了你的花費" },
             NotificationChannel(CH_PLACE, "抵達與離開", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "對方進出你們設定的標點、電量低" },
             NotificationChannel(CH_REMIND, "約會與紀念日", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "約會邀請、紀念日與經期關懷提醒" },
-            NotificationChannel(CH_SERVICE, "背景連線", NotificationManager.IMPORTANCE_MIN).apply { description = "保持與伺服器連線、分享位置時常駐" ; setShowBadge(false) },
+            NotificationChannel(CH_SERVICE, "背景連線", NotificationManager.IMPORTANCE_MIN).apply { description = "保持即時連線、分享位置時常駐"; setShowBadge(false) },
         ))
     }
 

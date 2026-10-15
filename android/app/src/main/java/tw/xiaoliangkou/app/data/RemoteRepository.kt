@@ -21,8 +21,8 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 /**
- * 連自架伺服器的資料來源。收到 WebSocket「changed」時只重抓有變動的部分，
- * 收到「notification」時交給 [onNotification]（前景顯示卡片、背景發系統通知）。
+ * 連 Supabase 的資料來源。收到 Realtime 的「changed」時只重抓有變動的部分，
+ * 收到通知時交給 [onNotification]（前景顯示卡片、背景發系統通知）。
  */
 class RemoteRepository(
     private val api: Api,
@@ -52,6 +52,8 @@ class RemoteRepository(
                 }
             }
         }
+        // 先用 RPC 載入畫面，不必等即時連線（Realtime 連不上時 App 也能用）
+        jobs += scope.launch { runCatching { refreshAll() } }
         jobs += scope.launch {
             realtime.connected.collect { c ->
                 _state.update { it.copy(connected = c) }
@@ -73,7 +75,7 @@ class RemoteRepository(
 
     private fun loadersFor(table: String): List<suspend () -> Unit> = when (table) {
         "profiles", "couples", "couple_members", "sharing_settings" -> listOf(::loadMe, ::loadPartnerStatus, ::loadPlaces, ::loadHistory)
-        "device_status", "locations" -> listOf(::loadPartnerStatus)
+        "device_status", "locations" -> listOf(::loadMe, ::loadPartnerStatus) // 「對方在線上」也跟著更新
         "places", "place_events" -> listOf(::loadPlaces)
         "expenses", "expense_guesses" -> listOf(::loadExpenses)
         "moods" -> listOf(::loadMoods)
@@ -119,6 +121,8 @@ class RemoteRepository(
     private suspend fun loadPrefs() { val p = apiCall { api.notificationPrefs() }; _state.update { it.copy(notifPrefs = p) } }
 
     override suspend fun refreshAll() {
+        // 即時連線沒在運作的話，通知也順便用 RPC 補抓
+        realtime.pollIfDisconnected()
         loadMe()
         coroutineScope {
             listOf(::loadPartnerStatus, ::loadPlaces, ::loadExpenses, ::loadMoods, ::loadComforts, ::loadAnniversaries,
@@ -128,7 +132,7 @@ class RemoteRepository(
 
     override fun close() { jobs.forEach { it.cancel() }; flushJob?.cancel() }
 
-    // ---------------------------------------------------------------- 寫入（之後由 WebSocket 的 changed 重新整理畫面，這裡也先抓一次讓畫面立刻更新）
+    // ---------------------------------------------------------------- 寫入（之後由 Realtime 的 changed 重新整理畫面，這裡也先抓一次讓畫面立刻更新）
     override suspend fun createInvite(): Invite = apiCall { api.invite() }
     override suspend fun acceptInvite(code: String, togetherSince: String?) {
         apiCall { api.accept(buildJsonObject { put("code", code); if (togetherSince != null) put("togetherSince", togetherSince) }) }

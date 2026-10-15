@@ -5,7 +5,7 @@ import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 
 /**
- * 經期預測，與 prototype/core.js 的演算法相同（伺服器的關懷提醒也用那一份）。
+ * 經期預測，與 prototype/core.js 的演算法相同（資料庫排程的關懷提醒也照這一份移植）。
  * - 週期長度：最近 6 個週期的平均，15–60 天以外視為漏記
  * - 排卵日：下次經期前 [Settings.lutealLength] 天（預設 14）
  * - 易孕期：排卵日前 5 天到後 1 天，其餘為「相對安全期」

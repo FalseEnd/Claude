@@ -82,7 +82,7 @@ object Geo {
     }
 }
 
-/** 猜花費計分（與伺服器 submit_guess() 相同的分級） */
+/** 猜花費計分（與資料庫 submit_guess() 相同的分級） */
 object Guess {
     data class Score(val points: Int, val label: String, val ratio: Double, val diff: Double)
 

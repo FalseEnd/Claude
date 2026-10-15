@@ -48,13 +48,16 @@ import java.time.Instant
 import java.time.LocalDate
 
 /**
- * 常駐的前景服務（連自架伺服器時才啟動）：
- * - 保持 WebSocket，讓 App 在背景也收得到抱抱、抵達通知
+ * 常駐的前景服務（登入 Supabase 後才啟動）：
+ * - 保持即時連線（Supabase Realtime），讓 App 在背景也收得到抱抱、抵達通知；連不上時每 3 分鐘用 RPC 補抓
  * - 分享位置時回報位置，並在手機上判斷是否進出標點
  * - 回報電量、充電、網路、螢幕、勿擾、步數
  */
 class ShareService : LifecycleService() {
     companion object {
+        /** 即時連線斷掉時，多久用 RPC 補抓一次通知 */
+        const val POLL_MS = 3 * 60_000L
+
         fun start(context: Context) {
             runCatching { ContextCompat.startForegroundService(context, Intent(context, ShareService::class.java)) }
         }
@@ -113,7 +116,7 @@ class ShareService : LifecycleService() {
                     .distinctUntilChanged()
                     .collect { (connected, partner, sharingLocation) ->
                         val text = when {
-                            !connected -> "連不到伺服器，會自動重試"
+                            !connected -> "即時連線暫時中斷，會自動重試；通知可能晚幾分鐘到"
                             sharingLocation -> "正在和 $partner 分享位置"
                             else -> "已連線，會即時收到 $partner 的通知"
                         }
@@ -132,6 +135,13 @@ class ShareService : LifecycleService() {
             while (true) {
                 delay(5 * 60_000L)
                 scheduleDeviceReport(0)
+            }
+        }
+        // 即時連線連不上（但 API 可以用）時，每 3 分鐘用 RPC 補抓一次通知，抱抱、抵達提醒才不會一直收不到
+        lifecycleScope.launch {
+            while (true) {
+                delay(POLL_MS)
+                if (container.repo.value is RemoteRepository) container.realtime.pollIfDisconnected()
             }
         }
     }

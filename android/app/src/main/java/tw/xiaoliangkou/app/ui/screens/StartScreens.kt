@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,19 +27,28 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,11 +58,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -61,6 +75,8 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.InviteLink
+import tw.xiaoliangkou.app.data.Supabase
 import tw.xiaoliangkou.app.service.ShareService
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.components.CoupleMascots
@@ -73,7 +89,6 @@ import tw.xiaoliangkou.app.ui.components.LoadingDots
 import tw.xiaoliangkou.app.ui.components.Note
 import tw.xiaoliangkou.app.ui.components.Pill
 import tw.xiaoliangkou.app.ui.components.ScreenHeader
-import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.ToggleRow
 import tw.xiaoliangkou.app.ui.components.bouncyClick
@@ -90,7 +105,7 @@ fun SplashScreen() {
 }
 
 @Composable
-fun WelcomeScreen(vm: AppViewModel, onServer: () -> Unit) {
+fun WelcomeScreen(vm: AppViewModel, onConnect: () -> Unit) {
     Column(
         Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Cute.colors.partnerSoft, MaterialTheme.colorScheme.background, Cute.colors.meSoft)))
             .padding(horizontal = 24.dp, vertical = 32.dp),
@@ -102,35 +117,133 @@ fun WelcomeScreen(vm: AppViewModel, onServer: () -> Unit) {
         HeartBeat { Text("小倆口", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.primary) }
         Text("用一條紅線，牽起兩個人的日常", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(Modifier.weight(1f))
-        CuteButton("連接我的伺服器", Modifier.fillMaxWidth(), icon = Icons.Rounded.Link, onClick = onServer)
+        CuteButton("連接 Supabase", Modifier.fillMaxWidth(), icon = Icons.Rounded.Link, onClick = onConnect)
         SoftButton("先看看示範", Modifier.fillMaxWidth(), icon = Icons.Rounded.Science) { vm.container.startDemo() }
-        Text("伺服器架在你自己的電腦上，資料不經過任何雲端。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Text("資料存在你們自己的 Supabase 專案，在哪裡都能連。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+    }
+}
+
+/** 輸入框右邊的「貼上」小按鈕 */
+@Composable
+private fun PasteChip(onClick: () -> Unit) {
+    Text(
+        "貼上", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer,
+        modifier = Modifier.padding(end = 8.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primaryContainer)
+            .bouncyClick(onClick = onClick).padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+}
+
+internal fun clipboardText(context: Context): String =
+    context.getSystemService(ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }
+        ?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+
+internal fun copyText(context: Context, label: String, text: String) {
+    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(label, text))
+}
+
+internal fun shareText(context: Context, text: String, title: String) {
+    val send = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }
+    context.startActivity(Intent.createChooser(send, title))
+}
+
+/**
+ * 打開另一半的邀請連結時先問一下：要連到哪裡（主機名稱）、有什麼要注意。
+ * 按「幫我填好」只會填進「連接 Supabase」，要再按「測試連線」成功才會存起來。
+ */
+@Composable
+fun InviteConfirmDialog(invite: Pair<String, String>, savedUrl: String?, demo: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 32.dp), contentAlignment = Alignment.Center) {
+            InviteConfirmCard(invite, savedUrl, demo, onConfirm, onDismiss)
+        }
     }
 }
 
 @Composable
-fun ServerSetupScreen(vm: AppViewModel, back: () -> Unit) {
-    val prefs = vm.prefs.value
-    var url by remember { mutableStateOf(prefs?.serverUrl?.ifEmpty { null } ?: "http://") }
-    var tested by remember { mutableStateOf(false) }
-    var mode by remember { mutableStateOf("register") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf("") }
+private fun InviteConfirmCard(invite: Pair<String, String>, savedUrl: String?, demo: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val review = remember(invite, savedUrl, demo) { InviteLink.review(invite.first, savedUrl, demo) }
+    Column(
+        Modifier.widthIn(max = 420.dp).shadow(16.dp, RoundedCornerShape(28.dp)).clip(RoundedCornerShape(28.dp)).background(Cute.colors.card)
+            .verticalScroll(rememberScrollState()).padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        EmojiBubble("💌", Cute.colors.partnerSoft, 60.dp)
+        Text("要連到這個 Supabase 嗎？", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        Text("收到連線邀請，確認是你們的再繼續喔", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (review.official) Cute.colors.meSoft else Cute.colors.periodSoft).padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(if (review.official) "☁️" else "❓", style = MaterialTheme.typography.titleLarge)
+            Column(Modifier.weight(1f)) {
+                Text(review.host, style = MaterialTheme.typography.titleMedium, maxLines = 2)
+                Text(if (review.official) "Supabase 官方網址" else "不是 Supabase 官方網址", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        review.warnings.forEach { Note(it, "⚠️", Cute.colors.butter.copy(alpha = 0.3f)) }
+        if (review.warnings.isEmpty()) Note("按下去只會幫你填好設定，按「測試連線」成功後才會存起來", "🔒", MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f))
+        if (review.official) {
+            CuteButton(if (demo) "離開示範，幫我填好" else "幫我填好", Modifier.fillMaxWidth(), icon = Icons.Rounded.Link, onClick = onConfirm)
+            SoftButton("不要，取消", Modifier.fillMaxWidth(), onClick = onDismiss)
+        } else {
+            // 不是官方網址：顯眼的大按鈕是「不要」
+            CuteButton("不要，取消", Modifier.fillMaxWidth(), onClick = onDismiss)
+            SoftButton(if (demo) "我確定，離開示範填好" else "我確定，幫我填好", Modifier.fillMaxWidth(), onClick = onConfirm)
+        }
+    }
+}
+
+@Composable
+fun SupabaseSetupScreen(vm: AppViewModel, back: () -> Unit, next: (String) -> Unit) {
+    val prefs by vm.prefs.collectAsState()
+    val prefill by vm.container.prefill.collectAsState()
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val savedUrl = prefs?.supabaseUrl.orEmpty()
+    val savedKey = prefs?.supabaseKey.orEmpty()
+    // 邀請連結確認後只是先填好，不會自動測試、也還沒存
+    var url by remember(prefill, savedUrl) { mutableStateOf(prefill?.first ?: savedUrl) }
+    var key by remember(prefill, savedKey) { mutableStateOf(prefill?.second ?: savedKey) }
+    val tested = prefill == null && savedUrl.isNotEmpty() && Supabase.normalizeUrl(url) == savedUrl && Supabase.normalizeKey(key) == savedKey
+    val normalized = Supabase.normalizeUrl(url)
+    val dashboard = Supabase.dashboardRef(url) != null
+    val urlIssue = if (url.length > 10 && !dashboard) Supabase.urlProblem(normalized) else null
+    val keyIssue = if (key.length >= 10) Supabase.keyProblem(Supabase.normalizeKey(key)) else null
+    val unofficial = url.length > 10 && urlIssue == null && !Supabase.isOfficialHost(Supabase.hostOf(normalized))
+    val test = { vm.account(onDone = { vm.toast("連上你們的 Supabase 了 🎉") }) { vm.container.testConnection(url, key) } }
+    fun paste(into: (String) -> Unit) {
+        val text = clipboardText(context)
+        val inv = InviteLink.parse(text)
+        when {
+            inv != null -> { url = inv.first; key = inv.second; vm.toast("貼上了另一半的邀請 💌") }
+            text.isBlank() -> vm.toast("剪貼簿是空的，先到 Supabase 後台複製喔")
+            else -> into(text.trim())
+        }
+    }
     LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { ScreenHeader("連接伺服器", onBack = back) }
+        item { ScreenHeader("連接 Supabase", onBack = back) }
+        if (prefill != null) item {
+            Note("已經幫你填好另一半傳來的設定（☁️ ${Supabase.hostOf(prefill!!.first)}），按「測試連線」成功後才會存起來，接著就能註冊 💕", "💌", Cute.colors.partnerSoft)
+        }
         item {
             CuteCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    EmojiBubble("🖥️", Cute.colors.meSoft, 44.dp)
-                    Text("1. 填入電腦的伺服器網址", style = MaterialTheme.typography.titleMedium)
+                    EmojiBubble("☁️", Cute.colors.meSoft, 44.dp)
+                    Column {
+                        Text("1. 貼上你們的 Supabase", style = MaterialTheme.typography.titleMedium)
+                        Text("在 Supabase 後台上方的 Connect（或 Project Settings › Data API／API Keys）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                CuteField(url, { url = it.trim(); tested = false }, "伺服器網址", placeholder = "http://192.168.1.23:8080", keyboard = KeyboardType.Uri,
-                    supporting = "在電腦上雙擊啟動檔（Windows 是 start-windows.bat）後，視窗裡會列出要填的網址")
-                CuteButton(if (tested) "連上了 ✅" else "測試連線", Modifier.fillMaxWidth(), icon = Icons.Rounded.Wifi, enabled = url.length > 8 && !vm.busy) {
-                    vm.account(onDone = { tested = true; vm.toast("連上你的伺服器了 🎉") }) { vm.container.testServer(url) }
-                }
-                Note("在家用同一個 Wi-Fi 就能連；出門在外建議電腦和手機都裝 Tailscale，填 100.x.x.x 開頭的網址。", "🏠")
+                CuteField(url, { url = it.trim() }, "Supabase 網址", placeholder = "https://xxxx.supabase.co", keyboard = KeyboardType.Uri,
+                    supporting = if (dashboard) "這是後台的網址，會自動換成 $normalized ✨" else urlIssue, isError = urlIssue != null,
+                    trailing = { PasteChip { paste { url = it } } })
+                CuteField(key, { key = Supabase.normalizeKey(it) }, "Supabase 金鑰（anon / publishable key）", placeholder = "sb_publishable_…",
+                    supporting = keyIssue ?: "公開用的金鑰，資料由資料庫的權限規則保護", isError = keyIssue != null,
+                    trailing = { PasteChip { paste { key = Supabase.normalizeKey(it) } } })
+                if (unofficial) Note("這不是 Supabase 官方的網址（xxxx.supabase.co）。除非你們自己架了 Supabase，不然先確認一下，登入時密碼會送到這裡喔", "⚠️", Cute.colors.butter.copy(alpha = 0.3f))
+                CuteButton(if (tested) "連上了 ✅" else "測試連線", Modifier.fillMaxWidth(), icon = Icons.Rounded.Cloud,
+                    enabled = url.length > 10 && key.length > 10 && urlIssue == null && keyIssue == null && !vm.busy) { test() }
+                if (vm.busy) Box(Modifier.align(Alignment.CenterHorizontally)) { LoadingDots() }
             }
         }
         item {
@@ -140,20 +253,87 @@ fun ServerSetupScreen(vm: AppViewModel, back: () -> Unit) {
                         EmojiBubble("🔑", Cute.colors.partnerSoft, 44.dp)
                         Text("2. 註冊或登入", style = MaterialTheme.typography.titleMedium)
                     }
-                    Segmented(listOf("register" to "第一次使用", "login" to "我已經有帳號"), mode) { mode = it }
-                    CuteField(username, { username = it.lowercase().filter { c -> c.isLetterOrDigit() || c == '_' || c == '.' }.take(32) }, "帳號", placeholder = "英文小寫或數字，例如 azhe")
-                    CuteField(password, { password = it }, "密碼", password = true, supporting = if (mode == "register") "至少 6 個字" else null)
-                    if (mode == "register") CuteField(name, { name = it.take(30) }, "暱稱", placeholder = "對方會看到的名字")
-                    CuteButton(if (mode == "register") "註冊" else "登入", Modifier.fillMaxWidth(), enabled = username.length >= 3 && password.length >= 6 && (mode == "login" || name.isNotBlank()) && !vm.busy) {
-                        vm.account {
-                            if (mode == "register") vm.container.register(url, username, password, name.trim())
-                            else vm.container.login(url, username, password)
-                        }
-                    }
-                    if (vm.busy) Box(Modifier.align(Alignment.CenterHorizontally)) { LoadingDots() }
+                    CuteButton("第一次使用：註冊", Modifier.fillMaxWidth(), icon = Icons.Rounded.PersonAdd) { next("register") }
+                    SoftButton("我已經有帳號：登入", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Login) { next("login") }
                 }
             }
         }
+        item {
+            CuteCard(color = Cute.colors.partnerSoft, onClick = { runCatching { uriHandler.openUri(Supabase.GUIDE_URL) } }) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("🐣", style = MaterialTheme.typography.headlineSmall)
+                    Column(Modifier.weight(1f)) {
+                        Text("還沒有 Supabase 專案嗎？", style = MaterialTheme.typography.titleSmall)
+                        Text("跟著設定教學一步一步來，免費、大約 10 分鐘 ☕ 另一半不用設定，等你傳邀請連結過去就好", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(Icons.AutoMirrored.Rounded.MenuBook, "設定教學", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+        item { Text("資料存在你們自己的 Supabase 專案，在哪裡都能連。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
+    }
+}
+
+private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
+
+/** 登入、註冊共用的外框 */
+@Composable
+private fun AuthScaffold(
+    vm: AppViewModel, title: String, greeting: String, sub: String, back: () -> Unit,
+    switchText: String, onSwitch: () -> Unit, content: @Composable ColumnScope.() -> Unit,
+) {
+    val prefs by vm.prefs.collectAsState()
+    LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item { ScreenHeader(title, onBack = back) }
+        item {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                CoupleMascots(height = 110.dp)
+                Text(greeting, style = MaterialTheme.typography.headlineSmall)
+                Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            }
+        }
+        item { CuteCard(content = content) }
+        item {
+            Text(
+                switchText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).bouncyClick(onClick = onSwitch).padding(12.dp),
+            )
+        }
+        val host = prefs?.supabaseUrl?.substringAfter("://")?.substringBefore('/').orEmpty()
+        if (host.isNotEmpty()) item {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Pill("☁️ $host", contentColor = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+}
+
+@Composable
+fun LoginScreen(vm: AppViewModel, back: () -> Unit, toRegister: () -> Unit) {
+    val prefs by vm.prefs.collectAsState()
+    var email by remember { mutableStateOf(prefs?.lastEmail.orEmpty()) }
+    var password by remember { mutableStateOf("") }
+    AuthScaffold(vm, "登入", "歡迎回來 💕", "用註冊時的 Email 和密碼登入", back, "還沒有帳號？註冊一個", toRegister) {
+        CuteField(email, { email = it.trim() }, "Email", placeholder = "you@example.com", keyboard = KeyboardType.Email)
+        CuteField(password, { password = it }, "密碼", password = true, keyboard = KeyboardType.Password)
+        CuteButton("登入", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Login, enabled = EMAIL.matches(email) && password.length >= 6 && !vm.busy) {
+            vm.account { vm.container.login(email, password) }
+        }
+        if (vm.busy) Box(Modifier.align(Alignment.CenterHorizontally)) { LoadingDots() }
+    }
+}
+
+@Composable
+fun RegisterScreen(vm: AppViewModel, back: () -> Unit, toLogin: () -> Unit) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    AuthScaffold(vm, "註冊", "嗨，初次見面 👋", "一個小倆口只能註冊兩個人：你和另一半", back, "已經有帳號了？登入", toLogin) {
+        CuteField(email, { email = it.trim() }, "Email", placeholder = "you@example.com", keyboard = KeyboardType.Email)
+        CuteField(password, { password = it }, "密碼", password = true, keyboard = KeyboardType.Password, supporting = "至少 6 個字")
+        CuteField(name, { name = it.take(30) }, "暱稱", placeholder = "對方會看到的名字")
+        CuteButton("註冊", Modifier.fillMaxWidth(), icon = Icons.Rounded.Favorite, enabled = EMAIL.matches(email) && password.length >= 6 && name.isNotBlank() && !vm.busy) {
+            vm.account { vm.container.register(email, password, name) }
+        }
+        if (vm.busy) Box(Modifier.align(Alignment.CenterHorizontally)) { LoadingDots() }
     }
 }
 
@@ -164,12 +344,28 @@ fun PairingScreen(s: AppState, vm: AppViewModel) {
     var input by remember { mutableStateOf("") }
     var since by remember { mutableStateOf(LocalDate.now().toString()) }
     val scope = rememberCoroutineScope()
+    val prefs by vm.prefs.collectAsState()
+    val p = prefs?.takeIf { it.configured && !s.demo }
     LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 CoupleMascots(height = 120.dp, rightColor = MaterialTheme.colorScheme.outline)
                 Text("嗨 ${s.me?.displayName ?: ""}，來配對另一半吧", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
                 Text("一個人產生配對碼，另一個人輸入", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (p != null) item {
+            CuteCard(color = Cute.colors.meSoft) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    EmojiBubble("💌", Cute.colors.card, 44.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text("另一半還沒裝好？", style = MaterialTheme.typography.titleSmall)
+                        Text("先傳連線邀請過去，點一下就會自動填好你們的 Supabase", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                SoftButton("分享給另一半", Modifier.fillMaxWidth(), icon = Icons.Rounded.Share) {
+                    shareText(context, InviteLink.shareText(p.supabaseUrl, p.supabaseKey), "傳送連線邀請")
+                }
             }
         }
         item {
@@ -187,12 +383,12 @@ fun PairingScreen(s: AppState, vm: AppViewModel) {
                     Text("24 小時內有效", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SoftButton("複製", Modifier.weight(1f), icon = Icons.Rounded.ContentCopy) {
-                            context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("配對碼", code))
+                            copyText(context, "配對碼", code!!)
                             vm.toast("已複製配對碼")
                         }
                         CuteButton("傳給對方", Modifier.weight(1f), icon = Icons.Rounded.Share) {
-                            val send = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "打開小倆口，輸入配對碼 $code 跟我配對 💞") }
-                            context.startActivity(Intent.createChooser(send, "傳送配對碼"))
+                            val link = p?.let { "\n\n還沒連上我們的小倆口的話，先點這個連結：\n${InviteLink.build(it.supabaseUrl, it.supabaseKey)}" }.orEmpty()
+                            shareText(context, "打開小倆口，輸入配對碼 $code 跟我配對 💞$link", "傳送配對碼")
                         }
                     }
                 }

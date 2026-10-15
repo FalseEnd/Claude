@@ -4,18 +4,17 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.time.ZoneId
 
-// 與伺服器 API 的 JSON 對應（欄位為 camelCase）
-
-@Serializable data class AuthResponse(val token: String, val userId: String? = null)
+// 與資料庫 app_* 函式回傳的 JSON 對應（欄位為 camelCase）
 
 @Serializable data class Profile(
     val id: String,
     val displayName: String,
     val avatarUrl: String? = null,
     val birthday: String? = null,
-    val username: String? = null,
+    val email: String? = null,
 )
 
 @Serializable data class Couple(val id: String, val togetherSince: String? = null, val createdAt: String? = null)
@@ -186,6 +185,27 @@ import java.time.ZoneId
     val time: Instant get() = createdAt.toInstantOrNull() ?: Instant.EPOCH
 }
 
-@Serializable data class ApiError(val error: String? = null, val message: String? = null)
+/** app_pending_notifications 回傳的通知 */
+@Serializable data class PendingNotification(
+    val id: Long,
+    val kind: String = "",
+    val title: String = "小倆口",
+    val body: String? = null,
+    val data: JsonObject? = null,
+    val createdAt: String? = null,
+)
 
-fun String.toInstantOrNull(): Instant? = runCatching { Instant.parse(this) }.getOrNull()
+private val SHORT_OFFSET = Regex("([+-]\\d{2})$")
+
+/**
+ * 時間字串 → Instant。資料庫回傳 "2026-10-15T02:16:21.531234+00:00"，App 自己產生的是 "...Z"，小數秒可有可無。
+ * Android 8 的 Instant.parse 不接受 +00:00，所以先用 OffsetDateTime（兩種都接受）。
+ */
+fun String.toInstantOrNull(): Instant? {
+    val s = trim().replace(' ', 'T')
+    if (s.isEmpty()) return null
+    return runCatching { OffsetDateTime.parse(s).toInstant() }.getOrNull()
+        // "+00" 這種沒有分鐘的時區（PostgreSQL 的文字格式）
+        ?: runCatching { OffsetDateTime.parse(SHORT_OFFSET.replace(s, "$1:00")).toInstant() }.getOrNull()
+        ?: runCatching { Instant.parse(s) }.getOrNull()
+}

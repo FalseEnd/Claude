@@ -159,7 +159,7 @@ private fun PartnerPhone(s: AppState, vm: AppViewModel) {
                 when {
                     ps?.paused == true -> "${s.partnerName} 暫停分享到 ${Fmt.time(ps.pausedUntilInstant!!)}，時間到會自動恢復 🙈"
                     ps?.shareDevice != true -> "${s.partnerName} 目前沒有分享手機狀態"
-                    else -> "還沒收到手機狀態，等對方的手機連上伺服器 📡"
+                    else -> "還沒收到手機狀態，等對方打開小倆口 📡"
                 },
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

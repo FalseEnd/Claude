@@ -23,49 +23,86 @@ import org.junit.Before
 import org.junit.Test
 import tw.xiaoliangkou.app.core.PaymentParser
 import tw.xiaoliangkou.app.data.Api
+import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.RealtimeClient
 import tw.xiaoliangkou.app.data.RemoteRepository
+import tw.xiaoliangkou.app.data.SessionManager
+import tw.xiaoliangkou.app.data.SupabaseClient
 import tw.xiaoliangkou.app.data.apiCall
 import java.time.Instant
 import java.time.LocalDate
+import java.util.UUID
 
 /**
- * App 的資料層對真正的自架伺服器跑一遍：確認 JSON 欄位對得上、WebSocket 通知與自動更新都正常。
- * 需要一台全新（沒有帳號）的伺服器：XLK_TEST_SERVER=http://127.0.0.1:18080 ./gradlew testDebugUnitTest
+ * App 的資料層對真正的 Supabase 跑一遍：註冊登入、RPC 的 JSON 欄位、Realtime 通知與自動更新、token 換新。
+ * 需要已經套用 supabase/migrations 的專案，而且還沒有人註冊（一個小倆口只能有兩個人），例如本機：
+ *   supabase start && supabase db reset
+ *   XLK_TEST_SUPABASE_URL=http://127.0.0.1:54321 XLK_TEST_SUPABASE_KEY=<ANON_KEY> ./gradlew testDebugUnitTest --tests '*ServerIntegrationTest*'
  * 沒設定環境變數時會略過。
  */
 class ServerIntegrationTest {
-    private val url: String? = System.getenv("XLK_TEST_SERVER")
+    private val url: String? = System.getenv("XLK_TEST_SUPABASE_URL")
+    private val key: String? = System.getenv("XLK_TEST_SUPABASE_KEY")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val run = UUID.randomUUID().toString().take(8)
 
-    @Before fun requireServer() = Assume.assumeTrue("set XLK_TEST_SERVER to run", url != null)
+    @Before fun requireSupabase() = Assume.assumeTrue("set XLK_TEST_SUPABASE_URL and XLK_TEST_SUPABASE_KEY to run", url != null && key != null)
     @After fun tearDown() = scope.cancel()
 
-    private suspend fun eventually(what: String, ms: Long = 6000, check: () -> Boolean) {
+    private suspend fun eventually(what: String, ms: Long = 10_000, check: () -> Boolean) {
         val end = System.currentTimeMillis() + ms
         while (System.currentTimeMillis() < end) { if (check()) return; delay(100) }
         throw AssertionError("等不到：$what")
     }
 
-    private class Client(val repo: RemoteRepository, val realtime: RealtimeClient, val notes: MutableList<RealtimeClient.Event.Notification>)
-
-    private suspend fun signUp(username: String, name: String): Client {
-        val r = apiCall {
-            Api.create(url!!) { null }.register(buildJsonObject { put("username", username); put("password", "secret1"); put("displayName", name) })
-        }
-        val api = Api.create(url!!) { r.token }
-        val rt = RealtimeClient(scope)
-        val notes = java.util.Collections.synchronizedList(mutableListOf<RealtimeClient.Event.Notification>())
-        val repo = RemoteRepository(api, rt, scope) { notes += it }
-        rt.start(url!!, r.token)
-        return Client(repo, rt, notes)
+    private suspend fun failsWith(code: String, block: suspend () -> Unit) {
+        try { apiCall { block() }; throw AssertionError("應該要失敗：$code") } catch (e: AppException) { assertEquals(e.message, code, e.code) }
     }
 
-    @Test fun fullFlowAgainstRealServer() = runBlocking {
-        withTimeout(60_000) {
+    private fun email(name: String) = "$name+$run@example.com"
+    private fun anon() = SupabaseClient(url!!, key!!, null)
+
+    private class Client(
+        val email: String, val session: SessionManager, val supabase: SupabaseClient, val api: Api,
+        val repo: RemoteRepository, val realtime: RealtimeClient, val notes: MutableList<RealtimeClient.Event.Notification>,
+    ) {
+        val userId get() = session.current!!.userId
+    }
+
+    private suspend fun signUp(name: String, displayName: String): Client {
+        val s = try {
+            apiCall { anon().signUp(email(name), "secret1", displayName) }
+        } catch (e: AppException) {
+            if (e.code == "registration_closed") throw AssertionError("這個 Supabase 已經有人註冊了，請先 supabase db reset", e)
+            throw e
+        }
+        val sm = SessionManager(url!!, key!!, s)
+        val c = SupabaseClient(url!!, key!!, sm)
+        val rt = RealtimeClient(scope)
+        sm.onChange = { rt.updateToken(it.accessToken) }
+        val notes = java.util.Collections.synchronizedList(mutableListOf<RealtimeClient.Event.Notification>())
+        val repo = RemoteRepository(c.api, rt, scope) { notes += it }
+        rt.start(url!!, key!!, s.userId, { sm.freshToken() }, c.api)
+        return Client(email(name), sm, c, c.api, repo, rt, notes)
+    }
+
+    @Test fun fullFlowAgainstSupabase() = runBlocking {
+        withTimeout(120_000) {
+            assertEquals(true, apiCall { anon().api.health() }["ok"]?.let { (it as JsonPrimitive).content.toBoolean() })
+
+            // 註冊、登入
             val zhe = signUp("azhe", "阿哲")
+            failsWith("email_taken") { anon().signUp(zhe.email, "secret1", "阿哲") }
+            failsWith("invalid_login") { anon().signIn(zhe.email, "wrong-password") }
+            failsWith("weak_password") { anon().signUp(email("weak"), "123", "弱") }
+            assertEquals(zhe.userId, apiCall { anon().signIn(zhe.email, "secret1") }.userId)
             val yu = signUp("xiaoyu", "小雨")
-            eventually("WebSocket 連線") { zhe.realtime.connected.value && yu.realtime.connected.value }
+            eventually("Realtime 連線與訂閱") { listOf(zhe, yu).all { it.realtime.connected.value && it.realtime.subscribed.value } }
+            val meZhe = apiCall { zhe.api.me() }
+            assertEquals(zhe.email, meZhe.user.email)
+            assertEquals("阿哲", meZhe.user.displayName)
+            assertNull(meZhe.couple)
+            failsWith("not_paired") { zhe.repo.locatePartner() }
 
             // 配對
             val code = zhe.repo.createInvite().code
@@ -86,6 +123,7 @@ class ServerIntegrationTest {
             })
             zhe.repo.reportLocation(25.0330, 121.5654, 12f, 0f)
             eventually("對方畫面自動更新電量") { yu.repo.state.value.partnerStatus.device?.batteryLevel == 55 }
+            eventually("對方在線上") { yu.repo.state.value.partnerOnline }
             assertEquals(25.0330, yu.repo.state.value.partnerStatus.location!!.lat, 1e-6)
             zhe.repo.reportDevice(buildJsonObject { put("batteryLevel", 15); put("isCharging", false); put("network", "cellular") })
             eventually("低電量通知") { yu.notes.any { it.kind == "battery_low" && it.title.contains("15%") } }
@@ -95,7 +133,7 @@ class ServerIntegrationTest {
             eventually("暫停後看不到位置") { yu.repo.state.value.partnerSharing?.paused == true && yu.repo.state.value.partnerStatus.location == null }
             zhe.repo.pauseSharing(0)
 
-            // 心情與安撫：對方的畫面靠 WebSocket 的 changed 自動更新
+            // 心情與安撫：對方的畫面靠 Realtime 的 changed 自動更新
             yu.repo.postMood("sad", "被主管念了")
             eventually("心情同步") { zhe.repo.state.value.moods.any { it.mood == "sad" && it.note == "被主管念了" } }
             eventually("心情通知") { zhe.notes.any { it.kind == "mood" } }
@@ -169,13 +207,44 @@ class ServerIntegrationTest {
             // 「現在在哪」
             val locate = async { yu.realtime.events.first { it is RealtimeClient.Event.Locate } }
             assertTrue(zhe.repo.locatePartner())
-            withTimeout(5000) { locate.await() }
+            withTimeout(10_000) { locate.await() }
+
+            // 斷線期間的通知：重新連上時用 app_pending_notifications 補抓，並標記已送達
+            yu.realtime.stop()
+            val before = yu.notes.size
+            zhe.repo.sendComfort("pat", "斷線也收得到")
+            yu.realtime.start(url!!, key!!, yu.userId, { yu.session.freshToken() }, yu.api)
+            eventually("補抓斷線期間的通知") { yu.notes.drop(before).any { it.kind == "comfort" && it.body == "斷線也收得到" } }
+            eventually("通知已確認送達") { runBlocking { apiCall { yu.api.pendingNotifications() } }.isEmpty() }
+            assertEquals(1, yu.notes.count { it.body == "斷線也收得到" })
+
+            // access token 換新：API 照常、Realtime 收到新 token 後繼續收通知
+            val oldToken = zhe.session.current!!.accessToken
+            assertNotNull(zhe.session.refreshBlocking(null))
+            assertTrue(zhe.session.current!!.accessToken != oldToken)
+            zhe.repo.refreshAll()
+            zhe.repo.setNotifPref("comfort", true)
+            yu.repo.sendComfort("hug", "換新 token 之後")
+            eventually("換新 token 後的通知") { zhe.notes.any { it.body == "換新 token 之後" } }
+            yu.repo.postMood("happy", "換新 token 之後")
+            eventually("換新 token 後的自動更新") { zhe.repo.state.value.moods.any { it.note == "換新 token 之後" } }
+
+            // 改密碼：先用舊密碼確認，再改
+            apiCall { yu.supabase.updatePassword(yu.session.current!!.accessToken, "secret2") }
+            failsWith("invalid_login") { anon().signIn(yu.email, "secret1") }
+            assertEquals(yu.userId, apiCall { anon().signIn(yu.email, "secret2") }.userId)
 
             // 解除配對
             yu.repo.unpair()
             eventually("解除後看不到對方") { !zhe.repo.state.value.paired && zhe.repo.state.value.partnerStatus.device == null }
             assertNotNull(zhe.repo.state.value.me)
             zhe.realtime.stop(); yu.realtime.stop()
+            // 登出後 refresh token 失效：換新失敗就要請使用者重新登入
+            apiCall { zhe.supabase.signOut(zhe.session.current!!.accessToken) }
+            var expired = false
+            zhe.session.onExpired = { expired = true }
+            assertNull(zhe.session.refreshBlocking(null))
+            assertTrue("登出後應該要重新登入", expired)
         }
     }
 }

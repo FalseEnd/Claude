@@ -2,14 +2,14 @@
 
 > 一條紅線，牽起兩個人的日常。
 
-小倆口是給已經在一起的兩個人用的 **Android App**，伺服器與資料庫**架在你自己的電腦上**。它不取代 LINE，而是補上聊天軟體做不到的部分：**不用開口就知道對方的狀態**（在哪、電量、心情、花了什麼），以及**把在一起的日子記下來**（紀念日、約會、經期、歷史紀錄）。
+小倆口是給已經在一起的兩個人用的 **Android App**，資料存在**你們自己的免費 Supabase 專案**裡。它不取代 LINE，而是補上聊天軟體做不到的部分：**不用開口就知道對方的狀態**（在哪、電量、心情、花了什麼），以及**把在一起的日子記下來**（紀念日、約會、經期、歷史紀錄）。
 
 | 文件 | 內容 |
 |---|---|
 | 本文件 | 產品、介面風格、功能規格、隱私原則、系統架構 |
-| [SELF_HOSTING.md](SELF_HOSTING.md) | 在自己電腦架伺服器、手機連線、權限、備份 |
+| [SUPABASE_SETUP.md](SUPABASE_SETUP.md) | 建立 Supabase 專案、執行 setup.sql、在 App 連線、邀請另一半 |
 | [`android/`](../android) | Android App 原始碼（Kotlin + Jetpack Compose） |
-| [`server/`](../server) | 自架伺服器與資料庫結構 |
+| [`supabase/`](../supabase) | 資料庫結構、權限規則、App 呼叫的資料庫函式、即時通知與排程 |
 
 ---
 
@@ -21,7 +21,7 @@
 | **透明** | 對方看得到你分享了什麼、何時改了設定；對方新增會偵測你的標點時，你一定收到通知（不能關）。 |
 | **可以暫停** | 任何時候可以暫停分享 1 小時、3 小時或到今天結束；對方看到「暫停中、幾點恢復」，不是「失聯」。 |
 | **有趣，而不是監控** | 開銷包裝成「猜花費」遊戲；對方心情不好時引導「安撫」，而不是質問。 |
-| **資料留在自己家** | 伺服器與資料庫在自己的電腦，不經過任何雲端；不用 Firebase，地圖用 OpenStreetMap。 |
+| **資料是你們自己的** | 存在你們自己建立的 Supabase 專案（不是別人的伺服器），權限規則寫在資料庫裡；不用 Firebase，地圖用 OpenStreetMap。 |
 | **資料最少化** | 位置只存最新一筆，不保留軌跡；Wi-Fi 名稱不上傳；經期症狀只有本人看得到。 |
 
 ---
@@ -75,11 +75,11 @@
       ├─ 當天詳情 ── 在這天約會
       └─ 接下來的約會（答應／婉拒）
 我的 ─┬─ 心情紀錄、紀念日、經期、歷史紀錄
-      ├─ 分享與隱私、通知設定、權限與背景執行、伺服器與帳號
+      ├─ 分享與隱私、通知設定、權限與背景執行、Supabase 與帳號
       └─ 解除配對（示範模式：示範控制台、離開示範模式）
 ```
 
-第一次開啟：歡迎頁 → 連接伺服器（填網址、測試連線）→ 註冊或登入 → 配對 → 決定要分享什麼 → 開啟權限 → 首頁。也可以選「先看看示範」，不需要伺服器就能體驗全部畫面，並在示範控制台扮演對方。
+第一次開啟：歡迎頁 → 連接 Supabase（貼上網址與金鑰、測試連線；另一半點邀請連結會自動填好）→ 用 Email 註冊或登入 → 配對 → 決定要分享什麼 → 開啟權限 → 首頁。也可以選「先看看示範」，不需要 Supabase 就能體驗全部畫面，並在示範控制台扮演對方。
 
 ---
 
@@ -88,7 +88,7 @@
 ### 4.1 帳號與配對
 
 - 帳號密碼登入（密碼以 scrypt 雜湊，登入權杖以 HMAC 簽章；改密碼會讓舊的登入全部失效）。
-- 伺服器預設最多 2 個帳號（`MAX_USERS`），兩個人都註冊後別人就無法註冊。
+- 一個 Supabase 專案最多 2 個帳號（`app_config.max_users`），兩個人都註冊後別人就無法註冊。
 - 配對碼 6 碼（排除易混淆的 `I O 0 1`），24 小時內有效；可以一鍵用 LINE 等 App 傳給對方。
 - 一個人同時只能有一段有效配對（資料庫唯一索引保證）。
 - 解除配對：所有共享立即停止，共同資料保留 30 天後刪除，對方會收到通知。
@@ -109,7 +109,7 @@
 ### 4.3 位置與標點（地理圍欄）
 
 - 位置只存每人最新一筆。前景服務用 Fused Location（平衡耗電模式，每 1 分鐘、移動 20 公尺以上才更新），移動 25 公尺以上或每 4 分鐘才上傳。
-- **「現在在哪？」**：伺服器經由 WebSocket 請對方手機立刻高精度定位並回報。
+- **「現在在哪？」**：經由 Supabase Realtime 請對方手機立刻高精度定位並回報。
 - 標點：名稱、圖示、半徑 50–500 公尺、偵測誰（對方／我／兩人）、抵達通知、離開通知。
 - **在被偵測者的手機上判斷進出**：進入條件是距離 ≤ 半徑；離開條件是距離 > 半徑 + 緩衝（半徑的 20%，至少 25 公尺），避免 GPS 在邊界飄移時反覆觸發。精確度差於 150 公尺的定位不拿來判斷。
 - 新增會偵測對方的標點時，對方一定收到通知（不能關），被偵測的人也可以修改或刪除。
@@ -129,7 +129,7 @@
 
 ### 4.5 猜花費
 
-開放猜的消費在對方帳本只顯示商家、類別、時間，金額藏起來；**伺服器在對方猜之前不回傳金額**，計分也在伺服器算。
+開放猜的消費在對方帳本只顯示商家、類別、時間，金額藏起來；**資料庫在對方猜之前不回傳金額**，計分也在資料庫函式裡算。
 
 | 誤差 | 分數 | 評語 |
 |---|---|---|
@@ -157,7 +157,7 @@
 
 **誰的資料**：有週期的人記錄自己的經期，並決定要不要分享給伴侶、要不要讓伴侶幫忙記錄開始／結束日期。
 
-**預測演算法**（App、伺服器、網頁原型三處相同，都有單元測試）：
+**預測演算法**（App、資料庫排程、網頁原型三處相同，都有測試）：
 
 1. 週期長度 = 最近 6 個週期的平均；15–60 天以外的間隔視為漏記。預設 28 天。
 2. 經期天數 = 最近 6 次的平均，預設 5 天。
@@ -187,8 +187,8 @@ App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「�
 
 ## 5. 隱私與安全
 
-1. **權限在資料庫層執行**：伺服器替每個請求開一個交易並切換成該使用者身分，PostgreSQL 的 Row Level Security 決定能讀寫哪些資料。對方能讀的條件是：目前配對中、擁有者開啟該項分享、沒有暫停。
-2. **資料在自己電腦**：資料庫只開放給伺服器與電腦本機；建議用 Tailscale 讓手機在外面也能安全連線，不要直接開放到網際網路。
+1. **權限在資料庫層執行**：App 用登入者的權杖呼叫資料庫函式，PostgreSQL 的 Row Level Security 決定能讀寫哪些資料。對方能讀的條件是：目前配對中、擁有者開啟該項分享、沒有暫停。App 裡的金鑰是 Supabase 設計給用戶端的公開金鑰，拿到它也繞不過這些規則。
+2. **資料在你們自己的 Supabase 專案**：只有你們兩個帳號（最多 2 個）；連線全程 HTTPS；不需要開著電腦，也不需要設定分享器。
 3. **反濫用**：沒有隱藏 App、偷偷開啟分享的功能；分享位置時常駐通知；任一方都能一鍵暫停或解除配對；分享頁提供 113 保護專線資訊。
 4. **最少化**：位置不留軌跡、Wi-Fi 名稱不上傳、經期症狀不分享、開銷可整類隱藏。
 
@@ -199,36 +199,39 @@ App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「�
 ```mermaid
 flowchart LR
   subgraph Phones["兩支 Android 手機"]
-    UI[Compose 介面] --- SVC[前景服務：位置、標點判斷、手機狀態、WebSocket]
+    UI[Compose 介面] --- SVC[前景服務：位置、標點判斷、手機狀態、即時連線]
     NL[通知監聽：自動記帳] --- SVC
   end
-  subgraph PC["你的電腦（雙擊 start 檔，或 Docker Compose）"]
-    API[Node.js 伺服器：REST API、WebSocket、排程]
-    DB[(PostgreSQL：Row Level Security)]
+  subgraph SB["你們的 Supabase 專案（免費方案）"]
+    AUTH[Auth：Email + 密碼]
+    API[PostgREST：app_* 資料庫函式]
+    DB[(PostgreSQL：Row Level Security、trigger、pg_cron 排程)]
+    RT[Realtime：新通知、資料變動、請回報位置]
   end
-  SVC -- HTTP（區網或 Tailscale） --> API
-  API -- 每個請求以使用者身分執行 --> DB
-  DB -- LISTEN/NOTIFY：新通知、資料變動 --> API
-  API -- WebSocket：通知、變動、請回報位置 --> SVC
+  SVC -- HTTPS：登入、權杖更新 --> AUTH
+  SVC -- HTTPS：呼叫 app_* 函式（以登入者身分） --> API
+  API --> DB
+  DB -- notification_outbox、realtime_events --> RT
+  RT -- WebSocket --> SVC
   UI -- OpenStreetMap 圖磚 --> OSM[(openstreetmap.org)]
 ```
 
 | 層 | 選擇 | 理由 |
 |---|---|---|
 | App | Kotlin、Jetpack Compose、Material 3 | 只做 Android，原生 API（前景服務、通知監聽、計步）最完整；Compose 動畫好寫 |
-| 網路 | Retrofit + kotlinx.serialization、OkHttp WebSocket | |
+| 網路 | Retrofit + kotlinx.serialization、OkHttp WebSocket | 直接呼叫 Supabase 的 REST 與 Realtime，不需要額外的 SDK |
 | 定位 | Google Play 服務 Fused Location | 省電、室內也準 |
 | 地圖 | osmdroid（OpenStreetMap） | 免 API 金鑰、免費 |
-| 本機設定 | DataStore | 伺服器網址、登入權杖、標點進出狀態、步數基準 |
-| 伺服器 | Node.js（只依賴 `pg`、`ws`） | 輕量，Windows／macOS／Linux 都能跑 |
-| 架設 | 雙擊啟動檔（`server/scripts/launcher.js`）；或 Docker Compose | 第一次用 PostgreSQL 管理員密碼建立專用帳號 `xlk`（非超級使用者）與資料庫，之後直接啟動；每天自動備份 |
-| 資料庫 | PostgreSQL 13 以上（建議最新版） | RLS 讓權限寫在資料庫裡；trigger 寫歷史紀錄與通知 |
-| 通知 | 資料庫 `notification_outbox` → `pg_notify` → WebSocket → App 回 ack | 不需要 Firebase；離線期間的通知在重新連線時補送 |
-| 排程 | 伺服器每分鐘：約會提醒；每天 09:00：紀念日、里程碑、經期關懷 | |
+| 本機設定 | DataStore | Supabase 網址與金鑰、登入權杖、標點進出狀態、步數基準 |
+| 後端 | Supabase 免費方案（Auth、PostgREST、Realtime、PostgreSQL、pg_cron） | 不用自己架伺服器；兩個人用遠低於免費額度 |
+| 資料存取 | 每個功能一個 `app_*` 資料庫函式（以登入者身分執行，受 RLS 保護），回傳 camelCase JSON | 權限與商業邏輯都在資料庫裡，App 不能繞過 |
+| 通知 | trigger 寫入 `notification_outbox` → Realtime 推給 App → App 回報已收到；離線期間的通知在重新連線時補送 | 不需要 Firebase |
+| 資料變動 | trigger 寫入 `realtime_events` → Realtime → App 重新抓對應的資料 | |
+| 排程 | pg_cron：每分鐘約會提醒；每天 09:00（台灣時間）紀念日、里程碑、經期關懷；每小時清理 | |
 
-**背景執行**：連到伺服器時啟動前景服務（Android 14 以上用 `location`＋`remoteMessaging` 類型），保持 WebSocket 並回報狀態。需要使用者把電池最佳化設為「不限制」，部分品牌另需允許自動啟動。
+**背景執行**：登入後啟動前景服務（Android 14 以上用 `location`＋`remoteMessaging` 類型），保持 Realtime 連線並回報狀態。需要使用者把電池最佳化設為「不限制」，部分品牌另需允許自動啟動。
 
-**資料模型**：見 [`server/db/migrations/002_schema.sql`](../server/db/migrations/002_schema.sql)，主要資料表為 profiles、couples、couple_members、pair_invites、sharing_settings、device_status、locations、places、place_events、expenses、expense_guesses、moods、comforts、anniversaries、events、cycle_settings、cycle_periods、cycle_logs、activity_log、notification_prefs、notification_outbox。
+**資料模型**：見 [`supabase/migrations/`](../supabase/migrations)，主要資料表為 profiles、couples、couple_members、pair_invites、sharing_settings、device_status、locations、places、place_events、expenses、expense_guesses、moods、comforts、anniversaries、events、cycle_settings、cycle_periods、cycle_logs、activity_log、notification_prefs、notification_outbox、realtime_events。
 
 ---
 
@@ -238,8 +241,8 @@ flowchart LR
 |---|---|---|
 | App 核心邏輯 | `cd android && ./gradlew testDebugUnitTest` | 經期預測、地理圍欄、猜花費、付款通知解析、紀念日（與 JS 版相同案例） |
 | App 畫面 | `./gradlew recordRoborazziDebug` | 不需模擬器，把每個畫面（含深色模式）畫成圖片 |
-| App ↔ 伺服器 | `XLK_TEST_SERVER=http://127.0.0.1:18080 ./gradlew testDebugUnitTest` | App 的資料層對真的伺服器走完配對、狀態、通知、標點、記帳、猜花費、約會、經期、解除配對 |
-| 伺服器 | `npm run test:server` | 40 項資料庫權限測試＋13 項 API / WebSocket 端對端測試＋啟動程式的單元測試 |
+| App ↔ Supabase | `XLK_TEST_SUPABASE_URL=… XLK_TEST_SUPABASE_KEY=… ./gradlew testDebugUnitTest` | App 的資料層對真的 Supabase（本機啟動）走完註冊、配對、狀態、通知、標點、記帳、猜花費、約會、經期、解除配對 |
+| 資料庫 | `npm run test:db` | 在本機 Supabase 上跑權限測試、`app_*` 函式、即時通知、排程，以及 setup.sql 的一致性 |
 | 共用邏輯（JS） | `npm test` | 17 項 |
 
 ---
@@ -250,4 +253,5 @@ flowchart LR
 - 共同相簿、願望清單。
 - 農曆生日（每年換算成國曆）。
 - 雲端發票載具匯入（需向財政部申請 API）。
-- 伺服器管理頁：在瀏覽器裡備份、還原、重設密碼（目前用啟動檔的參數）。
+- 忘記密碼時在 App 裡用 Email 驗證碼重設（需要自訂寄信服務）。
+- 一鍵匯出所有資料（備份）。

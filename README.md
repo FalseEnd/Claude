@@ -1,6 +1,6 @@
 # 小倆口：情侶 App
 
-可愛的 Android 情侶 App，伺服器與資料庫架在你自己的電腦上。不用開口也知道彼此的狀態，並把在一起的日子記下來。
+可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。
 
 - **配對**：6 碼配對碼，雙方各自決定分享哪些資料，隨時可以暫停或解除
 - **對方的手機**：電量與充電、網路、螢幕與勿擾、步數、裝置型號
@@ -16,36 +16,21 @@
 
 ## 快速開始
 
-1. **在電腦啟動伺服器**（不需要 Docker）：
-   1. 安裝 [Node.js](https://nodejs.org/zh-tw/download)（LTS 版）與 [PostgreSQL](https://www.enterprisedb.com/downloads/postgres-postgresql-downloads)（安裝時設定的密碼要記下來）。
-   2. 雙擊 `start-windows.bat`（Mac：`start-mac.command`，Linux：`start-linux.sh`）。第一次會問一次 PostgreSQL 的密碼，自動建立資料庫，然後打開瀏覽器顯示「小倆口伺服器運作中」。
-   3. 黑色視窗會列出要填進 App 的網址。關掉視窗，伺服器就會停止。
-2. **安裝 App**：把 `XiaoLiangKou.apk` 傳到兩支手機安裝，或自己建置（見下方）。
-3. 打開 App →「連接我的伺服器」→ 填電腦的網址 → 兩人各自註冊 → 配對。
+1. **建立免費的 Supabase 專案**（大約 10 分鐘，只要做一次）：註冊 [Supabase](https://supabase.com)，在 SQL Editor 執行 [`supabase/setup.sql`](supabase/setup.sql)，關掉 Confirm email，複製專案網址與 Publishable key。步驟見 [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md)。
+2. **安裝 App**：把 `XiaoLiangKou.apk` 傳到手機安裝，或自己建置（見下方）。
+3. 打開 App →「連接 Supabase」→ 貼上網址與金鑰 → 註冊 → 在「我的」把邀請連結傳給另一半 → 配對。
 
-| 檔案（Windows） | 做什麼 |
-|---|---|
-| `start-windows.bat` | 啟動伺服器（第一次會設定資料庫） |
-| `autostart-windows.bat` | 登入電腦時自動啟動；再執行一次取消 |
-| `backup-windows.bat` | 立刻備份（伺服器開著時每天也會自動備份到 `backups`） |
-| `restore-windows.bat` | 把備份檔拖到它上面就能還原 |
-| `reset-password-windows.bat` | 忘記 App 密碼時產生臨時密碼 |
-
-手機在外面也要能連，建議電腦和手機都裝 Tailscale。防火牆、開機自動啟動、備份還原、Docker 架法等完整說明見 [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)。
-
-不想先架伺服器？App 裡選「先看看示範」就能體驗所有畫面，還可以在「示範控制台」扮演對方。
+電腦不用開著，手機在哪裡都能連線。不想先設定？App 裡選「先看看示範」就能體驗所有畫面，還可以在「示範控制台」扮演對方。
 
 ## 專案內容
 
 | 路徑 | 內容 |
 |---|---|
 | [`android/`](android) | Android App（Kotlin、Jetpack Compose、Material 3） |
-| [`server/`](server) | 自架伺服器（Node.js）與 PostgreSQL 資料庫結構、權限規則、測試；[`server/scripts/launcher.js`](server/scripts/launcher.js) 是雙擊啟動檔背後的啟動程式 |
-| `start-*`、`*-windows.bat` | 不用 Docker 的啟動、自動啟動、備份、還原、重設密碼 |
-| [`docker-compose.yml`](docker-compose.yml) | 用 Docker 架設時使用 |
+| [`supabase/`](supabase) | 資料庫結構、權限規則（Row Level Security）、App 呼叫的資料庫函式、即時通知與排程提醒；[`setup.sql`](supabase/setup.sql) 是貼到 SQL Editor 執行的完整版本 |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | 設計文件：介面風格、功能規格、隱私原則、系統架構 |
-| [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) | 架設與連線教學 |
-| [`prototype/`](prototype) | 最早的網頁互動原型；`core.js` 是伺服器也在用的共用邏輯 |
+| [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) | Supabase 設定教學 |
+| [`prototype/`](prototype) | 最早的網頁互動原型；`core.js` 是經期預測等共用邏輯的參考實作 |
 
 ## 建置 App
 
@@ -61,11 +46,14 @@ Windows 用 `gradlew.bat assembleRelease`。正式上架前請換成自己的簽
 ## 測試
 
 ```sh
-npm test                                   # 共用邏輯（JS）
-npm run test:server                        # 資料庫權限 + API / WebSocket + 啟動程式（需要本機 PostgreSQL）
-cd android && ./gradlew testDebugUnitTest  # App 核心邏輯
+npm test                                      # 共用邏輯（JS）
+npm run test:db                               # 資料庫權限、App 用的函式、即時通知、排程（需要 Docker、psql 與 Node.js 22 以上，會用 Supabase CLI 在本機啟動 Supabase）
+cd android && ./gradlew testDebugUnitTest     # App 核心邏輯
 cd android && ./gradlew recordRoborazziDebug  # 不用模擬器，把每個畫面畫成圖片
 ```
+
+App 對真的 Supabase 跑完整流程：先 `npx supabase start`，再執行
+`XLK_TEST_SUPABASE_URL=http://127.0.0.1:54321 XLK_TEST_SUPABASE_KEY=<publishable key> ./gradlew testDebugUnitTest`。
 
 ## 授權與素材
 

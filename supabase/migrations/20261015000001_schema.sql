@@ -1,14 +1,14 @@
 -- =============================================================================
--- 小倆口 資料庫結構（PostgreSQL 15+）
+-- 小倆口 資料庫結構（Supabase）
 --
--- 依賴 001_platform.sql：auth.users、auth.uid()、authenticated 角色、extensions schema。
--- 寫法與 Supabase 相容，之後要搬上雲端也可以直接使用。
+-- auth.users、auth.uid()、anon / authenticated 角色都由 Supabase 提供。
+-- App 直接用 Supabase Auth 登入，再呼叫 app_* RPC（見 20261015000003_api.sql）。
 -- 原則：
 --   1. 每一筆個人資料（位置、電量、開銷、心情、經期）都屬於「擁有者」，
 --      對方能不能看，由擁有者的 sharing_settings 決定，並且可以隨時暫停。
 --   2. 兩人共用的資料（地點、紀念日、約會、歷史紀錄）掛在 couple 底下。
 --   3. 解除配對後，所有共享立即失效（helper 只認 left_at is null 的配對）。
---   4. 通知一律先寫入 notification_outbox，伺服器再經由 WebSocket 送到 App（見 003_realtime.sql）。
+--   4. 通知一律先寫入 notification_outbox，App 經由 Supabase Realtime 收到（見 20261015000002_realtime.sql）。
 -- =============================================================================
 
 
@@ -20,14 +20,14 @@ create table public.profiles (
   id            uuid primary key references auth.users(id) on delete cascade,
   display_name  text not null check (char_length(display_name) between 1 and 30),
   avatar_url    text,
-  birthday      date,
+  birthday      date check (birthday between '1900-01-01' and '2200-12-31'),
   timezone      text not null default 'Asia/Taipei',
   created_at    timestamptz not null default now()
 );
 
 create table public.couples (
   id             uuid primary key default gen_random_uuid(),
-  together_since date,
+  together_since date check (together_since between '1900-01-01' and '2200-12-31'),
   created_at     timestamptz not null default now(),
   ended_at       timestamptz
 );
@@ -80,6 +80,7 @@ create table public.device_status (
   notifications_silenced  boolean,   -- iOS 專注模式 / Android 勿擾：只知道是否靜音
   steps_today             integer check (steps_today >= 0),
   last_active_at          timestamptz,
+  device_model            text,
   updated_at              timestamptz not null default now()
 );
 
@@ -192,7 +193,7 @@ create table public.anniversaries (
   couple_id    uuid not null references public.couples(id) on delete cascade,
   created_by   uuid not null default auth.uid() references auth.users(id) on delete cascade,
   title        text not null check (char_length(title) between 1 and 30),
-  date         date not null,
+  date         date not null check (date between '1900-01-01' and '2200-12-31'),  -- 擋掉 'infinity'，每日排程才不會壞掉
   kind         text not null default 'custom' check (kind in ('together', 'birthday', 'first_date', 'custom')),
   repeat       text not null default 'yearly' check (repeat in ('none', 'yearly')),
   calendar     text not null default 'solar' check (calendar in ('solar', 'lunar')),  -- 農曆由 App 換算後提醒
@@ -215,7 +216,10 @@ create table public.events (
   remind_minutes  smallint[] not null default '{60}',
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
-  check (ends_at is null or ends_at >= starts_at)
+  reminded_at     timestamptz,   -- 約會提醒已送出（改時間時清掉，重新提醒）
+  check (ends_at is null or ends_at >= starts_at),
+  check (starts_at between '1900-01-01 00:00+00' and '2200-12-31 23:59:59+00'
+         and (ends_at is null or ends_at <= '2200-12-31 23:59:59+00'))
 );
 create index events_couple_time on public.events (couple_id, starts_at);
 
@@ -230,7 +234,8 @@ create table public.cycle_settings (
   luteal_length     smallint not null default 14 check (luteal_length between 10 and 16),
   partner_can_edit  boolean not null default false,  -- 允許對方幫忙記錄經期開始 / 結束
   care_reminders    boolean not null default true,   -- 經期前兩天提醒對方多關心
-  updated_at        timestamptz not null default now()
+  updated_at        timestamptz not null default now(),
+  care_sent_for     date                             -- 這次預測的經期已經提醒過了
 );
 
 create table public.cycle_periods (
@@ -241,7 +246,8 @@ create table public.cycle_periods (
   recorded_by  uuid not null default auth.uid() references auth.users(id) on delete cascade,
   created_at   timestamptz not null default now(),
   unique (user_id, start_date),
-  check (end_date is null or end_date >= start_date)
+  check (end_date is null or end_date >= start_date),
+  check (start_date between '1900-01-01' and '2200-12-31' and (end_date is null or end_date <= '2200-12-31'))
 );
 
 -- 症狀與筆記只有本人看得到
@@ -283,7 +289,7 @@ create table public.push_tokens (
   updated_at  timestamptz not null default now()
 );
 
--- 只有伺服器讀寫；新增時觸發 pg_notify，伺服器經由 WebSocket 送給 App，App 回覆收到後填 sent_at
+-- 由資料庫的觸發程序與排程寫入；App 經由 Realtime 收到後呼叫 app_ack_notifications 填 sent_at
 create table public.notification_outbox (
   id            bigint generated always as identity primary key,
   recipient_id  uuid not null references auth.users(id) on delete cascade,
@@ -295,6 +301,22 @@ create table public.notification_outbox (
   sent_at       timestamptz,
   error         text
 );
+create index notification_outbox_pending on public.notification_outbox (recipient_id, id) where sent_at is null;
+
+-- 排程（每日提醒）執行紀錄，同一天只跑一次
+create table public.job_runs (
+  name    text not null,
+  run_on  date not null,
+  primary key (name, run_on)
+);
+
+-- 整個專案的設定（只有一筆）：人數上限與排程用的時區
+create table public.app_config (
+  id         boolean primary key default true check (id),
+  max_users  integer not null default 2,
+  timezone   text not null default 'Asia/Taipei'
+);
+insert into public.app_config default values;
 
 -- =============================================================================
 -- Helper functions（security definer，避免 RLS 互相遞迴）
@@ -478,6 +500,7 @@ declare
   v_couple  uuid := couple_of(auth.uid());
   v_partner uuid := partner_of(auth.uid());
 begin
+  if auth.uid() is null then raise exception 'not_authenticated'; end if;
   if v_couple is null then raise exception 'not_paired'; end if;
   update couple_members set left_at = now() where couple_id = v_couple and left_at is null;
   update couples set ended_at = now() where id = v_couple;
@@ -485,11 +508,30 @@ begin
   perform enqueue_notification(v_partner, 'pairing', '已解除配對', '所有即時分享已經停止');
 end $$;
 
+-- 帳號被刪除（Supabase 後台 › Authentication › Users）時，配對紀錄會跟著被刪掉。
+-- 留下來的那個人自動解除配對，才能重新產生配對碼、和新的帳號配對，不會卡在「只剩一個人」的配對裡。
+create or replace function public.tg_couple_member_deleted() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_left uuid;
+begin
+  if old.left_at is not null then return old; end if;
+  update couples set ended_at = coalesce(ended_at, now()) where id = old.couple_id;
+  for v_left in
+    update couple_members set left_at = now() where couple_id = old.couple_id and left_at is null returning user_id
+  loop
+    perform enqueue_notification(v_left, 'pairing', '已解除配對', '對方的帳號已經刪除，所有即時分享已經停止');
+  end loop;
+  return old;
+end $$;
+create trigger couple_member_deleted after delete on public.couple_members
+  for each row execute function public.tg_couple_member_deleted();
+
 -- 暫停分享（0 = 立即恢復）。對方會收到通知，避免「偷偷消失」造成誤會。
 create or replace function public.pause_sharing(p_minutes integer) returns timestamptz
 language plpgsql security definer set search_path = public as $$
 declare v_until timestamptz;
 begin
+  if auth.uid() is null then raise exception 'not_authenticated'; end if;
   if p_minutes < 0 or p_minutes > 24 * 60 then raise exception 'invalid_duration'; end if;
   v_until := case when p_minutes = 0 then null else now() + make_interval(mins => p_minutes) end;
   insert into sharing_settings (user_id, paused_until) values (auth.uid(), v_until)
@@ -501,6 +543,14 @@ end $$;
 -- RPC：對方的開銷（可猜的那筆在猜之前不回傳金額）與猜花費
 -- =============================================================================
 
+-- 這筆開銷對方看不看得到（另外還要擁有者有分享開銷：shares(user_id, 'expenses')）
+create or replace function public.expense_shown(p_e public.expenses) returns boolean
+language sql stable security definer set search_path = public as $$
+  select (p_e.visibility = 'shared' or (p_e.visibility = 'surprise' and p_e.reveal_on <= current_date))
+         and not exists (select 1 from sharing_settings s
+                         where s.user_id = p_e.user_id and p_e.category = any (s.hidden_categories))
+$$;
+
 create or replace function public.partner_expenses(p_from timestamptz, p_to timestamptz)
 returns table (
   id uuid, amount numeric, merchant text, category text, source text,
@@ -511,17 +561,15 @@ language sql stable security definer set search_path = public as $$
          case when e.guessable and g.expense_id is null then null else e.amount end,
          e.merchant, e.category, e.source, e.occurred_at, e.guessable, g.guess_amount, g.points
   from expenses e
-  join sharing_settings s on s.user_id = e.user_id
   left join expense_guesses g on g.expense_id = e.id and g.guesser_id = auth.uid()
   where e.user_id = partner_of(auth.uid())
     and shares(e.user_id, 'expenses')
     and e.occurred_at >= p_from and e.occurred_at < p_to
-    and not (e.category = any (s.hidden_categories))
-    and (e.visibility = 'shared' or (e.visibility = 'surprise' and e.reveal_on <= current_date))
+    and expense_shown(e)
   order by e.occurred_at desc
 $$;
 
--- 計分規則與 prototype/core.js 的 GUESS_TIERS 相同；在伺服器算，猜之前拿不到答案
+-- 計分規則與 prototype/core.js 的 GUESS_TIERS 相同；在資料庫算，猜之前拿不到答案
 create or replace function public.submit_guess(p_expense uuid, p_guess numeric)
 returns table (actual_amount numeric, score_points smallint, error_ratio numeric)
 language plpgsql security definer set search_path = public as $$
@@ -616,21 +664,26 @@ end $$;
 create trigger place_event_inserted after insert on public.place_events
   for each row execute function public.tg_place_event_inserted();
 
--- 對方新增了會偵測「我」的地點時，一定通知我（透明度，不能關閉）
-create or replace function public.tg_place_inserted() returns trigger
+-- 對方新增會偵測「我」的地點，或把地點改成偵測我、搬了位置、改了範圍時，一定通知我（透明度，不能關閉）
+create or replace function public.tg_place_saved() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare v_partner uuid := partner_of(new.created_by);
+declare
+  v_actor   uuid := coalesce(auth.uid(), new.created_by);
+  v_partner uuid := partner_of(v_actor);
 begin
-  if v_partner is not null and (new.watch_user is null or new.watch_user = v_partner) then
+  if v_partner is not null and (new.watch_user is null or new.watch_user = v_partner)
+     and (tg_op = 'INSERT' or new.watch_user is distinct from old.watch_user
+          or new.lat <> old.lat or new.lng <> old.lng or new.radius_m <> old.radius_m) then
     insert into notification_outbox (recipient_id, kind, title, body, data)
-    values (v_partner, 'sharing_changed', display_name_of(new.created_by) || ' 新增了地點「' || new.name || '」',
+    values (v_partner, 'sharing_changed',
+            display_name_of(v_actor) || case when tg_op = 'INSERT' then ' 新增了地點「' else ' 修改了地點「' end || new.name || '」',
             '你抵達或離開這裡時，對方會收到通知。可以在地圖頁查看或關閉位置分享。',
             jsonb_build_object('place_id', new.id));
   end if;
   return new;
 end $$;
-create trigger place_inserted after insert on public.places
-  for each row execute function public.tg_place_inserted();
+create trigger place_saved after insert or update of watch_user, lat, lng, radius_m on public.places
+  for each row execute function public.tg_place_saved();
 
 create or replace function public.tg_event_changed() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -690,8 +743,8 @@ create trigger sharing_changed after update on public.sharing_settings
 
 -- =============================================================================
 -- 每日排程：紀念日、交往天數里程碑；解除配對 30 天後清除共享資料
--- 伺服器每天 09:00 呼叫一次（server/src/jobs.js）。
--- 經期關懷提醒需要週期預測，由伺服器用 prototype/core.js 同一套演算法處理。
+-- pg_cron 每天 09:00 後呼叫一次（app_job_daily，見 20261015000004_jobs.sql），
+-- 經期關懷提醒也在那裡，用 prototype/core.js 同一套週期預測。
 -- =============================================================================
 
 create or replace function public.daily_reminders(p_today date default (now() at time zone 'Asia/Taipei')::date)
@@ -762,7 +815,9 @@ alter table public.cycle_logs          enable row level security;
 alter table public.activity_log        enable row level security;
 alter table public.notification_prefs  enable row level security;
 alter table public.push_tokens         enable row level security;
-alter table public.notification_outbox enable row level security;  -- 沒有 policy = 用戶端完全不能碰
+alter table public.notification_outbox enable row level security;  -- 只能讀自己的（見 realtime 遷移）
+alter table public.job_runs            enable row level security;  -- 沒有 policy = 用戶端完全不能碰
+alter table public.app_config          enable row level security;
 
 -- 帳號
 create policy "profiles: self and partner read" on public.profiles for select using (id = auth.uid() or public.is_partner(id));
@@ -845,3 +900,31 @@ revoke execute on function public.couple_of(uuid) from public, anon, authenticat
 revoke execute on function public.partner_of(uuid) from public, anon, authenticated;
 revoke execute on function public.shares(uuid, text) from public, anon, authenticated;
 revoke execute on function public.display_name_of(uuid) from public, anon, authenticated;
+
+-- =============================================================================
+-- 新帳號：Supabase Auth 建立使用者後，自動建立個人資料與分享設定
+-- 一個專案最多 app_config.max_users 個人（預設 2）；滿了就拒絕註冊，
+-- Supabase Auth 會回 500「Database error saving new user」，App 顯示友善的說明。
+-- =============================================================================
+
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_max  integer := coalesce((select max_users from app_config), 2);
+  v_name text;
+begin
+  perform pg_advisory_xact_lock(7311);  -- 兩個人同時註冊也不會超過上限
+  if (select count(*) from profiles) >= v_max then
+    raise exception 'registration_closed';
+  end if;
+  v_name := coalesce(
+    nullif(left(trim(new.raw_user_meta_data->>'display_name'), 30), ''),
+    nullif(left(split_part(coalesce(new.email, ''), '@', 1), 30), ''),
+    '親愛的');
+  insert into profiles (id, display_name) values (new.id, v_name);
+  insert into sharing_settings (user_id) values (new.id) on conflict (user_id) do nothing;
+  return new;
+end $$;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_user();
+revoke execute on function public.handle_new_user() from public, anon, authenticated;

@@ -1,4 +1,2 @@
-# Windows 的批次檔必須是 CRLF 換行，cmd.exe 才不會讀錯
-*.bat text eol=crlf
+# Shell 腳本一律用 LF 換行
 *.sh text eol=lf
-*.command text eol=lf

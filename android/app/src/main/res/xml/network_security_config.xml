@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 伺服器架在自己電腦（區網或 Tailscale），通常是 http，所以允許明文連線 -->
+<!-- Supabase 一律走 https，只信任系統內建的憑證（不信任使用者自己裝的憑證）。
+     開發時連本機 Supabase 用的 http 例外只放在 debug 版（src/debug/res/xml/），正式版完全不能用 http。 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true">
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
-            <certificates src="user" />
         </trust-anchors>
     </base-config>
 </network-security-config>

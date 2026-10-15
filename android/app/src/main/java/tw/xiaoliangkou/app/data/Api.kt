@@ -1,124 +1,223 @@
 package tw.xiaoliangkou.app.data
 
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.serializer
 import retrofit2.HttpException
-import retrofit2.Retrofit
-import retrofit2.converter.kotlinx.serialization.asConverterFactory
-import retrofit2.http.Body
-import retrofit2.http.DELETE
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.PUT
-import retrofit2.http.Path
-import retrofit2.http.Query
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
-interface Api {
-    @GET("api/health") suspend fun health(): JsonObject
-    @POST("api/auth/register") suspend fun register(@Body body: JsonObject): AuthResponse
-    @POST("api/auth/login") suspend fun login(@Body body: JsonObject): AuthResponse
-    @POST("api/auth/password") suspend fun changePassword(@Body body: JsonObject): AuthResponse
+/**
+ * App 用到的所有資料操作。每一個都是 Supabase 資料庫裡的 app_* 函式（PostgREST RPC），
+ * 參數整包放在 JSON body；原本網址裡的 id、日期也放進 body。回傳的欄位是 camelCase。
+ */
+class Api(private val rest: RestService) {
+    suspend fun health(): JsonObject = call("app_health")
 
-    @GET("api/me") suspend fun me(): MeResponse
-    @PUT("api/profile") suspend fun updateProfile(@Body body: JsonObject): Profile
-    @PUT("api/couple") suspend fun updateCouple(@Body body: JsonObject): Couple
-    @POST("api/pair/invite") suspend fun invite(): Invite
-    @POST("api/pair/accept") suspend fun accept(@Body body: JsonObject): JsonObject
-    @POST("api/pair/unpair") suspend fun unpair(): JsonObject
+    suspend fun me(): MeResponse = call("app_me")
+    suspend fun updateProfile(body: JsonObject): Profile = call("app_update_profile", body)
+    suspend fun updateCouple(body: JsonObject): Couple = call("app_update_couple", body)
+    suspend fun invite(): Invite = call("app_create_invite")
+    suspend fun accept(body: JsonObject): JsonObject = call("app_accept_invite", body)
+    suspend fun unpair(): JsonObject = call("app_unpair")
 
-    @PUT("api/sharing") suspend fun updateSharing(@Body body: JsonObject): Sharing
-    @POST("api/sharing/pause") suspend fun pauseSharing(@Body body: JsonObject): JsonObject
+    suspend fun updateSharing(body: JsonObject): Sharing = call("app_update_sharing", body)
+    suspend fun pauseSharing(body: JsonObject): JsonObject = call("app_pause_sharing", body)
 
-    @PUT("api/status/device") suspend fun putDevice(@Body body: JsonObject): JsonObject
-    @PUT("api/status/location") suspend fun putLocation(@Body body: JsonObject): JsonObject
-    @GET("api/partner/status") suspend fun partnerStatus(): PartnerStatus
-    @POST("api/partner/locate") suspend fun locatePartner(): JsonObject
+    suspend fun putDevice(body: JsonObject): JsonObject = call("app_report_device", body)
+    suspend fun putLocation(body: JsonObject): JsonObject = call("app_report_location", body)
+    suspend fun partnerStatus(): PartnerStatus = call("app_partner_status")
+    suspend fun locatePartner(): JsonObject = call("app_locate_partner")
 
-    @GET("api/places") suspend fun places(): List<Place>
-    @POST("api/places") suspend fun createPlace(@Body body: JsonObject): Place
-    @PUT("api/places/{id}") suspend fun updatePlace(@Path("id") id: String, @Body body: JsonObject): Place
-    @DELETE("api/places/{id}") suspend fun deletePlace(@Path("id") id: String): JsonObject
-    @POST("api/places/{id}/events") suspend fun placeEvent(@Path("id") id: String, @Body body: JsonObject): JsonObject
+    suspend fun places(): List<Place> = call("app_places")
+    suspend fun createPlace(body: JsonObject): Place = call("app_create_place", body)
+    suspend fun updatePlace(id: String, body: JsonObject): Place = call("app_update_place", body.with("id", id))
+    suspend fun deletePlace(id: String): JsonObject = call("app_delete_place", idBody(id))
+    suspend fun placeEvent(id: String, body: JsonObject): JsonObject = call("app_place_event", body.with("id", id))
 
-    @GET("api/expenses") suspend fun expenses(@Query("from") from: String? = null, @Query("to") to: String? = null): List<Expense>
-    @POST("api/expenses") suspend fun createExpense(@Body body: JsonObject): JsonObject
-    @PUT("api/expenses/{id}") suspend fun updateExpense(@Path("id") id: String, @Body body: JsonObject): Expense
-    @DELETE("api/expenses/{id}") suspend fun deleteExpense(@Path("id") id: String): JsonObject
-    @GET("api/partner/expenses") suspend fun partnerExpenses(@Query("from") from: String? = null, @Query("to") to: String? = null): List<Expense>
-    @POST("api/partner/expenses/{id}/guess") suspend fun guess(@Path("id") id: String, @Body body: JsonObject): GuessResult
+    suspend fun expenses(from: String? = null, to: String? = null): List<Expense> = call("app_expenses", range(from, to))
+    suspend fun createExpense(body: JsonObject): JsonObject = call("app_create_expense", body)
+    suspend fun updateExpense(id: String, body: JsonObject): Expense = call("app_update_expense", body.with("id", id))
+    suspend fun deleteExpense(id: String): JsonObject = call("app_delete_expense", idBody(id))
+    suspend fun partnerExpenses(from: String? = null, to: String? = null): List<Expense> = call("app_partner_expenses", range(from, to))
+    suspend fun guess(id: String, body: JsonObject): GuessResult = call("app_guess", body.with("id", id))
 
-    @GET("api/moods") suspend fun moods(@Query("days") days: Int = 14): List<Mood>
-    @POST("api/moods") suspend fun postMood(@Body body: JsonObject): Mood
-    @GET("api/comforts") suspend fun comforts(@Query("limit") limit: Int = 50): List<Comfort>
-    @POST("api/comforts") suspend fun postComfort(@Body body: JsonObject): Comfort
+    suspend fun moods(days: Int = 14): List<Mood> = call("app_moods", buildJsonObject { put("days", days) })
+    suspend fun postMood(body: JsonObject): Mood = call("app_post_mood", body)
+    suspend fun comforts(limit: Int = 50): List<Comfort> = call("app_comforts", buildJsonObject { put("limit", limit) })
+    suspend fun postComfort(body: JsonObject): Comfort = call("app_send_comfort", body)
+    suspend fun readComfort(id: Long): JsonObject = call("app_read_comfort", buildJsonObject { put("id", id) })
 
-    @GET("api/anniversaries") suspend fun anniversaries(): List<Anniversary>
-    @POST("api/anniversaries") suspend fun createAnniversary(@Body body: JsonObject): Anniversary
-    @PUT("api/anniversaries/{id}") suspend fun updateAnniversary(@Path("id") id: String, @Body body: JsonObject): Anniversary
-    @DELETE("api/anniversaries/{id}") suspend fun deleteAnniversary(@Path("id") id: String): JsonObject
+    suspend fun anniversaries(): List<Anniversary> = call("app_anniversaries")
+    suspend fun createAnniversary(body: JsonObject): Anniversary = call("app_create_anniversary", body)
+    suspend fun updateAnniversary(id: String, body: JsonObject): Anniversary = call("app_update_anniversary", body.with("id", id))
+    suspend fun deleteAnniversary(id: String): JsonObject = call("app_delete_anniversary", idBody(id))
 
-    @GET("api/events") suspend fun events(): List<DateEvent>
-    @POST("api/events") suspend fun createEvent(@Body body: JsonObject): DateEvent
-    @PUT("api/events/{id}") suspend fun updateEvent(@Path("id") id: String, @Body body: JsonObject): DateEvent
-    @POST("api/events/{id}/answer") suspend fun answerEvent(@Path("id") id: String, @Body body: JsonObject): DateEvent
-    @DELETE("api/events/{id}") suspend fun deleteEvent(@Path("id") id: String): JsonObject
+    suspend fun events(): List<DateEvent> = call("app_events")
+    suspend fun createEvent(body: JsonObject): DateEvent = call("app_create_event", body)
+    suspend fun updateEvent(id: String, body: JsonObject): DateEvent = call("app_update_event", body.with("id", id))
+    suspend fun answerEvent(id: String, body: JsonObject): DateEvent = call("app_answer_event", body.with("id", id))
+    suspend fun deleteEvent(id: String): JsonObject = call("app_delete_event", idBody(id))
 
-    @GET("api/cycle") suspend fun cycle(): CycleResponse
-    @PUT("api/cycle/settings") suspend fun saveCycleSettings(@Body body: JsonObject): CycleSettingsDto
-    @DELETE("api/cycle/settings") suspend fun stopCycle(): JsonObject
-    @POST("api/cycle/periods") suspend fun addPeriod(@Body body: JsonObject): PeriodDto
-    @PUT("api/cycle/periods/{id}") suspend fun updatePeriod(@Path("id") id: String, @Body body: JsonObject): PeriodDto
-    @DELETE("api/cycle/periods/{id}") suspend fun deletePeriod(@Path("id") id: String): JsonObject
-    @PUT("api/cycle/logs/{date}") suspend fun saveCycleLog(@Path("date") date: String, @Body body: JsonObject): CycleLog
+    suspend fun cycle(): CycleResponse = call("app_cycle")
+    suspend fun saveCycleSettings(body: JsonObject): CycleSettingsDto = call("app_save_cycle_settings", body)
+    suspend fun stopCycle(): JsonObject = call("app_stop_cycle")
+    suspend fun addPeriod(body: JsonObject): PeriodDto = call("app_add_period", body)
+    suspend fun updatePeriod(id: String, body: JsonObject): PeriodDto = call("app_update_period", body.with("id", id))
+    suspend fun deletePeriod(id: String): JsonObject = call("app_delete_period", idBody(id))
+    suspend fun saveCycleLog(date: String, body: JsonObject): CycleLog = call("app_save_cycle_log", body.with("date", date))
 
-    @GET("api/history") suspend fun history(@Query("before") before: Long? = null, @Query("limit") limit: Int = 60): List<Activity>
-    @GET("api/notification-prefs") suspend fun notificationPrefs(): Map<String, Boolean>
-    @PUT("api/notification-prefs") suspend fun setNotificationPrefs(@Body body: JsonObject): JsonObject
+    suspend fun history(before: Long? = null, limit: Int = 60, kinds: List<String>? = null): List<Activity> = call(
+        "app_history",
+        buildJsonObject {
+            if (before != null) put("before", before)
+            put("limit", limit)
+            if (kinds != null) putJsonArray("kinds") { kinds.forEach { add(JsonPrimitive(it)) } }
+        },
+    )
+    suspend fun notificationPrefs(): Map<String, Boolean> = call("app_notification_prefs")
+    suspend fun setNotificationPrefs(body: JsonObject): JsonObject = call("app_set_notification_prefs", body)
+
+    /** 還沒送到這支手機的通知（最近 3 天） */
+    suspend fun pendingNotifications(): List<PendingNotification> = call("app_pending_notifications")
+    suspend fun ackNotifications(ids: List<Long>): JsonObject =
+        call("app_ack_notifications", buildJsonObject { putJsonArray("ids") { ids.forEach { add(JsonPrimitive(it)) } } })
+
+    /** 呼叫 app_* 函式，把回傳的 JSON 轉成 [T] */
+    suspend inline fun <reified T> call(name: String, body: JsonObject = EMPTY): T =
+        json.decodeFromJsonElement(serializer<T>(), raw(name, body))
+
+    suspend fun raw(name: String, body: JsonObject = EMPTY): JsonElement =
+        rest.rpc(name, body.toBody()).use { r ->
+            val text = r.string()
+            try {
+                json.parseToJsonElement(text)
+            } catch (e: SerializationException) {
+                throw NotJsonException()
+            }
+        }
 
     companion object {
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false; coerceInputValues = true; encodeDefaults = true }
+        val EMPTY = JsonObject(emptyMap())
 
-        fun normalizeBaseUrl(raw: String): String {
-            var url = raw.trim().trimEnd('/')
-            if (!url.startsWith("http://") && !url.startsWith("https://")) url = "http://$url"
-            return "$url/"
-        }
-
-        fun create(baseUrl: String, token: () -> String?): Api {
-            val client = OkHttpClient.Builder()
-                .connectTimeout(8, TimeUnit.SECONDS)
-                .readTimeout(20, TimeUnit.SECONDS)
-                .addInterceptor { chain ->
-                    val t = token()
-                    val req = chain.request().newBuilder().apply { if (t != null) header("Authorization", "Bearer $t") }.build()
-                    chain.proceed(req)
-                }
-                .build()
-            return Retrofit.Builder()
-                .baseUrl(normalizeBaseUrl(baseUrl))
-                .client(client)
-                .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
-                .build()
-                .create(Api::class.java)
+        private fun JsonObject.with(key: String, value: String) = JsonObject(this + (key to JsonPrimitive(value)))
+        private fun idBody(id: String) = buildJsonObject { put("id", id) }
+        private fun range(from: String?, to: String?) = buildJsonObject {
+            if (from != null) put("from", from)
+            if (to != null) put("to", to)
         }
     }
 }
 
+/** 回傳的根本不是 JSON（例如一個網頁）：多半是網址貼錯了，或 Wi-Fi 要先登入 */
+class NotJsonException : SerializationException("response is not JSON")
+
 /** 給畫面顯示的錯誤訊息 */
 class AppException(message: String, val code: String? = null, val status: Int? = null) : Exception(message)
+
+/** Supabase（PostgREST、Auth、API Gateway）回傳的錯誤 → 溫暖的中文 */
+object Errors {
+    const val CONFIRM_EMAIL = "請到 Supabase 後台關掉 Confirm email（說明文件第 3 步），再註冊一次"
+    const val NOT_SETUP = "資料庫還沒設定好：請在 Supabase 的 SQL Editor 執行 setup.sql（說明文件第 2 步）"
+    const val BAD_KEY = "Supabase 金鑰不正確，請重新貼一次 Publishable key（或 anon key）"
+    const val RELOGIN = "請重新登入"
+
+    // 資料庫函式丟出的錯誤代碼（raise exception '<code>'）
+    val DB_MESSAGES = mapOf(
+        "not_authenticated" to RELOGIN,
+        "already_paired" to "已經和別人配對了，請先解除配對",
+        "not_paired" to "還沒有配對",
+        "invite_invalid" to "配對碼無效或已過期，請對方重新產生",
+        "cannot_pair_with_self" to "這是你自己的配對碼，請輸入對方的",
+        "invalid_duration" to "暫停時間要在 24 小時內",
+        "expense_not_guessable" to "這筆開銷不能猜",
+        "invalid_guess" to "請輸入金額",
+        "rate_limited" to "傳太快了，休息一下再傳",
+        "registration_closed" to "這個小倆口已經有兩個人了，請用原本的 Email 登入",
+        "not_found" to "找不到資料，可能已經被刪除了",
+        "nothing_to_update" to "沒有要更新的欄位",
+        "invalid_kind" to "種類不正確",
+        "invalid_status" to "狀態不正確",
+        "invalid_range" to "日期格式不正確",
+    )
+
+    private val INVALID_INPUT = setOf("23502", "23514", "22P02", "22007", "22008", "22003", "22023", "2201B")
+
+    fun from(status: Int, body: String?): AppException {
+        val obj = runCatching { Api.json.parseToJsonElement(body ?: "").jsonObject }.getOrNull()
+        fun str(k: String) = runCatching { (obj?.get(k) as? JsonPrimitive)?.contentOrNull }.getOrNull()
+        val message = str("message")
+        val goTrueCode = str("error_code") ?: str("error")
+        val goTrueMsg = str("msg") ?: str("error_description")
+        if (goTrueCode != null || goTrueMsg != null) return auth(status, goTrueCode, goTrueMsg ?: message)
+        if (message != null && message.contains("API key", ignoreCase = true)) return AppException(BAD_KEY, "bad_key", status)
+        val code = str("code")
+        return when {
+            // raise exception '<code>'（P0001），或 using errcode = 'PT404' 這類指定 HTTP 狀態的
+            code == "P0001" || code?.startsWith("PT") == true -> {
+                val c = message ?: "error"
+                AppException(DB_MESSAGES[c] ?: c, c, status)
+            }
+            // 沒有登入（anon）呼叫只開放給登入者的函式
+            code == "42501" && status == 401 -> AppException(RELOGIN, "not_authenticated", status)
+            code == "42501" -> AppException("沒有權限（對方可能沒有分享這項資料）", "forbidden", status)
+            code == "23505" -> AppException("資料重複了", "conflict", status)
+            code == "23503" -> AppException("關聯的資料不存在", "invalid_reference", status)
+            code in INVALID_INPUT -> AppException("輸入的資料格式不正確", "invalid_input", status)
+            // 找不到函式：setup.sql 還沒執行
+            code == "PGRST202" || code == "PGRST205" || code == "42883" -> AppException(NOT_SETUP, "not_setup", status)
+            code == "PGRST301" || code == "PGRST302" || code == "PGRST303" || status == 401 -> AppException(RELOGIN, "not_authenticated", status)
+            status >= 500 -> AppException("Supabase 暫時有點狀況，等一下再試（專案被暫停的話，到後台按 Resume project）", "server_error", status)
+            else -> AppException(message ?: "Supabase 回應 $status", code, status)
+        }
+    }
+
+    /** Supabase Auth 的錯誤（新版是 error_code + msg，舊版是 error + error_description） */
+    private fun auth(status: Int, code: String?, msg: String?): AppException {
+        val m = msg.orEmpty().lowercase()
+        val (c, text) = when {
+            code == "invalid_credentials" || "invalid login credentials" in m -> "invalid_login" to "Email 或密碼不正確"
+            code == "user_already_exists" || code == "email_exists" || "already registered" in m -> "email_taken" to "這個 Email 已經註冊過了"
+            "database error saving new user" in m -> "registration_closed" to "這個小倆口已經有兩個人了，或資料庫還沒設定好"
+            code == "weak_password" || "password should be" in m -> "weak_password" to "密碼至少要 6 個字"
+            code == "email_not_confirmed" || "email not confirmed" in m -> "email_confirmation_on" to CONFIRM_EMAIL
+            code == "same_password" -> "same_password" to "新密碼要和舊密碼不一樣喔"
+            code == "email_address_invalid" || ("email" in m && ("invalid" in m || "validate" in m)) -> "invalid_email" to "Email 格式不太對，再檢查一下"
+            code == "signup_disabled" || code == "email_provider_disabled" || "signups not allowed" in m ->
+                "signup_disabled" to "Supabase 後台關掉了 Email 註冊：請到 Authentication › Sign In / Providers 打開 Email"
+            code?.startsWith("over_") == true || status == 429 -> "rate_limited" to "試太多次了，休息一下再試"
+            "api key" in m -> "bad_key" to BAD_KEY
+            code in setOf("refresh_token_not_found", "refresh_token_already_used", "session_not_found", "session_expired", "bad_jwt", "no_authorization", "user_not_found", "invalid_grant") ||
+                status == 401 -> "not_authenticated" to RELOGIN
+            status >= 500 -> "server_error" to "Supabase 暫時有點狀況，等一下再試"
+            else -> "auth_error" to (msg ?: "登入時發生錯誤（$status）")
+        }
+        return AppException(text, c, status)
+    }
+
+    /** 換新 token 失敗時，是不是 refresh token 已經不能用了（要重新登入），而不是暫時的問題 */
+    fun isDeadRefresh(status: Int, body: String?): Boolean =
+        status in 400..499 && status != 408 && status != 429 && body?.contains("API key", ignoreCase = true) != true
+}
 
 suspend fun <T> apiCall(block: suspend () -> T): T = try {
     block()
 } catch (e: HttpException) {
-    val body = e.response()?.errorBody()?.string()
-    val err = runCatching { Api.json.decodeFromString(ApiError.serializer(), body ?: "") }.getOrNull()
-    throw AppException(err?.message ?: "伺服器回應 ${e.code()}", err?.error, e.code())
+    throw Errors.from(e.code(), e.response()?.errorBody()?.string())
+} catch (e: InvalidRequestException) {
+    throw AppException("網址或金鑰裡有看不懂的字元，請到「連接 Supabase」重新貼一次 🔑", "bad_key")
 } catch (e: IOException) {
-    throw AppException("連不到伺服器，請確認網址、Wi-Fi 或 Tailscale 是否連線", "offline")
-} catch (e: kotlinx.serialization.SerializationException) {
-    throw AppException("伺服器回傳的資料格式不對，App 和伺服器版本可能不一致", "bad_response")
+    throw AppException("連不到 Supabase，請確認網路", "offline")
+} catch (e: NotJsonException) {
+    throw AppException("收到的不是 Supabase 的資料：網址可能貼錯了，或 Wi-Fi 需要先登入", "not_json")
+} catch (e: SerializationException) {
+    throw AppException("Supabase 回傳的資料格式不對，資料庫可能還不是最新的 setup.sql", "bad_response")
 }

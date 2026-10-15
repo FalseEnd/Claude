@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.Favorite
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.LinkOff
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Science
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WaterDrop
@@ -43,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
@@ -52,6 +55,7 @@ import kotlinx.serialization.json.putJsonArray
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Dates
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Fmt
 import tw.xiaoliangkou.app.ui.components.Avatar
@@ -111,7 +115,7 @@ fun MoreScreen(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
                 MenuRow(Icons.Rounded.Notifications, c.peach, c.peach.copy(alpha = 0.25f), "通知設定", "想收到哪些通知") { open("notif") }
                 if (!s.demo) {
                     MenuRow(Icons.Rounded.Tune, c.me, c.meSoft, "權限與背景執行", "位置、通知、省電、自動記帳") { open("permissions") }
-                    MenuRow(Icons.Rounded.Cloud, c.sky, c.meSoft, "伺服器與帳號", "連線、改密碼、登出") { open("account") }
+                    MenuRow(Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號", "連線、邀請另一半、改密碼、登出") { open("account") }
                 } else {
                     MenuRow(Icons.Rounded.Science, c.lavender, c.fertileSoft, "示範控制台", "扮演 ${s.partnerName}，看看會跳出什麼通知") { open("demo") }
                 }
@@ -253,22 +257,46 @@ fun HistoryScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
 @Composable
 fun AccountScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     val prefs by vm.prefs.collectAsState()
+    val context = LocalContext.current
     var old by remember { mutableStateOf("") }
     var new by remember { mutableStateOf("") }
     var name by remember { mutableStateOf(s.me?.displayName ?: "") }
     val scope = rememberCoroutineScope()
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { ScreenHeader("伺服器與帳號", onBack = back) }
+        item { ScreenHeader("Supabase 與帳號", onBack = back) }
         item {
             CuteCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(if (s.connected) "🟢" else "🟠", style = MaterialTheme.typography.titleLarge)
                     Column(Modifier.weight(1f)) {
-                        Text(if (s.connected) "已連上你的伺服器" else "連線中…", style = MaterialTheme.typography.titleMedium)
-                        Text(prefs?.serverUrl ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (s.connected) "已連上你們的 Supabase" else "連線中…", style = MaterialTheme.typography.titleMedium)
+                        Text(prefs?.supabaseUrl?.substringAfter("://").orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Text("帳號：${s.me?.username ?: "—"}", style = MaterialTheme.typography.bodyMedium)
+                Text("Email：${s.me?.email ?: prefs?.session?.email ?: "—"}", style = MaterialTheme.typography.bodyMedium)
+                Text("資料存在你們自己的 Supabase 專案，在哪裡都能連。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        val p = prefs?.takeIf { it.configured }
+        if (p != null) item {
+            CuteCard(color = Cute.colors.meSoft) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    EmojiBubble("💌", Cute.colors.card, 44.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text("邀請另一半", style = MaterialTheme.typography.titleSmall)
+                        Text("傳一個連結過去，對方點一下就會自動填好 Supabase 網址和金鑰", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SoftButton("複製", Modifier.weight(1f), icon = Icons.Rounded.ContentCopy) {
+                        copyText(context, "小倆口連線邀請", InviteLink.shareText(p.supabaseUrl, p.supabaseKey))
+                        vm.toast("已複製連線邀請")
+                    }
+                    CuteButton("分享給另一半", Modifier.weight(1.4f), icon = Icons.Rounded.Share) {
+                        shareText(context, InviteLink.shareText(p.supabaseUrl, p.supabaseKey), "傳送連線邀請")
+                    }
+                }
+                Text("金鑰是公開用的 anon / publishable key，資料由資料庫的權限規則保護，只有你們兩個看得到 🔒", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {

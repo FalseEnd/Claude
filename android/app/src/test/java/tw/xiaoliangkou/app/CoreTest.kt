@@ -11,7 +11,7 @@ import tw.xiaoliangkou.app.core.Guess
 import tw.xiaoliangkou.app.core.PaymentParser
 import java.time.LocalDate
 
-/** 與 prototype/core.test.js 相同的案例，確保 App 與伺服器的演算法一致 */
+/** 與 prototype/core.test.js 相同的案例，確保 App 與資料庫排程（從同一份移植）的演算法一致 */
 class CoreTest {
     private fun d(s: String) = LocalDate.parse(s)
 

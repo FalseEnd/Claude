@@ -1,6 +1,0 @@
-**/node_modules
-**/.git
-android
-docs
-.env
-server/.app-secret

@@ -284,11 +284,13 @@ fun CuteField(
     password: Boolean = false,
     supporting: String? = null,
     isError: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
+        trailingIcon = trailing,
         placeholder = placeholder?.let { { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) } },
         singleLine = singleLine,
         isError = isError,

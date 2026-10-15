@@ -9,6 +9,7 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.XlkRoot
@@ -22,6 +23,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         deepLink = intent?.getStringExtra(Notifier.EXTRA_ROUTE)
+        if (savedInstanceState == null) openInvite(intent)
         setContent {
             XlkTheme {
                 XlkRoot(vm, deepLink) { deepLink = null }
@@ -32,5 +34,12 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra(Notifier.EXTRA_ROUTE)?.let { deepLink = it }
+        openInvite(intent)
+    }
+
+    /** 另一半分享的 xiaoliangkou://connect?url=…&key=… 連線邀請 */
+    private fun openInvite(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (uri.scheme.equals(InviteLink.SCHEME, ignoreCase = true)) vm.container.openInvite(uri.toString())
     }
 }
