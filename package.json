@@ -1,0 +1,14 @@
+{
+  "name": "xiaoliangkou",
+  "version": "0.1.0",
+  "private": true,
+  "description": "小倆口：情侶 App 設計與互動原型",
+  "scripts": {
+    "test": "node --test prototype/core.test.js",
+    "test:db": "bash backend/tests/run.sh",
+    "start": "npx serve prototype"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
