@@ -1,45 +1,68 @@
 # 小倆口：情侶 App
 
-讓兩個人不用開口也知道彼此的狀態，並把在一起的日子記下來。
+可愛的 Android 情侶 App，伺服器與資料庫架在你自己的電腦上。不用開口也知道彼此的狀態，並把在一起的日子記下來。
 
 - **配對**：6 碼配對碼，雙方各自決定分享哪些資料，隨時可以暫停或解除
-- **對方的手機**：電量與充電、網路、螢幕、專注模式、步數
-- **位置與標點**：即時位置與距離；在地圖上設定標點，對方抵達或離開時通知
-- **自動記帳**：解析付款通知、iOS 捷徑交易、雲端發票載具；禮物模式讓驚喜不被拆穿
-- **猜花費**：對方開放的消費先藏起金額，猜完揭曉並計分
+- **對方的手機**：電量與充電、網路、螢幕與勿擾、步數、裝置型號
+- **地圖與標點**：即時位置與距離；設定標點，對方抵達或離開時通知；「現在在哪？」
+- **自動記帳**：讀取 LINE Pay、街口、銀行的付款通知；禮物模式讓驚喜不被拆穿
+- **猜花費**：對方開放的消費先藏起金額，猜完揭曉計分，猜中還有紙花
 - **心情與安撫**：設定今天的心情，對方心情不好時一鍵送抱抱、摸摸頭
-- **紀念日**：在一起天數、生日、週年、每 100 天與 520、1314 里程碑
-- **日曆**：約會邀請、答應或婉拒、提醒
+- **紀念日與約會**：在一起天數、生日、週年、520 與 1314；約會邀請、答應、提醒
 - **經期**：預測下次經期、排卵日、易孕期、相對安全期，經期前提醒伴侶多關心
 - **歷史紀錄**：所有互動的時間軸
+
+粉嫩配色、粉圓字型、會眨眼的麻糬吉祥物，加上飄愛心、紙花、彈跳按鈕等動畫。
+
+## 快速開始
+
+1. **在電腦啟動伺服器**（需要 [Docker Desktop](https://www.docker.com/products/docker-desktop/)）：
+
+   ```sh
+   docker compose up -d
+   ```
+
+   打開 <http://localhost:8080> 看到「小倆口伺服器運作中」就成功了。
+2. **安裝 App**：把 `XiaoLiangKou.apk` 傳到兩支手機安裝，或自己建置（見下方）。
+3. 打開 App →「連接我的伺服器」→ 填電腦的網址 → 兩人各自註冊 → 配對。
+
+手機在外面也要能連，建議電腦和手機都裝 Tailscale。完整步驟、權限設定與備份方式見 [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)。
+
+不想先架伺服器？App 裡選「先看看示範」就能體驗所有畫面，還可以在「示範控制台」扮演對方。
 
 ## 專案內容
 
 | 路徑 | 內容 |
 |---|---|
-| [`docs/DESIGN.md`](docs/DESIGN.md) | 完整設計文件：功能規格、資訊架構、通知總表、隱私原則、技術架構、平台限制、里程碑 |
-| [`prototype/`](prototype) | 可操作的互動原型（單一 HTML 頁面，不需建置） |
-| [`prototype/core.js`](prototype/core.js) | 共用核心邏輯：日期與紀念日、經期預測、地理圍欄、猜花費計分、付款通知解析 |
-| [`backend/schema.sql`](backend/schema.sql) | Supabase / PostgreSQL 資料表、Row Level Security、RPC 與 trigger |
-| [`backend/tests/`](backend/tests) | 在臨時 PostgreSQL 上跑的權限與流程測試 |
+| [`android/`](android) | Android App（Kotlin、Jetpack Compose、Material 3） |
+| [`server/`](server) | 自架伺服器（Node.js）與 PostgreSQL 資料庫結構、權限規則、測試 |
+| [`docker-compose.yml`](docker-compose.yml) | 一行指令啟動伺服器＋資料庫 |
+| [`docs/DESIGN.md`](docs/DESIGN.md) | 設計文件：介面風格、功能規格、隱私原則、系統架構 |
+| [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) | 架設與連線教學 |
+| [`prototype/`](prototype) | 最早的網頁互動原型；`core.js` 是伺服器也在用的共用邏輯 |
 
-## 開啟原型
+## 建置 App
 
-直接用瀏覽器開啟 `prototype/index.html`，或：
+需要 JDK 17 以上與 Android SDK（裝 Android Studio 最簡單）：
 
 ```sh
-npx serve prototype
+cd android
+./gradlew assembleRelease      # 產生 app/build/outputs/apk/release/app-release.apk
 ```
 
-畫面一打開就是已配對、填好示範資料的狀態。桌面瀏覽器右側是「示範控制台」（手機上在「我的 › 示範控制台」），可以模擬對方的手機：前往某個標點、心情變差、電量剩 19%、刷卡消費、約你出去、暫停分享，看看 App 會跳出哪些通知。資料只存在瀏覽器的 localStorage，可以在控制台重設。
+Windows 用 `gradlew.bat assembleRelease`。正式上架前請換成自己的簽章金鑰（`android/app/build.gradle.kts` 的 `signingConfig`）。
 
 ## 測試
 
 ```sh
-npm test          # 核心邏輯單元測試（Node 18+）
-npm run test:db   # 資料庫權限測試（需要本機 PostgreSQL 15+）
+npm test                                   # 共用邏輯（JS）
+npm run test:server                        # 資料庫權限 + API / WebSocket（需要本機 PostgreSQL）
+cd android && ./gradlew testDebugUnitTest  # App 核心邏輯
+cd android && ./gradlew recordRoborazziDebug  # 不用模擬器，把每個畫面畫成圖片
 ```
 
-## 授權
+## 授權與素材
 
-原型使用的圖示來自 [Lucide](https://lucide.dev)（ISC License）。
+- 字型：[jf open 粉圓](https://github.com/justfont/open-huninn-font)（SIL Open Font License 1.1）
+- 地圖：© [OpenStreetMap](https://www.openstreetmap.org/copyright) 貢獻者
+- 網頁原型圖示：[Lucide](https://lucide.dev)（ISC License）

@@ -1,0 +1,320 @@
+package tw.xiaoliangkou.app.ui
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import tw.xiaoliangkou.app.data.Banner
+import tw.xiaoliangkou.app.ui.components.BannerCard
+import tw.xiaoliangkou.app.ui.components.CuteButton
+import tw.xiaoliangkou.app.ui.components.HeartBurstOverlay
+import tw.xiaoliangkou.app.ui.components.LoadingDots
+import tw.xiaoliangkou.app.ui.components.SoftButton
+import tw.xiaoliangkou.app.ui.components.bouncyClick
+import tw.xiaoliangkou.app.ui.components.rememberHeartBurst
+import tw.xiaoliangkou.app.ui.screens.AccountScreen
+import tw.xiaoliangkou.app.ui.screens.AnniversaryScreen
+import tw.xiaoliangkou.app.ui.screens.AnniversarySheet
+import tw.xiaoliangkou.app.ui.screens.CalendarScreen
+import tw.xiaoliangkou.app.ui.screens.ComfortSheet
+import tw.xiaoliangkou.app.ui.screens.ConsentScreen
+import tw.xiaoliangkou.app.ui.screens.CycleScreen
+import tw.xiaoliangkou.app.ui.screens.DemoConsole
+import tw.xiaoliangkou.app.ui.screens.EventSheet
+import tw.xiaoliangkou.app.ui.screens.ExpenseEditSheet
+import tw.xiaoliangkou.app.ui.screens.ExpenseViewSheet
+import tw.xiaoliangkou.app.ui.screens.GuessSheet
+import tw.xiaoliangkou.app.ui.screens.HistoryScreen
+import tw.xiaoliangkou.app.ui.screens.HomeScreen
+import tw.xiaoliangkou.app.ui.screens.MapScreen
+import tw.xiaoliangkou.app.ui.screens.MoneyScreen
+import tw.xiaoliangkou.app.ui.screens.MoodScreen
+import tw.xiaoliangkou.app.ui.screens.MoreScreen
+import tw.xiaoliangkou.app.ui.screens.NotificationScreen
+import tw.xiaoliangkou.app.ui.screens.PairingScreen
+import tw.xiaoliangkou.app.ui.screens.ParseTestSheet
+import tw.xiaoliangkou.app.ui.screens.PeriodSheet
+import tw.xiaoliangkou.app.ui.screens.PermissionsScreen
+import tw.xiaoliangkou.app.ui.screens.PlaceSheet
+import tw.xiaoliangkou.app.ui.screens.PrivacyScreen
+import tw.xiaoliangkou.app.ui.screens.ServerSetupScreen
+import tw.xiaoliangkou.app.ui.screens.SplashScreen
+import tw.xiaoliangkou.app.ui.screens.WelcomeScreen
+import tw.xiaoliangkou.app.ui.theme.Cute
+import java.time.LocalDate
+
+/** 底部面板的種類 */
+sealed interface SheetSpec {
+    data object Comfort : SheetSpec
+    data class GuessIt(val id: String) : SheetSpec
+    data class ExpenseEdit(val id: String?) : SheetSpec
+    data class ExpenseView(val id: String) : SheetSpec
+    data object ParseTest : SheetSpec
+    data class PlaceEdit(val id: String?, val lat: Double, val lng: Double) : SheetSpec
+    data class EventEdit(val id: String?, val date: LocalDate) : SheetSpec
+    data class AnniversaryEdit(val id: String?) : SheetSpec
+    data class PeriodEdit(val forPartner: Boolean) : SheetSpec
+}
+
+private val TABS = listOf(
+    Triple("home", "首頁", Icons.Rounded.Home),
+    Triple("map", "地圖", Icons.Rounded.Map),
+    Triple("money", "帳本", Icons.Rounded.AccountBalanceWallet),
+    Triple("calendar", "日曆", Icons.Rounded.CalendarMonth),
+    Triple("more", "我的", Icons.Rounded.Person),
+)
+
+private fun bannerEmoji(kind: String) = when (kind) {
+    "comfort" -> "🤗"; "mood" -> "😊"; "place" -> "📍"; "battery_low" -> "🔋"; "guess" -> "💰"
+    "event" -> "📅"; "anniversary" -> "🎂"; "cycle_care" -> "🌸"; "sharing_changed" -> "🔒"; "pairing" -> "💞"; else -> "💗"
+}
+
+@Composable
+fun XlkRoot(vm: AppViewModel, deepLink: String?, onDeepLinkHandled: () -> Unit) {
+    val prefs by vm.prefs.collectAsState()
+    val repo by vm.repo.collectAsState()
+    val s by vm.state.collectAsState()
+    val snackbar = remember { SnackbarHostState() }
+    val hearts = rememberHeartBurst()
+    var banner by remember { mutableStateOf<Banner?>(null) }
+    var pendingRoute by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(vm) {
+        vm.messages.collect { msg -> snackbar.currentSnackbarData?.dismiss(); launch { snackbar.showSnackbar(msg) } }
+    }
+    LaunchedEffect(vm) { vm.hearts.collect { hearts.burst() } }
+    LaunchedEffect(vm) {
+        vm.banners.collectLatest { b ->
+            banner = b
+            if (b.kind == "comfort") hearts.burst(0.5f, 0.35f, 22)
+            delay(4500)
+            banner = null
+        }
+    }
+    LaunchedEffect(deepLink) { if (deepLink != null) { pendingRoute = deepLink; onDeepLinkHandled() } }
+
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val p = prefs
+        when {
+            p == null -> SplashScreen()
+            repo == null -> StartFlow(vm)
+            !s.loaded -> Connecting(vm)
+            !s.paired -> Box(Modifier.systemBarsPadding()) { PairingScreen(s, vm) }
+            !p.onboarded && !s.demo -> Box(Modifier.systemBarsPadding()) { Onboarding(s, vm) }
+            else -> MainScaffold(vm, pendingRoute) { pendingRoute = null }
+        }
+        Box(Modifier.statusBarsPadding().padding(top = 8.dp)) {
+            val b = banner
+            BannerCard(b != null, bannerEmoji(b?.kind ?: ""), b?.title ?: "", b?.body) {
+                pendingRoute = b?.route; banner = null
+            }
+        }
+        HeartBurstOverlay(hearts)
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 96.dp)) { data ->
+            Text(
+                data.visuals.message,
+                color = MaterialTheme.colorScheme.background,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 24.dp).shadow(12.dp, RoundedCornerShape(50)).clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.onBackground).padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StartFlow(vm: AppViewModel) {
+    var setup by rememberSaveable { mutableStateOf(false) }
+    AnimatedContent(setup, Modifier.systemBarsPadding(), transitionSpec = {
+        (slideInHorizontally { if (targetState) it else -it } + fadeIn()) togetherWith (slideOutHorizontally { if (targetState) -it else it } + fadeOut())
+    }, label = "start") { onSetup ->
+        if (onSetup) ServerSetupScreen(vm) { setup = false } else WelcomeScreen(vm) { setup = true }
+    }
+}
+
+@Composable
+private fun Connecting(vm: AppViewModel) {
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(4000); slow = true }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    Column(Modifier.fillMaxSize().systemBarsPadding().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)) {
+        tw.xiaoliangkou.app.ui.components.CoupleMascots(height = 130.dp)
+        Text("正在連到你的伺服器…", style = MaterialTheme.typography.titleMedium)
+        LoadingDots()
+        if (slow) {
+            Text("還連不上。請確認電腦開著、伺服器有啟動，手機和電腦在同一個 Wi-Fi 或都開著 Tailscale。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            CuteButton("再試一次", Modifier.fillMaxWidth()) { vm.refresh() }
+            SoftButton("登出，重新設定", Modifier.fillMaxWidth()) { scope.launch { vm.container.logout() } }
+        }
+    }
+}
+
+@Composable
+private fun Onboarding(s: tw.xiaoliangkou.app.data.AppState, vm: AppViewModel) {
+    var step by rememberSaveable { mutableStateOf(0) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    AnimatedContent(step, transitionSpec = { (slideInHorizontally { it } + fadeIn()) togetherWith (slideOutHorizontally { -it } + fadeOut()) }, label = "onboarding") { st ->
+        if (st == 0) ConsentScreen(s, vm) { step = 1 }
+        else PermissionsScreen(vm, back = { step = 0 }, done = { scope.launch { vm.container.setOnboarded() } })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: () -> Unit) {
+    val s by vm.state.collectAsState()
+    val nav = rememberNavController()
+    val entry by nav.currentBackStackEntryAsState()
+    val route = entry?.destination?.route
+    var sheet by remember { mutableStateOf<SheetSpec?>(null) }
+    var calendarDate by remember { mutableStateOf<LocalDate?>(null) }
+    val tabIds = TABS.map { it.first }
+    val open: (String) -> Unit = { r ->
+        if (r in tabIds) nav.navigate(r) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        } else nav.navigate(r) { launchSingleTop = true }
+    }
+    val back: () -> Unit = { nav.popBackStack() }
+    val showSheet: (SheetSpec) -> Unit = { sheet = it }
+    LaunchedEffect(pendingRoute) { pendingRoute?.let { open(it); routeHandled() } }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = { if (route == null || route in tabIds) CuteBottomBar(route ?: "home", open) },
+    ) { pad ->
+        NavHost(
+            nav, "home", Modifier.padding(pad).statusBarsPadding(),
+            enterTransition = { fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 10 } },
+            exitTransition = { fadeOut(tween(160)) },
+            popEnterTransition = { fadeIn(tween(220)) },
+            popExitTransition = { fadeOut(tween(160)) + slideOutHorizontally(tween(220)) { it / 10 } },
+        ) {
+            composable("home") { HomeScreen(s, vm, open, showSheet) }
+            composable("map") { MapScreen(s, vm, showSheet) }
+            composable("money") { MoneyScreen(s, vm, showSheet) }
+            composable("calendar") { CalendarScreen(s, vm, showSheet, calendarDate) }
+            composable("more") { MoreScreen(s, vm, open) }
+            composable("mood") { MoodScreen(s, vm, back) }
+            composable("anniv") { AnniversaryScreen(s, vm, back, showSheet) }
+            composable("cycle") { CycleScreen(s, vm, back, showSheet) }
+            composable("history") { HistoryScreen(s, vm, back) }
+            composable("privacy") { PrivacyScreen(s, vm, back) }
+            composable("notif") { NotificationScreen(s, vm, back) }
+            composable("account") { AccountScreen(s, vm, back) }
+            composable("permissions") { PermissionsScreen(vm, back, null) }
+            composable("demo") { DemoConsole(s, vm, back) }
+        }
+    }
+
+    val current = sheet
+    if (current != null) {
+        val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val close: () -> Unit = { sheet = null }
+        ModalBottomSheet(onDismissRequest = close, sheetState = state, containerColor = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 32.dp)) {
+                when (current) {
+                    SheetSpec.Comfort -> ComfortSheet(s, vm, close)
+                    is SheetSpec.GuessIt -> GuessSheet(s, vm, current.id, close)
+                    is SheetSpec.ExpenseEdit -> ExpenseEditSheet(s, vm, current.id, close)
+                    is SheetSpec.ExpenseView -> ExpenseViewSheet(s, current.id, close)
+                    SheetSpec.ParseTest -> ParseTestSheet(vm, close)
+                    is SheetSpec.PlaceEdit -> PlaceSheet(s, vm, current.id, current.lat, current.lng, close)
+                    is SheetSpec.EventEdit -> EventSheet(s, vm, current.id, current.date) { calendarDate = current.date; close() }
+                    is SheetSpec.AnniversaryEdit -> AnniversarySheet(s, vm, current.id, close)
+                    is SheetSpec.PeriodEdit -> PeriodSheet(vm, current.forPartner, close)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CuteBottomBar(route: String, open: (String) -> Unit) {
+    Row(
+        Modifier.navigationBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp).fillMaxWidth()
+            .shadow(18.dp, RoundedCornerShape(30.dp), ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+            .clip(RoundedCornerShape(30.dp)).background(Cute.colors.card).padding(horizontal = 6.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        TABS.forEach { (id, label, icon) -> TabItem(id == route, label, icon, Modifier.weight(1f)) { open(id) } }
+    }
+}
+
+@Composable
+private fun TabItem(selected: Boolean, label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
+    val bg by animateColorAsState(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, label = "tabBg")
+    val fg by animateColorAsState(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, label = "tabFg")
+    val lift by animateFloatAsState(if (selected) -3f else 0f, spring(dampingRatio = 0.35f, stiffness = 400f), label = "tabLift")
+    val scale by animateFloatAsState(if (selected) 1.12f else 1f, spring(dampingRatio = 0.35f, stiffness = 400f), label = "tabScale")
+    Column(
+        modifier.height(56.dp).clip(RoundedCornerShape(24.dp)).background(bg).bouncyClick(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, label, tint = fg, modifier = Modifier.size(24.dp).graphicsLayer { translationY = lift.dp.toPx(); scaleX = scale; scaleY = scale })
+        Text(label, style = MaterialTheme.typography.labelSmall, color = fg)
+    }
+}

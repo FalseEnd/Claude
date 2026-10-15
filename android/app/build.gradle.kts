@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.service)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.datastore.preferences)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

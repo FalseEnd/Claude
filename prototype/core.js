@@ -389,7 +389,7 @@
     { key: 'sweet', label: '甜蜜', emoji: '🥰', valence: 2 },
     { key: 'calm', label: '平靜', emoji: '🙂', valence: 1 },
     { key: 'missyou', label: '想你', emoji: '🥺', valence: 0 },
-    { key: 'tired', label: '好累', emoji: '😮‍💨', valence: -1 },
+    { key: 'tired', label: '好累', emoji: '😩', valence: -1 },
     { key: 'anxious', label: '焦慮', emoji: '😰', valence: -1 },
     { key: 'sad', label: '難過', emoji: '😢', valence: -2 },
     { key: 'angry', label: '生氣', emoji: '😠', valence: -2 },
@@ -401,11 +401,11 @@
 
   var COMFORTS = [
     { key: 'hug', label: '抱抱', emoji: '🤗', push: '給了你一個大大的抱抱' },
-    { key: 'pat', label: '摸摸頭', emoji: '🫶', push: '摸摸你的頭，說辛苦了' },
+    { key: 'pat', label: '摸摸頭', emoji: '💆', push: '摸摸你的頭，說辛苦了' },
     { key: 'kiss', label: '親親', emoji: '😘', push: '親了你一下' },
     { key: 'here', label: '我在', emoji: '💬', push: '說：我在，想聊隨時找我' },
     { key: 'cheer', label: '加油', emoji: '💪', push: '幫你加油打氣' },
-    { key: 'treat', label: '請你喝', emoji: '🧋', push: '說等等請你喝一杯' }
+    { key: 'treat', label: '請你喝', emoji: '🥤', push: '說等等請你喝一杯' }
   ];
 
   function comfort(key) { return COMFORTS.find(function (c) { return c.key === key; }) || null; }

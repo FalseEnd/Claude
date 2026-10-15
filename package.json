@@ -1,14 +1,14 @@
 {
   "name": "xiaoliangkou",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "小倆口：情侶 App 設計與互動原型",
+  "description": "小倆口：Android 情侶 App 與自架伺服器",
   "scripts": {
     "test": "node --test prototype/core.test.js",
-    "test:db": "bash backend/tests/run.sh",
-    "start": "npx serve prototype"
+    "test:server": "cd server && npm install --no-audit --no-fund && bash scripts/test.sh",
+    "server": "docker compose up -d"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   }
 }
