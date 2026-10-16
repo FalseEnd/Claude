@@ -11,7 +11,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -19,10 +23,12 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import com.github.takahirom.roborazzi.captureRoboImage
 import kotlinx.coroutines.CoroutineScope
@@ -104,7 +110,7 @@ class FortuneScreensTest {
         shot("55_fortune_horoscope") { FortuneContent(s, {}, FortuneTab.HOROSCOPE, clock) }
         compose.onNodeWithText("阿哲 · 摩羯座的今日運勢").assertExists()
         compose.onNodeWithText("依星座與日期產生，僅供娛樂").assertExists()
-        compose.onNodeWithText("看更多 ›").assertExists()
+        compose.onNodeWithText("看更多 ›").assertHasClickAction().assertHeightIsAtLeast(48.dp)
         val match = Horoscope.matchOfDay(Horoscope.signs[9], Horoscope.signs[8], now.toLocalDate())
         compose.onNodeWithText(match.text).assertExists()
     }
@@ -133,7 +139,7 @@ class FortuneScreensTest {
         assertTrue(compose.onAllNodesWithText("今天的速配指數", substring = true).fetchSemanticsNodes().isEmpty())
         compose.onRoot().captureRoboImage("build/screens/59_fortune_sign_manual.png")
         // 手動選的可以再換
-        compose.onNodeWithText("手動選的 · 換一個").assertHasClickAction().performClick()
+        compose.onNodeWithText("手動選的 · 換一個").assertHasClickAction().assertHeightIsAtLeast(48.dp).performClick()
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithText("你是什麼星座？").assertExists()
         compose.onNodeWithText("收起").performClick()
@@ -162,6 +168,9 @@ class FortuneScreensTest {
         compose.onNodeWithText("籤詩：元三大師觀音百籤（淺草寺）；解籤：台灣好廟網").assertExists()
         // 昨天的不算「今天抽到的籤」
         assertTrue(compose.onAllNodesWithText("第 62 籤").fetchSemanticsNodes().isEmpty())
+        // 籤筒對 TalkBack 是一整個圖，不會一個字一個字唸
+        compose.onNodeWithContentDescription("觀音籤筒").assertExists()
+        assertTrue(compose.onAllNodesWithText("觀").fetchSemanticsNodes().isEmpty())
     }
 
     @Test fun omikujiResult() {
@@ -171,6 +180,8 @@ class FortuneScreensTest {
         shot("57_fortune_omikuji_result", act = ::drawAndWait) { FortuneContent(s, {}, FortuneTab.OMIKUJI, clock, Random(seed)) }
         assertEquals(2, compose.onAllNodesWithText("第 ${expected.no} 籤").fetchSemanticsNodes().size) // 籤詩卡＋紀錄
         compose.onNodeWithText("看完整解籤 ›").assertExists()
+        // 抽到的籤號和吉凶會被 TalkBack 唸出來
+        compose.onNode(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite) and hasText("第 ${expected.no} 籤")).assertExists()
         // 只有籤詩卡上有「再抽一支」，上面的按鈕維持「搖一搖抽籤」
         assertEquals(1, compose.onAllNodesWithText("再抽一支").fetchSemanticsNodes().size)
         compose.onNodeWithText("搖一搖抽籤").assertExists()
