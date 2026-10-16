@@ -15,11 +15,14 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,6 +44,8 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,10 +54,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,8 +75,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -80,6 +97,7 @@ import tw.xiaoliangkou.app.core.Dates
 import tw.xiaoliangkou.app.core.Horoscope
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.Limits
+import tw.xiaoliangkou.app.data.Profile
 import tw.xiaoliangkou.app.data.ProfileInfo
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Fmt
@@ -100,7 +118,9 @@ import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.bouncyClick
 import tw.xiaoliangkou.app.ui.theme.Cute
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import tw.xiaoliangkou.app.data.Note as PrivateNote
 
 // ---------------------------------------------------------------- 欄位小工具
@@ -144,10 +164,14 @@ private fun placeholderColor() = MaterialTheme.colorScheme.onSurfaceVariant.copy
 private fun FieldLabel(text: String, modifier: Modifier = Modifier) =
     Text(text, style = MaterialTheme.typography.labelLarge, modifier = modifier.padding(start = 4.dp))
 
-/** 標籤在上面、沒填時顯示淡淡的範例文字的輸入框 */
+/**
+ * 標籤在上面、沒填時顯示淡淡的範例文字的輸入框。
+ * 標籤是另外一行字，[description]（不含表情符號）另外掛在輸入框上，TalkBack 才念得出是哪一格。
+ */
 @Composable
 private fun ProfileField(
     label: String,
+    description: String,
     value: String,
     onChange: (String) -> Unit,
     placeholder: String?,
@@ -160,7 +184,7 @@ private fun ProfileField(
 ) {
     val counter = maxLength?.takeIf { !singleLine && value.length >= it * 0.8 }?.let { "${value.length} / $it" }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        FieldLabel(label)
+        FieldLabel(label, Modifier.clearAndSetSemantics {})
         OutlinedTextField(
             value = value,
             onValueChange = onChange,
@@ -176,20 +200,21 @@ private fun ProfileField(
                 unfocusedContainerColor = wellColor(), focusedContainerColor = Cute.colors.card, errorContainerColor = wellColor(),
                 unfocusedBorderColor = Color.Transparent, focusedBorderColor = MaterialTheme.colorScheme.primary,
             ),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = description },
         )
     }
 }
 
 /** 生日：點一下選日期，下面自動算出年齡和星座 */
 @Composable
-private fun BirthdayField(value: String, onPick: (String) -> Unit, onClear: () -> Unit) {
+private fun BirthdayField(value: String, onPick: (LocalDate) -> Unit, onClear: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     val d = Fmt.parseDate(value)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FieldLabel("🎂 生日")
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(FIELD_SHAPE).background(wellColor()).clickable { open = true }
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(FIELD_SHAPE).background(wellColor())
+                .clickable(onClickLabel = "選擇生日", role = Role.Button) { open = true }
                 .padding(start = 16.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -205,11 +230,51 @@ private fun BirthdayField(value: String, onPick: (String) -> Unit, onClear: () -
             ?: "填了生日，就會自動算出年齡和星座 ✨"
         Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
     }
-    // 還沒填生日：日曆先停在 25 年前，不用從今年一路往回翻
-    if (open) DatePickerPopup(value.ifEmpty { LocalDate.now().minusYears(25).withDayOfYear(1).toString() }, { open = false }) { onPick(it); open = false }
+    if (open) BirthdayPicker(d, { open = false }) { onPick(it); open = false }
+}
+
+private fun utcMillis(d: LocalDate) = d.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+/**
+ * 選生日的日曆：還沒填的話先翻到 25 年前，不用從今年一路往回翻，
+ * 但不會先幫忙選好日子（不然直接按「確定」就存了一個假生日）；也選不到未來的日子。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BirthdayPicker(value: LocalDate?, onDismiss: () -> Unit, onPick: (LocalDate) -> Unit) {
+    val today = remember { LocalDate.now() }
+    val state = rememberDatePickerState(
+        initialSelectedDateMillis = value?.let(::utcMillis),
+        initialDisplayedMonthMillis = utcMillis(value ?: today.minusYears(25).withDayOfYear(1)),
+        yearRange = 1900..today.year,
+        selectableDates = remember(today) {
+            object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= utcMillis(today)
+                override fun isSelectableYear(year: Int) = year <= today.year
+            }
+        },
+    )
+    val picked = state.selectedDateMillis
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { picked?.let { onPick(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()) } }, enabled = picked != null) { Text("確定") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    ) { DatePicker(state) }
 }
 
 // ---------------------------------------------------------------- 我的資料
+
+/** 表單裡暱稱、生日的 key；其他是 [ProfileInfo] 的欄位。整份表單是 key → 文字，rememberSaveable 存得進去 */
+private const val NAME_KEY = "_name"
+private const val BIRTHDAY_KEY = "_birthday"
+
+private fun formOf(me: Profile): Map<String, String> =
+    ProfileInfo.values(me.info) + mapOf(NAME_KEY to me.displayName, BIRTHDAY_KEY to me.birthday.orEmpty())
+
+/** 兩份表單的同一格一不一樣（前後空白不算） */
+private fun same(a: Map<String, String>, b: Map<String, String>, key: String) = a[key].orEmpty().trim() == b[key].orEmpty().trim()
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -220,30 +285,48 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
         return
     }
     val c = Cute.colors
-    val original = remember(me.info) { ProfileInfo.values(me.info) }
-    // 編輯中的內容：重組、轉螢幕、資料從別台手機更新都不會被洗掉，按「儲存」才送出
-    var name by rememberSaveable(me.id) { mutableStateOf(me.displayName) }
-    var birthday by rememberSaveable(me.id) { mutableStateOf(me.birthday.orEmpty()) }
-    var values by rememberSaveable(me.id) { mutableStateOf(original) }
+    val latest = remember(me.displayName, me.birthday, me.info) { formOf(me) }
+    // base：開始編輯時的資料；form：編輯中的內容。重組、轉螢幕都不會被洗掉，按「儲存」才送出
+    var base by rememberSaveable(me.id) { mutableStateOf(latest) }
+    var form by rememberSaveable(me.id) { mutableStateOf(latest) }
     var avatarSheet by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
+    // 資料從別台手機更新了：沒動過的欄位換成新的，自己改過的留著
+    LaunchedEffect(latest) {
+        if (latest != base) {
+            form = latest.mapValues { (k, v) -> if (same(form, base, k)) v else form[k].orEmpty() }
+            base = latest
+        }
+    }
 
-    val errors = ProfileInfo.fields.mapNotNull { f -> numberError(f, values[f.key].orEmpty())?.let { f.key to it } }.toMap()
+    val name = form[NAME_KEY].orEmpty()
+    val birthday = form[BIRTHDAY_KEY].orEmpty()
+    val errors = ProfileInfo.fields.mapNotNull { f -> numberError(f, form[f.key].orEmpty())?.let { f.key to it } }.toMap()
     val nameError = if (name.isBlank()) "暱稱不能是空白的" else null
     val valid = errors.isEmpty() && nameError == null
-    val dirty = name.trim() != me.displayName || birthday != me.birthday.orEmpty() ||
-        ProfileInfo.fields.any { values[it.key].orEmpty().trim() != original[it.key].orEmpty() }
+    // 自己改過、而且跟目前存的不一樣的欄位
+    val dirty = form.keys.any { !same(form, base, it) && !same(form, latest, it) }
     val bd = Fmt.parseDate(birthday)
     val total = ProfileInfo.fields.size + 2
-    val filled = listOf(name.isNotBlank(), bd != null).count { it } + ProfileInfo.fields.count { values[it.key].orEmpty().isNotBlank() && it.key !in errors }
+    val filled = listOf(name.isNotBlank(), bd != null).count { it } + ProfileInfo.fields.count { form[it.key].orEmpty().isNotBlank() && it.key !in errors }
     val partner = if (s.paired) s.partnerName else "另一半"
 
-    fun set(key: String, v: String) { values = values + (key to v) }
+    fun set(key: String, v: String) { form = form + (key to v) }
     fun save(then: () -> Unit = {}) {
-        val info = ProfileInfo.build(values, me.info)
-        val newName = name.trim()
-        vm.act(if (s.paired) "已儲存，${s.partnerName} 也看得到了 ✨" else "已儲存 ✨", onDone = { name = newName; values = ProfileInfo.values(info); then() }) {
-            it.updateProfileInfo(newName, birthday.ifEmpty { null }, info)
+        // 只送自己改過的欄位，合併到最新的資料上：別台手機剛改的不會被蓋掉
+        val sent = form
+        val changed = sent.filterKeys { !same(sent, base, it) }
+        val info = ProfileInfo.build(changed - NAME_KEY - BIRTHDAY_KEY, me.info)
+        val newName = (changed[NAME_KEY] ?: me.displayName).trim()
+        val newBirthday = (changed[BIRTHDAY_KEY] ?: me.birthday.orEmpty()).ifEmpty { null }
+        vm.act(if (s.paired) "已儲存，${s.partnerName} 也看得到了 ✨" else "已儲存 ✨", onDone = {
+            val saved = ProfileInfo.values(info) + mapOf(NAME_KEY to newName, BIRTHDAY_KEY to newBirthday.orEmpty())
+            // 存的時候又改了的欄位留著
+            form = saved + form.filter { (k, v) -> v != sent[k] }
+            base = saved
+            then()
+        }) {
+            it.updateProfileInfo(newName, newBirthday, info)
         }
     }
     val leave: () -> Unit = { if (dirty) { confirmLeave = true } else back() }
@@ -253,122 +336,125 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     fun Info(key: String, modifier: Modifier = Modifier) {
         val f = field(key)
         ProfileField(
-            "${f.emoji} ${f.label}", values[key].orEmpty(), { set(key, clean(f, it)) }, placeholderOf(f), modifier,
+            "${f.emoji} ${f.label}", f.label, form[key].orEmpty(), { set(key, clean(f, it)) }, placeholderOf(f), modifier,
             keyboard = when { f.numeric -> KeyboardType.Decimal; key == ProfileInfo.PHONE -> KeyboardType.Phone; else -> KeyboardType.Text },
             singleLine = f.maxLength <= 40, error = errors[key], unit = f.unit, maxLength = f.maxLength,
         )
     }
 
-    Box(Modifier.fillMaxSize().imePadding()) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 104.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            ScreenHeader("我的資料", onBack = leave)
-            CuteCard(color = c.meSoft) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    // 點頭像換照片或表情
-                    Box(Modifier.bouncyClick { avatarSheet = true }) {
-                        Avatar(name.ifBlank { me.displayName }, c.me, 68.dp, image = me.avatarUrl)
-                        Icon(
-                            Icons.Rounded.PhotoCamera, "設定頭像", tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.align(Alignment.BottomEnd).offset(4.dp, 4.dp).size(24.dp).clip(CircleShape).background(c.card).padding(4.dp),
-                        )
-                    }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(name.trim().ifEmpty { "還沒取暱稱" }, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (bd != null) {
-                                val sign = Horoscope.signOf(bd)
-                                Pill("🎂 ${ProfileInfo.age(bd)} 歲", c.card)
-                                Pill("${sign.emoji} ${sign.name}", c.card)
-                            } else Pill("🎂 還沒填生日", c.card, MaterialTheme.colorScheme.onSurfaceVariant)
-                            values[ProfileInfo.BLOOD_TYPE]?.takeIf { it.isNotBlank() }?.let { Pill("🩸 ${it.uppercase()} 型", c.card) }
+    // 儲存列放在捲動區域下面（不是疊在上面）：鍵盤打開時，正在打字的欄位才不會被儲存列擋住。
+    // 外層已經留了導覽列的高度，鍵盤只要再補超過導覽列的那一段
+    Column(Modifier.fillMaxSize().consumeWindowInsets(WindowInsets.navigationBars).imePadding()) {
+        Box(Modifier.weight(1f)) {
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                ScreenHeader("我的資料", onBack = leave)
+                if (s.schemaOutdated) SchemaNote("資料庫還沒更新，暱稱和生日以外的資料還存不進去")
+                CuteCard(color = c.meSoft) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        // 點頭像換照片或表情
+                        Box(Modifier.bouncyClick { avatarSheet = true }) {
+                            Avatar(name.ifBlank { me.displayName }, c.me, 68.dp, image = me.avatarUrl)
+                            Icon(
+                                Icons.Rounded.PhotoCamera, "設定頭像", tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.align(Alignment.BottomEnd).offset(4.dp, 4.dp).size(24.dp).clip(CircleShape).background(c.card).padding(4.dp),
+                            )
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(name.trim().ifEmpty { "還沒取暱稱" }, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (bd != null) {
+                                    val sign = Horoscope.signOf(bd)
+                                    Pill("🎂 ${ProfileInfo.age(bd)} 歲", c.card)
+                                    Pill("${sign.emoji} ${sign.name}", c.card)
+                                } else Pill("🎂 還沒填生日", c.card, MaterialTheme.colorScheme.onSurfaceVariant)
+                                form[ProfileInfo.BLOOD_TYPE]?.takeIf { it.isNotBlank() }?.let { Pill("🩸 ${it.uppercase()} 型", c.card) }
+                            }
                         }
                     }
+                    Completion(filled, total, partner)
                 }
-                Completion(filled, total, partner)
-            }
-            Note(
-                if (s.paired) "這些資料 ${s.partnerName} 都看得到 👀 不想說的留白就好" else "配對之後，另一半就看得到這些資料 👀 不想說的留白就好",
-                "💞", c.partnerSoft,
-            )
+                Note(
+                    if (s.paired) "這些資料 ${s.partnerName} 都看得到 👀 不想說的留白就好" else "配對之後，另一半就看得到這些資料 👀 不想說的留白就好",
+                    "💞", c.partnerSoft,
+                )
 
-            SectionTitle("基本資料")
-            CuteCard {
-                ProfileField("😊 暱稱", name, { name = it.take(Limits.NAME) }, "大家都怎麼叫你", error = nameError)
-                BirthdayField(birthday, onPick = { picked ->
-                    if (LocalDate.parse(picked).isAfter(LocalDate.now())) vm.toast("生日不能是未來的日子喔 🤔") else birthday = picked
-                }, onClear = { birthday = "" })
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Info(ProfileInfo.HEIGHT, Modifier.weight(1f))
-                    Info(ProfileInfo.WEIGHT, Modifier.weight(1f))
+                SectionTitle("基本資料")
+                CuteCard {
+                    ProfileField("😊 暱稱", "暱稱", name, { set(NAME_KEY, it.take(Limits.NAME)) }, "大家都怎麼叫你", error = nameError)
+                    BirthdayField(birthday, onPick = { picked ->
+                        if (picked.isAfter(LocalDate.now())) vm.toast("生日不能是未來的日子喔 🤔") else set(BIRTHDAY_KEY, picked.toString())
+                    }, onClear = { set(BIRTHDAY_KEY, "") })
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Info(ProfileInfo.HEIGHT, Modifier.weight(1f))
+                        Info(ProfileInfo.WEIGHT, Modifier.weight(1f))
+                    }
+                    BloodTypePicker(form[ProfileInfo.BLOOD_TYPE].orEmpty().trim().uppercase()) { set(ProfileInfo.BLOOD_TYPE, it) }
+                    Info(ProfileInfo.PHONE)
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FieldLabel("${field(ProfileInfo.BLOOD_TYPE).emoji} ${field(ProfileInfo.BLOOD_TYPE).label}")
-                    Segmented(
-                        ProfileInfo.bloodTypes.map { it to "$it 型" } + ("" to "不確定"),
-                        values[ProfileInfo.BLOOD_TYPE].orEmpty().trim().uppercase(),
-                    ) { set(ProfileInfo.BLOOD_TYPE, it) }
+
+                SectionTitle("個性與生活")
+                CuteCard {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Info(ProfileInfo.MBTI, Modifier.weight(0.8f))
+                        Info(ProfileInfo.JOB, Modifier.weight(1.2f))
+                    }
+                    Info(ProfileInfo.HOBBIES)
+                    Info(ProfileInfo.INTRO)
                 }
-                Info(ProfileInfo.PHONE)
-            }
 
-            SectionTitle("個性與生活")
-            CuteCard {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Info(ProfileInfo.MBTI, Modifier.weight(0.8f))
-                    Info(ProfileInfo.JOB, Modifier.weight(1.2f))
+                SectionTitle("喜好與小提醒", trailing = "點餐、送禮都用得到")
+                CuteCard {
+                    Info(ProfileInfo.LIKES)
+                    Info(ProfileInfo.DISLIKES)
+                    Info(ProfileInfo.ALLERGIES)
                 }
-                Info(ProfileInfo.HOBBIES)
-                Info(ProfileInfo.INTRO)
-            }
 
-            SectionTitle("喜好與小提醒", trailing = "點餐、送禮都用得到")
-            CuteCard {
-                Info(ProfileInfo.LIKES)
-                Info(ProfileInfo.DISLIKES)
-                Info(ProfileInfo.ALLERGIES)
-            }
+                SectionTitle("尺寸", trailing = "買衣服鞋子不怕買錯")
+                CuteCard {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Info(ProfileInfo.CLOTHES_SIZE, Modifier.weight(1f))
+                        Info(ProfileInfo.SHOE_SIZE, Modifier.weight(1f))
+                    }
+                }
 
-            SectionTitle("尺寸", trailing = "買衣服鞋子不怕買錯")
-            CuteCard {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Info(ProfileInfo.CLOTHES_SIZE, Modifier.weight(1f))
-                    Info(ProfileInfo.SHOE_SIZE, Modifier.weight(1f))
+                // 之後新增的欄位：還沒排進上面的分類就先放這裡
+                val placed = setOf(
+                    ProfileInfo.HEIGHT, ProfileInfo.WEIGHT, ProfileInfo.BLOOD_TYPE, ProfileInfo.PHONE, ProfileInfo.MBTI, ProfileInfo.JOB, ProfileInfo.HOBBIES,
+                    ProfileInfo.INTRO, ProfileInfo.LIKES, ProfileInfo.DISLIKES, ProfileInfo.ALLERGIES, ProfileInfo.CLOTHES_SIZE, ProfileInfo.SHOE_SIZE,
+                )
+                val others = ProfileInfo.fields.filter { it.key !in placed }
+                if (others.isNotEmpty()) {
+                    SectionTitle("其他")
+                    CuteCard { others.forEach { Info(it.key) } }
                 }
             }
-
-            // 之後新增的欄位：還沒排進上面的分類就先放這裡
-            val placed = setOf(
-                ProfileInfo.HEIGHT, ProfileInfo.WEIGHT, ProfileInfo.BLOOD_TYPE, ProfileInfo.PHONE, ProfileInfo.MBTI, ProfileInfo.JOB, ProfileInfo.HOBBIES,
-                ProfileInfo.INTRO, ProfileInfo.LIKES, ProfileInfo.DISLIKES, ProfileInfo.ALLERGIES, ProfileInfo.CLOTHES_SIZE, ProfileInfo.SHOE_SIZE,
-            )
-            val others = ProfileInfo.fields.filter { it.key !in placed }
-            if (others.isNotEmpty()) {
-                SectionTitle("其他")
-                CuteCard { others.forEach { Info(it.key) } }
-            }
+            // 下緣淡出：看得出來還能往下捲
+            val bg = MaterialTheme.colorScheme.background
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(14.dp).background(Brush.verticalGradient(listOf(bg.copy(alpha = 0f), bg))))
         }
 
-        // 一直浮在下面的儲存列：長長的表單不用捲到最下面才能存；後面的內容淡出，不會從縫隙露出來
-        val bg = MaterialTheme.colorScheme.background
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(0f to bg.copy(alpha = 0f), 0.3f to bg)).padding(top = 16.dp)) {
-            Row(
-                Modifier.padding(horizontal = 14.dp, vertical = 8.dp).fillMaxWidth()
-                    .shadow(18.dp, RoundedCornerShape(30.dp), ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-                    .clip(RoundedCornerShape(30.dp)).background(c.card).padding(start = 20.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                val (status, color) = when {
-                    !valid -> "有欄位要修正一下 ✋" to MaterialTheme.colorScheme.error
-                    dirty -> "有修改還沒儲存" to MaterialTheme.colorScheme.onSurfaceVariant
-                    else -> "都儲存好了 ✓" to c.good
-                }
-                Text(status, style = MaterialTheme.typography.bodyMedium, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                CuteButton("儲存", icon = Icons.Rounded.Check, enabled = dirty && valid && !vm.busy) { save() }
+        // 一直在下面的儲存列：長長的表單不用捲到最下面才能存
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 8.dp).fillMaxWidth()
+                .shadow(18.dp, RoundedCornerShape(30.dp), ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                .clip(RoundedCornerShape(30.dp)).background(c.card).padding(start = 20.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            val (status, color) = when {
+                !valid -> "有欄位要修正一下 ✋" to MaterialTheme.colorScheme.error
+                dirty -> "有修改還沒儲存" to MaterialTheme.colorScheme.onSurfaceVariant
+                // 綠色調深一點，白底上才看得清楚
+                else -> "都儲存好了 ✓" to lerp(c.good, MaterialTheme.colorScheme.onSurface, 0.4f)
             }
+            Text(
+                status, style = MaterialTheme.typography.bodyMedium, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
+            )
+            CuteButton("儲存", icon = Icons.Rounded.Check, enabled = dirty && valid && !vm.busy) { save() }
         }
     }
 
@@ -392,6 +478,28 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     )
 }
 
+/** 血型：平常是一排膠囊切換；字放很大時改成會換行的小膠囊，才不會被切掉 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BloodTypePicker(selected: String, onSelect: (String) -> Unit) {
+    val f = field(ProfileInfo.BLOOD_TYPE)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FieldLabel("${f.emoji} ${f.label}")
+        val options = ProfileInfo.bloodTypes.map { it to it } + ("" to "未知")
+        if (LocalDensity.current.fontScale < 1.5f) Segmented(options, selected, onSelect = onSelect)
+        else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { (key, label) -> ChoiceChip(if (key.isEmpty()) label else "$label 型", key == selected) { onSelect(key) } }
+        }
+    }
+}
+
+/** 資料庫還沒跑 upgrade-v2.sql：個人資料和備註都用不了，先說清楚，不要讓人以為是空的 */
+@Composable
+private fun SchemaNote(what: String) = Note(
+    "$what：請到 Supabase 的 SQL Editor 執行 upgrade-v2.sql（說明在「我的 › Supabase 與帳號」）",
+    "🛠️", MaterialTheme.colorScheme.errorContainer,
+)
+
 /** 資料完成度：填越多，對方越懂你 */
 @Composable
 private fun Completion(filled: Int, total: Int, partner: String) {
@@ -399,7 +507,7 @@ private fun Completion(filled: Int, total: Int, partner: String) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("資料完成度", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-            Text("$filled / $total", style = MaterialTheme.typography.labelLarge, color = Cute.colors.me)
+            Text("$filled / $total", style = MaterialTheme.typography.labelLarge)
         }
         LinearProgressIndicator(
             progress = { progress }, modifier = Modifier.fillMaxWidth().height(8.dp),
@@ -444,6 +552,7 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
     val shown = TILE_KEYS + listOf(ProfileInfo.PHONE, ProfileInfo.INTRO, ProfileInfo.BLOOD_TYPE, ProfileInfo.MBTI)
     val rows = ProfileInfo.filled(info).filter { it.first.key !in shown }
     val notes = s.notes.sortedByDescending { it.time }
+    val outdated = s.schemaOutdated
     var deleting by remember { mutableStateOf<PrivateNote?>(null) }
 
     fun dial(number: String) {
@@ -458,6 +567,7 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
 
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenHeader("$name 的資料", onBack = back) }
+        if (outdated) item { SchemaNote("資料庫還沒更新，看不到 $name 的個人資料，也還不能寫備註") }
         item {
             CuteCard(color = c.partnerSoft) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -481,7 +591,8 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
         if (bd != null) item { BirthdayCountdown(name, bd, today) }
         if (phone != null) item {
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(c.card).clickable { dial(phone) }.padding(start = 12.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(c.card)
+                    .clickable(onClickLabel = "撥打電話", role = Role.Button) { dial(phone) }.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 EmojiBubble("📞", MaterialTheme.colorScheme.secondaryContainer)
@@ -492,7 +603,10 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
                 IconButton(onClick = { copyText(context, "電話", phone); vm.toast("已複製電話號碼") }) {
                     Icon(Icons.Rounded.ContentCopy, "複製電話", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
-                CuteButton("撥打", icon = Icons.Rounded.Call, small = true, color = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary) { dial(phone) }
+                CuteButton(
+                    "撥打", Modifier.minimumInteractiveComponentSize(), icon = Icons.Rounded.Call, small = true,
+                    color = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary,
+                ) { dial(phone) }
             }
         }
         if (tiles.isNotEmpty()) {
@@ -525,18 +639,19 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
                 }
             }
         }
-        if (chips.isEmpty() && tiles.isEmpty() && rows.isEmpty() && phone == null && intro == null) item {
+        // 資料庫還沒更新時資料本來就讀不到，不要說成「還沒填」
+        if (!outdated && chips.isEmpty() && tiles.isEmpty() && rows.isEmpty() && phone == null && intro == null) item {
             CuteCard { EmptyState("$name 還沒填個人資料\n可以提醒一下：「我的 › 我的資料」就能填 ✍️", "🐣") }
         }
 
         item {
             Row(Modifier.fillMaxWidth().padding(top = 6.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("只有我看得到的備註 🔒", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                CuteButton("新增", icon = Icons.Rounded.Add, small = true) { sheet(SheetSpec.NoteEdit(null)) }
+                if (!outdated) CuteButton("新增", Modifier.minimumInteractiveComponentSize(), icon = Icons.Rounded.Add, small = true) { sheet(SheetSpec.NoteEdit(null)) }
             }
         }
         item { Note("$name 看不到這些備註，也不會收到通知 🤫", "🔒", noteTint(strong = true)) }
-        if (notes.isEmpty()) item {
+        if (notes.isEmpty() && !outdated) item {
             CuteCard {
                 EmptyState("記下 $name 的小喜好、想要的禮物、\n不能踩的地雷，只有你看得到", "📝")
                 SoftButton("寫第一則備註", Modifier.fillMaxWidth(), icon = Icons.Rounded.Add) { sheet(SheetSpec.NoteEdit(null)) }
@@ -566,7 +681,7 @@ private fun UnpairedHint(back: () -> Unit) {
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
             )
         }
-        Note("和另一半配對之後，這裡就會出現對方的資料 💌", "💡")
+        Note("怎麼配對：回到首頁，一個人產生配對碼、另一個人輸入就好 💌", "💡")
     }
 }
 
@@ -625,7 +740,7 @@ private fun noteTint(strong: Boolean = false): Color {
 private fun NoteCard(n: PrivateNote, onOpen: () -> Unit, onDelete: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(noteTint())
-            .clickable(onClick = onOpen).padding(start = 16.dp, top = 14.dp, bottom = 12.dp, end = 4.dp),
+            .clickable(onClickLabel = "編輯備註", role = Role.Button, onClick = onOpen).padding(start = 16.dp, top = 14.dp, bottom = 12.dp, end = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {

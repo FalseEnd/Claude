@@ -262,7 +262,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
             notifPrefs = listOf("pairing", "place", "mood", "comfort", "battery_low", "guess", "event", "anniversary", "cycle_care", "sharing_changed", "diary", "memo")
                 .associateWith { true },
             notes = listOf(
-                Note("n1", PARTNER, "她喜歡半糖少冰 🧋 珍奶要加波霸，不要椰果", iso(at(3, 21, 30))),
+                Note("n1", PARTNER, "她喜歡半糖少冰 🥤 珍奶要加波霸，不要椰果", iso(at(3, 21, 30))),
                 Note("n2", PARTNER, "生日想要的耳環款式：微風南山 2 樓那間的珍珠小耳環（她偷看了三次 👀）", iso(at(12, 22, 10))),
             ),
             dayEntries = listOf(
