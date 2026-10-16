@@ -681,7 +681,7 @@ private fun UnpairedHint(back: () -> Unit) {
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
             )
         }
-        Note("怎麼配對：回到首頁，一個人產生配對碼、另一個人輸入就好 💌", "💡")
+        Note("回到首頁就能配對：一人產生配對碼、另一人輸入 💌", "💡")
     }
 }
 

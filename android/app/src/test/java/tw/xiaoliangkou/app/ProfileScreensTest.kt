@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -24,10 +25,14 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.dp
+import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -114,6 +119,79 @@ class ProfileScreensTest {
     @Test fun partnerProfileDark() = shot("43_partner_profile_dark", dark = true) { PartnerProfileScreen(s, vm, {}) {} }
 
     @Test fun unpaired() = shot("44_partner_unpaired") { PartnerProfileScreen(s.copy(partner = null, couple = null), vm, {}) {} }
+
+    /** 對方什麼都還沒填、也還沒寫過備註 */
+    @Test fun partnerProfileEmpty() = shot("41_partner_profile_empty") {
+        PartnerProfileScreen(s.copy(partner = s.partner!!.copy(birthday = null, info = JsonObject(emptyMap())), notes = emptyList()), vm, {}) {}
+    }
+
+    /** 資料庫還沒跑 upgrade-v2.sql：先說清楚，不要顯示成「還沒填」 */
+    @Test fun partnerProfileSchemaOutdated() = shot("41_partner_profile_outdated") {
+        PartnerProfileScreen(s.copy(schemaOutdated = true, partner = s.partner!!.copy(info = JsonObject(emptyMap())), notes = emptyList()), vm, {}) {}
+    }
+
+    @Test @Config(qualifiers = "w400dp-h700dp-xhdpi")
+    fun myProfileSchemaOutdated() = shot("40_my_profile_outdated") { MyProfileScreen(s.copy(schemaOutdated = true), vm) {} }
+
+    /** 窄螢幕、字放大：血型不會被切掉 */
+    @Test @Config(qualifiers = "w360dp-h1000dp-xhdpi", fontScale = 1.3f)
+    fun myProfileLargeFont() = shot("40_my_profile_large_font") { MyProfileScreen(s, vm) {} }
+
+    @Test @Config(qualifiers = "w360dp-h1500dp-xhdpi", fontScale = 1.6f)
+    fun myProfileHugeFont() = shot("40_my_profile_huge_font") { MyProfileScreen(s, vm) {} }
+
+    /** 還沒填生日：日曆翻到 25 年前，但不會先選好日子，要點一天才能按「確定」 */
+    @OptIn(ExperimentalRoborazziApi::class)
+    @Test @Config(qualifiers = "w400dp-h900dp-xhdpi")
+    fun birthdayPickerStartsEmpty() {
+        val repo = live { st -> MyProfileScreen(st, vm) {} }
+        runBlocking { repo.state.value.me!!.let { repo.updateProfileInfo(it.displayName, null, it.info) } }
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("還沒填，點一下選日期").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("確定").assertIsNotEnabled()
+        captureScreenRoboImage("build/screens/40_birthday_picker.png")
+
+        val year = java.time.LocalDate.now().minusYears(25).year
+        compose.onNode(hasClickAction() and hasText("$year", substring = true) and hasText("15", substring = true)).performClick()
+        compose.onNodeWithText("確定").assertIsEnabled().performClick()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("$year/1/15", substring = true).assertExists()
+        compose.onNodeWithText("有修改還沒儲存").assertExists()
+    }
+
+    /** 沒改過：別台手機存的新資料直接顯示；自己改過的欄位留著，儲存時也不會蓋掉別台剛改的 */
+    @Test @Config(qualifiers = "w400dp-h900dp-xhdpi")
+    fun remoteUpdatesMergeWithEdits() {
+        val repo = live { st -> MyProfileScreen(st, vm) {} }
+        fun remote(key: String, v: String) = runBlocking {
+            val me = repo.state.value.me!!
+            repo.updateProfileInfo(me.displayName, me.birthday, ProfileInfo.build(mapOf(key to v), me.info))
+        }
+        fun eventually(check: () -> Unit) = idleUntil { runCatching(check).isSuccess }
+
+        remote(ProfileInfo.HEIGHT, "177")
+        eventually { compose.onNode(hasSetTextAction() and hasText("177")).assertExists() }
+        compose.onNodeWithText("都儲存好了 ✓").assertExists()
+        compose.onNodeWithText("儲存").assertIsNotEnabled()
+
+        compose.onNode(hasSetTextAction() and hasText("ISTJ")).performTextReplacement("enfj")
+        remote(ProfileInfo.JOB, "產品經理")
+        eventually { compose.onNode(hasSetTextAction() and hasText("產品經理")).assertExists() }
+        compose.onNode(hasSetTextAction() and hasText("ENFJ")).assertExists()
+        compose.onNodeWithText("有修改還沒儲存").assertExists()
+
+        // 存之前別台手機又改了體重：只送自己改的 MBTI，體重不會被舊的值蓋掉
+        remote(ProfileInfo.WEIGHT, "70")
+        compose.onNodeWithText("儲存").assertIsEnabled().performClick()
+        idleUntil { ProfileInfo.text(repo.state.value.me!!.info, ProfileInfo.MBTI) == "ENFJ" }
+        val info = repo.state.value.me!!.info
+        assertEquals("產品經理", ProfileInfo.text(info, ProfileInfo.JOB))
+        assertEquals(177.0, ProfileInfo.number(info, ProfileInfo.HEIGHT))
+        assertEquals(70.0, ProfileInfo.number(info, ProfileInfo.WEIGHT))
+        eventually { compose.onNodeWithText("都儲存好了 ✓").assertExists() }
+        compose.onNode(hasSetTextAction() and hasText("70")).assertExists()
+    }
 
     /** 沒填資料的新帳號：每一格都有淡淡的範例文字 */
     @Test @Config(qualifiers = "w400dp-h900dp-xhdpi")
