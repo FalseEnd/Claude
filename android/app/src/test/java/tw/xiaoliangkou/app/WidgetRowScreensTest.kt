@@ -6,6 +6,8 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
 import android.util.SizeF
+import android.view.LayoutInflater
+import android.view.View
 import android.widget.FrameLayout
 import android.widget.RemoteViews
 import androidx.compose.foundation.background
@@ -23,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -99,13 +100,20 @@ class WidgetRowScreensTest {
         demo.updateAvatar(Avatars.encodePhoto(Avatars.crop(testPhoto(), Avatars.cropOf(900, 1200, 600f, 1.3f, 0f, 60f))))
     }
 
-    private class Tile(val label: String, val size: SizeF, val views: (android.content.Context) -> RemoteViews)
+    private class Tile(val label: String, val size: SizeF, val view: (FrameLayout) -> View)
+
+    private fun remote(label: String, w: Int, h: Int, views: (android.content.Context, SizeF) -> RemoteViews) =
+        SizeF(w.toFloat(), h.toFloat()).let { size -> Tile(label, size) { frame -> views(frame.context, size).apply(frame.context, frame) } }
 
     private fun together(snap: WidgetSnapshot, w: Int, h: Int, label: String = "${w}×${h}dp") =
-        Tile(label, SizeF(w.toFloat(), h.toFloat())) { Widgets.together(it, snap, interactive = false, size = SizeF(w.toFloat(), h.toFloat())) }
+        remote(label, w, h) { context, size -> Widgets.together(context, snap, interactive = false, size = size) }
 
     private fun partner(snap: WidgetSnapshot, w: Int, h: Int, label: String = "${w}×${h}dp") =
-        Tile(label, SizeF(w.toFloat(), h.toFloat())) { Widgets.partner(it, snap, interactive = false, size = SizeF(w.toFloat(), h.toFloat())) }
+        remote(label, w, h) { context, size -> Widgets.partner(context, snap, interactive = false, size = size) }
+
+    /** 桌面挑小工具時的預覽：直接用版面的預設值 */
+    private fun preview(layout: Int, w: Int, h: Int, label: String) =
+        Tile(label, SizeF(w.toFloat(), h.toFloat())) { frame -> LayoutInflater.from(frame.context).inflate(layout, frame, false) }
 
     /** 像桌布的背景，一列可以放好幾個小工具 */
     @Composable
@@ -129,15 +137,11 @@ class WidgetRowScreensTest {
     }
 
     @Composable
-    private fun WidgetView(tile: Tile) {
-        val context = LocalContext.current
-        val views = tile.views(context)
-        AndroidView(
-            factory = { FrameLayout(it) },
-            update = { frame -> frame.removeAllViews(); frame.addView(views.apply(frame.context, frame)) },
-            modifier = Modifier.size(tile.size.width.dp, tile.size.height.dp),
-        )
-    }
+    private fun WidgetView(tile: Tile) = AndroidView(
+        factory = { FrameLayout(it) },
+        update = { frame -> frame.removeAllViews(); frame.addView(tile.view(frame)) },
+        modifier = Modifier.size(tile.size.width.dp, tile.size.height.dp),
+    )
 
     private fun board(name: String, dark: Boolean = false, vararg rows: List<Tile>) {
         compose.setContent { XlkTheme(dark = dark) { Board(dark, *rows) } }
@@ -172,6 +176,7 @@ class WidgetRowScreensTest {
             listOf(partner(snap, 320, 120, "4×1 拉高 · 320×120")),
             listOf(partner(snap, 320, 140, "4×2 · 320×140")),
             listOf(together(snap, 150, 120, "2×1 拉高 · 150×120"), together(snap, 160, 160, "2×2 · 160×160")),
+            listOf(together(snap, 320, 100, "直向 4×1 · 320×100")),
         )
     }
 
@@ -192,13 +197,18 @@ class WidgetRowScreensTest {
         val nothing = WidgetSnapshot.of(sharing(location = false, device = false, mood = false))
         val out = WidgetSnapshot.of(null)
         val unpaired = WidgetSnapshot.of(s.copy(partner = null, couple = null))
+        val real = WidgetSnapshot.of(s).copy(demo = false)
         board(
             "63_widgets_states", false,
-            listOf(together(out, 150, 56, "還沒登入"), together(unpaired, 196, 56, "還沒配對")),
+            listOf(together(real, 150, 56, "正式使用 · 150×56"), together(real, 200, 56, "200×56")),
+            listOf(together(real, 196, 100, "直向 2×1 · 196×100"), together(out, 150, 56, "還沒登入")),
+            listOf(together(unpaired, 196, 56, "還沒配對")),
             listOf(partner(out, 320, 56, "還沒登入")),
             listOf(partner(unpaired, 240, 56, "還沒配對 · 240×56")),
             listOf(partner(paused, 320, 56, "暫停分享")),
             listOf(partner(nothing, 320, 56, "沒有分享")),
+            listOf(preview(R.layout.widget_together, 150, 56, "挑小工具時的預覽 · 2×1")),
+            listOf(preview(R.layout.widget_partner, 320, 56, "挑小工具時的預覽 · 4×1")),
         )
     }
 

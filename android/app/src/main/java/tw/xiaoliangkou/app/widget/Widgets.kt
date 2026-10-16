@@ -176,12 +176,11 @@ object Widgets {
         /** 一行字的高度，跟 TextView 一樣算（版面裡都是 includeFontPadding=false；有表情符號時行高會變大） */
         fun height(text: String, sp: Float): Float {
             set(sp, true)
-            val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, Int.MAX_VALUE / 2).setIncludePad(false)
+            val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, 100_000).setIncludePad(false)
                 .apply { if (Build.VERSION.SDK_INT >= 28) setUseLineSpacingFromFallbacks(true) }.build()
             return layout.height / metrics.density
         }
     }
-
 
     // ------------------------------------------------------------ 在一起
 

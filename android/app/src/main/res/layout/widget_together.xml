@@ -24,7 +24,7 @@
             android:layout_height="match_parent"
             android:adjustViewBounds="true"
             android:contentDescription="@null"
-            android:maxWidth="36dp"
+            android:maxWidth="30dp"
             android:scaleType="fitCenter"
             android:src="@drawable/widget_avatar_me" />
 
@@ -46,7 +46,7 @@
             android:layout_height="match_parent"
             android:adjustViewBounds="true"
             android:contentDescription="@null"
-            android:maxWidth="36dp"
+            android:maxWidth="30dp"
             android:scaleType="fitCenter"
             android:src="@drawable/widget_avatar_partner" />
     </LinearLayout>
@@ -64,6 +64,7 @@
             android:baselineAligned="true"
             android:orientation="horizontal">
 
+            <!-- 放得下才顯示（桌面上挑小工具時的預覽用這個版面的預設值，要放得進 2×1） -->
             <TextView
                 android:id="@+id/together_label"
                 android:layout_width="wrap_content"
@@ -74,7 +75,8 @@
                 android:maxLines="1"
                 android:text="在一起"
                 android:textColor="@color/widget_muted"
-                android:textSize="12sp" />
+                android:textSize="12sp"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/together_days"
