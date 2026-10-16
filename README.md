@@ -27,7 +27,7 @@
 | 路徑 | 內容 |
 |---|---|
 | [`android/`](android) | Android App（Kotlin、Jetpack Compose、Material 3） |
-| [`supabase/`](supabase) | 資料庫結構、權限規則（Row Level Security）、App 呼叫的資料庫函式、即時通知與排程提醒；[`setup.sql`](supabase/setup.sql) 是貼到 SQL Editor 執行的完整版本，[`setup-parts/`](supabase/setup-parts) 是切成 8 份的版本 |
+| [`supabase/`](supabase) | 資料庫結構、權限規則（Row Level Security）、App 呼叫的資料庫函式、即時通知與排程提醒；[`setup.sql`](supabase/setup.sql) 是貼到 SQL Editor 執行的完整版本，[`setup-parts/`](supabase/setup-parts) 是切成 7 份的版本 |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | 設計文件：介面風格、功能規格、隱私原則、系統架構 |
 | [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) | Supabase 設定教學 |
 | [`prototype/`](prototype) | 最早的網頁互動原型；`core.js` 是經期預測等共用邏輯的參考實作 |

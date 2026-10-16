@@ -1,144 +1,4 @@
--- 小倆口 Supabase 設定：第 3 份，共 8 份（請照順序執行，每份只要執行一次）
--- 這個檔案由 supabase/scripts/split-setup.js 從 supabase/migrations/ 產生，請勿手動修改。
-
 begin;
--- 計分規則與 prototype/core.js 的 GUESS_TIERS 相同；在資料庫算，猜之前拿不到答案
-create or replace function public.submit_guess(p_expense uuid, p_guess numeric)
-returns table (actual_amount numeric, score_points smallint, error_ratio numeric)
-language plpgsql security definer set search_path = public as $$
-declare
-  v_e      expenses;
-  v_ratio  numeric;
-  v_points smallint;
-begin
-  select * into v_e from expenses where expenses.id = p_expense;
-  if not found or v_e.user_id is distinct from partner_of(auth.uid()) or not v_e.guessable
-     or not shares(v_e.user_id, 'expenses') or v_e.visibility <> 'shared' then
-    raise exception 'expense_not_guessable';
-  end if;
-  if p_guess is null or p_guess < 0 then raise exception 'invalid_guess'; end if;
-
-  v_ratio := abs(p_guess - v_e.amount) / v_e.amount;
-  v_points := case when v_ratio <= 0.03 then 100 when v_ratio <= 0.10 then 80
-                   when v_ratio <= 0.25 then 50 when v_ratio <= 0.50 then 20 else 5 end;
-  insert into expense_guesses (expense_id, guesser_id, guess_amount, points)
-  values (p_expense, auth.uid(), p_guess, v_points);
-
-  perform log_activity(couple_of(auth.uid()), auth.uid(), 'guess', jsonb_build_object(
-    'expense_id', p_expense, 'merchant', v_e.merchant, 'guess', p_guess, 'actual', v_e.amount, 'points', v_points));
-  perform enqueue_notification(v_e.user_id, 'guess', display_name_of(auth.uid()) || ' 猜了你的花費',
-    v_e.merchant || '：猜 NT$' || round(p_guess) || '，實際 NT$' || round(v_e.amount) || '（' || v_points || ' 分）');
-  return query select v_e.amount, v_points, round(v_ratio, 4);
-end $$;
-
--- =============================================================================
--- Triggers：寫入歷史紀錄並通知對方
--- =============================================================================
-
-create or replace function public.tg_mood_inserted() returns trigger
-language plpgsql security definer set search_path = public as $$
-begin
-  if not shares(new.user_id, 'mood') then return new; end if;
-  perform log_activity(couple_of(new.user_id), new.user_id, 'mood',
-    jsonb_build_object('mood', new.mood, 'note', new.note));
-  perform enqueue_notification(partner_of(new.user_id), 'mood',
-    display_name_of(new.user_id) || ' 現在覺得' || mood_label(new.mood),
-    case when new.mood in ('tired', 'anxious', 'sad', 'angry', 'sick')
-         then coalesce(new.note || '。', '') || '要不要安撫一下？'
-         else coalesce(new.note, '') end,
-    jsonb_build_object('mood', new.mood));
-  return new;
-end $$;
-create trigger mood_inserted after insert on public.moods
-  for each row execute function public.tg_mood_inserted();
-
-create or replace function public.tg_comfort_before() returns trigger
-language plpgsql security definer set search_path = public as $$
-begin
-  -- 防洗版：10 分鐘內最多 20 次
-  if (select count(*) from comforts where sender_id = new.sender_id
-      and created_at > now() - interval '10 minutes') >= 20 then
-    raise exception 'rate_limited';
-  end if;
-  return new;
-end $$;
-create trigger comfort_before before insert on public.comforts
-  for each row execute function public.tg_comfort_before();
-
-create or replace function public.tg_comfort_inserted() returns trigger
-language plpgsql security definer set search_path = public as $$
-begin
-  perform log_activity(new.couple_id, new.sender_id, 'comfort',
-    jsonb_build_object('kind', new.kind, 'message', new.message));
-  perform enqueue_notification(new.receiver_id, 'comfort',
-    display_name_of(new.sender_id) || ' ' || comfort_text(new.kind),
-    coalesce(new.message, '點開回應一下吧'), jsonb_build_object('comfort_id', new.id));
-  return new;
-end $$;
-create trigger comfort_inserted after insert on public.comforts
-  for each row execute function public.tg_comfort_inserted();
-
-create or replace function public.tg_place_event_inserted() returns trigger
-language plpgsql security definer set search_path = public as $$
-declare v_place places;
-begin
-  select * into v_place from places where id = new.place_id;
-  if v_place.watch_user is not null and v_place.watch_user <> new.user_id then return new; end if;
-  perform log_activity(v_place.couple_id, new.user_id, 'place_' || new.kind,
-    jsonb_build_object('place_id', v_place.id, 'place', v_place.name));
-  if (new.kind = 'arrive' and v_place.notify_arrive) or (new.kind = 'leave' and v_place.notify_leave) then
-    perform enqueue_notification(partner_of(new.user_id), 'place',
-      display_name_of(new.user_id) || case new.kind when 'arrive' then ' 已抵達 ' else ' 已離開 ' end || v_place.name,
-      to_char(new.occurred_at at time zone 'Asia/Taipei', 'HH24:MI'),
-      jsonb_build_object('place_id', v_place.id));
-  end if;
-  return new;
-end $$;
-create trigger place_event_inserted after insert on public.place_events
-  for each row execute function public.tg_place_event_inserted();
-
--- 對方新增會偵測「我」的地點，或把地點改成偵測我、搬了位置、改了範圍時，一定通知我（透明度，不能關閉）
-create or replace function public.tg_place_saved() returns trigger
-language plpgsql security definer set search_path = public as $$
-declare
-  v_actor   uuid := coalesce(auth.uid(), new.created_by);
-  v_partner uuid := partner_of(v_actor);
-begin
-  if v_partner is not null and (new.watch_user is null or new.watch_user = v_partner)
-     and (tg_op = 'INSERT' or new.watch_user is distinct from old.watch_user
-          or new.lat <> old.lat or new.lng <> old.lng or new.radius_m <> old.radius_m) then
-    insert into notification_outbox (recipient_id, kind, title, body, data)
-    values (v_partner, 'sharing_changed',
-            display_name_of(v_actor) || case when tg_op = 'INSERT' then ' 新增了地點「' else ' 修改了地點「' end || new.name || '」',
-            '你抵達或離開這裡時，對方會收到通知。可以在地圖頁查看或關閉位置分享。',
-            jsonb_build_object('place_id', new.id));
-  end if;
-  return new;
-end $$;
-create trigger place_saved after insert or update of watch_user, lat, lng, radius_m on public.places
-  for each row execute function public.tg_place_saved();
-
-create or replace function public.tg_event_changed() returns trigger
-language plpgsql security definer set search_path = public as $$
-begin
-  if tg_op = 'INSERT' then
-    perform log_activity(new.couple_id, new.created_by, 'event_created',
-      jsonb_build_object('event_id', new.id, 'title', new.title, 'starts_at', new.starts_at));
-    perform enqueue_notification(partner_of(new.created_by), 'event',
-      display_name_of(new.created_by) || ' 約你：' || new.title,
-      to_char(new.starts_at at time zone 'Asia/Taipei', 'MM/DD HH24:MI'), jsonb_build_object('event_id', new.id));
-  elsif new.status is distinct from old.status and new.status in ('confirmed', 'declined') then
-    perform log_activity(new.couple_id, auth.uid(), 'event_' || new.status,
-      jsonb_build_object('event_id', new.id, 'title', new.title));
-    perform enqueue_notification(new.created_by, 'event',
-      display_name_of(auth.uid()) || case new.status when 'confirmed' then ' 答應了：' else ' 婉拒了：' end || new.title,
-      to_char(new.starts_at at time zone 'Asia/Taipei', 'MM/DD HH24:MI'), jsonb_build_object('event_id', new.id));
-  end if;
-  return new;
-end $$;
-create trigger event_changed after insert or update on public.events
-  for each row execute function public.tg_event_changed();
-
 create or replace function public.tg_device_status_changed() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
@@ -153,8 +13,6 @@ begin
 end $$;
 create trigger device_status_changed after update on public.device_status
   for each row execute function public.tg_device_status_changed();
-
--- 分享設定一改就讓對方知道（關閉、暫停都看得到，不能偷偷改）
 create or replace function public.tg_sharing_changed() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare v_changes jsonb := '{}';
@@ -173,13 +31,6 @@ begin
 end $$;
 create trigger sharing_changed after update on public.sharing_settings
   for each row execute function public.tg_sharing_changed();
-
--- =============================================================================
--- 每日排程：紀念日、交往天數里程碑；解除配對 30 天後清除共享資料
--- pg_cron 每天 09:00 後呼叫一次（app_job_daily，見 20261015000004_jobs.sql），
--- 經期關懷提醒也在那裡，用 prototype/core.js 同一套週期預測。
--- =============================================================================
-
 create or replace function public.daily_reminders(p_today date default (now() at time zone 'Asia/Taipei')::date)
 returns integer
 language plpgsql security definer set search_path = public as $$
@@ -206,7 +57,6 @@ begin
       v_sent := v_sent + 1;
     end if;
   end loop;
-
   for r in
     select c.id, c.together_since, m.user_id as member_id
     from couples c join couple_members m on m.couple_id = c.id and m.left_at is null
@@ -218,15 +68,9 @@ begin
       v_sent := v_sent + 1;
     end if;
   end loop;
-
   delete from couples where ended_at < now() - interval '30 days';
   return v_sent;
 end $$;
-
--- =============================================================================
--- Row Level Security
--- =============================================================================
-
 alter table public.profiles            enable row level security;
 alter table public.couples             enable row level security;
 alter table public.couple_members      enable row level security;
@@ -248,23 +92,105 @@ alter table public.cycle_logs          enable row level security;
 alter table public.activity_log        enable row level security;
 alter table public.notification_prefs  enable row level security;
 alter table public.push_tokens         enable row level security;
-alter table public.notification_outbox enable row level security;  -- 只能讀自己的（見 realtime 遷移）
-alter table public.job_runs            enable row level security;  -- 沒有 policy = 用戶端完全不能碰
+alter table public.notification_outbox enable row level security;
+alter table public.job_runs            enable row level security;
 alter table public.app_config          enable row level security;
-
--- 帳號
 create policy "profiles: self and partner read" on public.profiles for select using (id = auth.uid() or public.is_partner(id));
 create policy "profiles: self insert" on public.profiles for insert with check (id = auth.uid());
 create policy "profiles: self update" on public.profiles for update using (id = auth.uid()) with check (id = auth.uid());
-
 create policy "couples: members read" on public.couples for select using (id = public.my_couple_id());
 create policy "couples: members update" on public.couples for update using (id = public.my_couple_id()) with check (id = public.my_couple_id());
 create policy "couple_members: members read" on public.couple_members for select using (couple_id = public.my_couple_id());
 create policy "pair_invites: own read" on public.pair_invites for select using (inviter_id = auth.uid());
-
--- 分享設定：自己可改；對方可以看（知道自己被分享了什麼）
 create policy "sharing: self and partner read" on public.sharing_settings for select using (user_id = auth.uid() or public.is_partner(user_id));
-
+create policy "sharing: self insert" on public.sharing_settings for insert with check (user_id = auth.uid());
+create policy "sharing: self update" on public.sharing_settings for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "device: owner" on public.device_status for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "device: partner read" on public.device_status for select using (public.partner_shares(user_id, 'device'));
+create policy "locations: owner" on public.locations for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "locations: partner read" on public.locations for select using (public.partner_shares(user_id, 'location'));
+create policy "moods: owner" on public.moods for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "moods: partner read" on public.moods for select using (public.partner_shares(user_id, 'mood'));
+create policy "expenses: owner" on public.expenses for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "guesses: guesser or owner read" on public.expense_guesses for select using (
+  guesser_id = auth.uid() or exists (select 1 from public.expenses e where e.id = expense_id and e.user_id = auth.uid()));
+create policy "cycle_settings: owner" on public.cycle_settings for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "cycle_settings: partner read" on public.cycle_settings for select using (public.partner_shares(user_id, 'cycle'));
+create policy "cycle_periods: owner" on public.cycle_periods for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "cycle_periods: partner read" on public.cycle_periods for select using (public.partner_shares(user_id, 'cycle'));
+create policy "cycle_periods: partner write" on public.cycle_periods for insert with check (
+  public.partner_shares(user_id, 'cycle')
+  and exists (select 1 from public.cycle_settings s where s.user_id = cycle_periods.user_id and s.partner_can_edit));
+create policy "cycle_periods: partner update" on public.cycle_periods for update using (
+  public.partner_shares(user_id, 'cycle')
+  and exists (select 1 from public.cycle_settings s where s.user_id = cycle_periods.user_id and s.partner_can_edit));
+create policy "cycle_logs: owner only" on public.cycle_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "places: couple read" on public.places for select using (couple_id = public.my_couple_id());
+create policy "places: couple insert" on public.places for insert with check (
+  couple_id = public.my_couple_id() and created_by = auth.uid()
+  and (watch_user is null or watch_user = auth.uid() or public.is_partner(watch_user)));
+create policy "places: couple update" on public.places for update using (couple_id = public.my_couple_id()) with check (
+  couple_id = public.my_couple_id() and (watch_user is null or watch_user = auth.uid() or public.is_partner(watch_user)));
+create policy "places: couple delete" on public.places for delete using (couple_id = public.my_couple_id());
+create policy "place_events: couple read" on public.place_events for select using (
+  exists (select 1 from public.places p where p.id = place_id and p.couple_id = public.my_couple_id()));
+create policy "place_events: self report" on public.place_events for insert with check (
+  user_id = auth.uid() and public.i_share('location')
+  and exists (select 1 from public.places p where p.id = place_id and p.couple_id = public.my_couple_id()));
+create policy "comforts: couple read" on public.comforts for select using (
+  couple_id = public.my_couple_id() and auth.uid() in (sender_id, receiver_id));
+create policy "comforts: send to partner" on public.comforts for insert with check (
+  sender_id = auth.uid() and couple_id = public.my_couple_id() and public.is_partner(receiver_id));
+create policy "comforts: receiver marks read" on public.comforts for update using (receiver_id = auth.uid()) with check (receiver_id = auth.uid());
+create policy "anniversaries: couple" on public.anniversaries for all
+  using (couple_id = public.my_couple_id()) with check (couple_id = public.my_couple_id());
+create policy "events: couple read" on public.events for select using (couple_id = public.my_couple_id());
+create policy "events: couple insert" on public.events for insert with check (couple_id = public.my_couple_id() and created_by = auth.uid());
+create policy "events: couple update" on public.events for update using (couple_id = public.my_couple_id()) with check (couple_id = public.my_couple_id());
+create policy "events: creator delete" on public.events for delete using (couple_id = public.my_couple_id() and created_by = auth.uid());
+create policy "activity: couple read" on public.activity_log for select using (couple_id = public.my_couple_id());
+create policy "notification_prefs: owner" on public.notification_prefs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "push_tokens: owner" on public.push_tokens for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+revoke execute on function public.enqueue_notification(uuid, text, text, text, jsonb) from public, anon, authenticated;
+revoke execute on function public.log_activity(uuid, uuid, text, jsonb) from public, anon, authenticated;
+revoke execute on function public.gen_pair_code() from public, anon, authenticated;
+revoke execute on function public.daily_reminders(date) from public, anon, authenticated;
+revoke execute on function public.couple_of(uuid) from public, anon, authenticated;
+revoke execute on function public.partner_of(uuid) from public, anon, authenticated;
+revoke execute on function public.shares(uuid, text) from public, anon, authenticated;
+revoke execute on function public.display_name_of(uuid) from public, anon, authenticated;
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_max  integer := coalesce((select max_users from app_config), 2);
+  v_name text;
+begin
+  perform pg_advisory_xact_lock(7311);
+  if (select count(*) from profiles) >= v_max then
+    raise exception 'registration_closed';
+  end if;
+  v_name := coalesce(
+    nullif(left(trim(new.raw_user_meta_data->>'display_name'), 30), ''),
+    nullif(left(split_part(coalesce(new.email, ''), '@', 1), 30), ''),
+    '親愛的');
+  insert into profiles (id, display_name) values (new.id, v_name);
+  insert into sharing_settings (user_id) values (new.id) on conflict (user_id) do nothing;
+  return new;
+end $$;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_user();
+revoke execute on function public.handle_new_user() from public, anon, authenticated;create table public.realtime_events (
+  id          bigserial primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  kind        text not null check (kind in ('changed', 'locate')),
+  table_name  text,
+  op          text,
+  by_user     uuid,
+  created_at  timestamptz not null default now()
+);
+create index realtime_events_user on public.realtime_events (user_id, id);
+alter table public.realtime_events enable row level security;
+create policy "realtime_events: own read" on public.realtime_events for select using (user_id = auth.uid());
+create policy "outbox: own read" on public.notification_outbox for select using (recipient_id = auth.uid());
 select '第 3 份完成 ✅ 接著貼第 4 份' as "小倆口";
-
 commit;

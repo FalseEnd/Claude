@@ -1,112 +1,4 @@
--- 小倆口 Supabase 設定：第 2 份，共 8 份（請照順序執行，每份只要執行一次）
--- 這個檔案由 supabase/scripts/split-setup.js 從 supabase/migrations/ 產生，請勿手動修改。
-
 begin;
-create index activity_log_couple_time on public.activity_log (couple_id, created_at desc);
-
-create table public.notification_prefs (
-  user_id  uuid not null references auth.users(id) on delete cascade,
-  kind     text not null check (kind in ('pairing', 'place', 'mood', 'comfort', 'battery_low', 'guess',
-                                         'event', 'anniversary', 'cycle_care', 'sharing_changed')),
-  enabled  boolean not null default true,
-  primary key (user_id, kind)
-);
-
-create table public.push_tokens (
-  token       text primary key,
-  user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  platform    text not null check (platform in ('ios', 'android')),
-  updated_at  timestamptz not null default now()
-);
-
--- 由資料庫的觸發程序與排程寫入；App 經由 Realtime 收到後呼叫 app_ack_notifications 填 sent_at
-create table public.notification_outbox (
-  id            bigint generated always as identity primary key,
-  recipient_id  uuid not null references auth.users(id) on delete cascade,
-  kind          text not null,
-  title         text not null,
-  body          text not null,
-  data          jsonb not null default '{}',
-  created_at    timestamptz not null default now(),
-  sent_at       timestamptz,
-  error         text
-);
-create index notification_outbox_pending on public.notification_outbox (recipient_id, id) where sent_at is null;
-
--- 排程（每日提醒）執行紀錄，同一天只跑一次
-create table public.job_runs (
-  name    text not null,
-  run_on  date not null,
-  primary key (name, run_on)
-);
-
--- 整個專案的設定（只有一筆）：人數上限與排程用的時區
-create table public.app_config (
-  id         boolean primary key default true check (id),
-  max_users  integer not null default 2,
-  timezone   text not null default 'Asia/Taipei'
-);
-insert into public.app_config default values;
-
--- =============================================================================
--- Helper functions（security definer，避免 RLS 互相遞迴）
--- =============================================================================
-
-create or replace function public.couple_of(p_user uuid) returns uuid
-language sql stable security definer set search_path = public as $$
-  select couple_id from couple_members where user_id = p_user and left_at is null
-$$;
-
-create or replace function public.partner_of(p_user uuid) returns uuid
-language sql stable security definer set search_path = public as $$
-  select m2.user_id
-  from couple_members m1
-  join couple_members m2 on m2.couple_id = m1.couple_id and m2.user_id <> m1.user_id and m2.left_at is null
-  where m1.user_id = p_user and m1.left_at is null
-$$;
-
--- 以下四個給 RLS policy 使用：只回答「關於目前登入者」的問題
-create or replace function public.my_couple_id() returns uuid
-language sql stable security definer set search_path = public as $$ select couple_of(auth.uid()) $$;
-
-create or replace function public.partner_id() returns uuid
-language sql stable security definer set search_path = public as $$ select partner_of(auth.uid()) $$;
-
-create or replace function public.is_partner(p_user uuid) returns boolean
-language sql stable security definer set search_path = public as $$
-  select p_user is not null and p_user = partner_of(auth.uid())
-$$;
-
--- 擁有者目前是否分享某類資料。暫停只影響被動收集的資料（位置、手機狀態、開銷）。
-create or replace function public.shares(p_owner uuid, p_kind text) returns boolean
-language sql stable security definer set search_path = public as $$
-  select coalesce((
-    select case p_kind
-             when 'location' then s.share_location
-             when 'device'   then s.share_device
-             when 'expenses' then s.share_expenses
-             when 'mood'     then s.share_mood
-             when 'cycle'    then s.share_cycle
-             else false
-           end
-           and (p_kind not in ('location', 'device', 'expenses') or s.paused_until is null or s.paused_until <= now())
-    from sharing_settings s where s.user_id = p_owner
-  ), false)
-$$;
-
-create or replace function public.partner_shares(p_owner uuid, p_kind text) returns boolean
-language sql stable security definer set search_path = public as $$
-  select is_partner(p_owner) and shares(p_owner, p_kind)
-$$;
-
-create or replace function public.i_share(p_kind text) returns boolean
-language sql stable security definer set search_path = public as $$ select shares(auth.uid(), p_kind) $$;
-
-create or replace function public.display_name_of(p_user uuid) returns text
-language sql stable security definer set search_path = public as $$
-  select coalesce((select display_name from profiles where id = p_user), '對方')
-$$;
-
 create or replace function public.enqueue_notification(
   p_recipient uuid, p_kind text, p_title text, p_body text, p_data jsonb default '{}'
 ) returns void
@@ -117,19 +9,16 @@ language sql security definer set search_path = public as $$
     and not exists (select 1 from notification_prefs
                     where user_id = p_recipient and kind = p_kind and not enabled)
 $$;
-
 create or replace function public.log_activity(p_couple uuid, p_actor uuid, p_kind text, p_payload jsonb default '{}')
 returns void
 language sql security definer set search_path = public as $$
   insert into activity_log (couple_id, actor_id, kind, payload)
   select p_couple, p_actor, p_kind, p_payload where p_couple is not null
 $$;
-
 create or replace function public.gen_pair_code() returns text
 language plpgsql volatile as $$
 declare
-  alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';  -- 32 個字元
-  -- gen_random_uuid() 是 PostgreSQL 13 起內建的強隨機數，不需要安裝 pgcrypto
+  alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   bytes bytea := decode(replace(gen_random_uuid()::text, '-', ''), 'hex');
   code text := '';
 begin
@@ -138,7 +27,6 @@ begin
   end loop;
   return code;
 end $$;
-
 create or replace function public.mood_label(p_mood text) returns text
 language sql immutable as $$
   select case p_mood
@@ -146,7 +34,6 @@ language sql immutable as $$
     when 'missyou' then '想你' when 'tired' then '好累' when 'anxious' then '焦慮'
     when 'sad' then '難過' when 'angry' then '生氣' when 'sick' then '不舒服' else p_mood end
 $$;
-
 create or replace function public.comfort_text(p_kind text) returns text
 language sql immutable as $$
   select case p_kind
@@ -155,8 +42,6 @@ language sql immutable as $$
     when 'cheer' then '幫你加油打氣' when 'treat' then '說等等請你喝一杯'
     else '傳了悄悄話給你' end
 $$;
-
--- 下一次的週年日期；2/29 在平年以 2/28 計
 create or replace function public.next_yearly(p_date date, p_today date) returns date
 language plpgsql immutable as $$
 declare
@@ -173,11 +58,6 @@ begin
     y := y + 1;
   end loop;
 end $$;
-
--- =============================================================================
--- RPC：配對
--- =============================================================================
-
 create or replace function public.create_invite() returns text
 language plpgsql security definer set search_path = public as $$
 declare v_code text;
@@ -191,11 +71,9 @@ begin
       insert into pair_invites (code, inviter_id) values (v_code, auth.uid());
       return v_code;
     exception when unique_violation then
-      -- 碰撞機率極低，重新產生即可
     end;
   end loop;
 end $$;
-
 create or replace function public.accept_invite(p_code text) returns uuid
 language plpgsql security definer set search_path = public as $$
 declare
@@ -212,18 +90,15 @@ begin
   if exists (select 1 from couple_members where user_id in (v_me, v_inv.inviter_id) and left_at is null) then
     raise exception 'already_paired';
   end if;
-
   insert into couples default values returning id into v_couple;
   insert into couple_members (couple_id, user_id) values (v_couple, v_inv.inviter_id), (v_couple, v_me);
   update pair_invites set accepted_by = v_me, accepted_at = now() where code = v_inv.code;
   insert into sharing_settings (user_id) values (v_inv.inviter_id), (v_me) on conflict (user_id) do nothing;
-
   perform log_activity(v_couple, v_me, 'paired');
   perform enqueue_notification(v_inv.inviter_id, 'pairing', '配對成功',
     display_name_of(v_me) || ' 接受了你的邀請，一起決定要分享哪些資訊吧');
   return v_couple;
 end $$;
-
 create or replace function public.unpair() returns void
 language plpgsql security definer set search_path = public as $$
 declare
@@ -237,9 +112,6 @@ begin
   perform log_activity(v_couple, auth.uid(), 'unpaired');
   perform enqueue_notification(v_partner, 'pairing', '已解除配對', '所有即時分享已經停止');
 end $$;
-
--- 帳號被刪除（Supabase 後台 › Authentication › Users）時，配對紀錄會跟著被刪掉。
--- 留下來的那個人自動解除配對，才能重新產生配對碼、和新的帳號配對，不會卡在「只剩一個人」的配對裡。
 create or replace function public.tg_couple_member_deleted() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare v_left uuid;
@@ -255,8 +127,6 @@ begin
 end $$;
 create trigger couple_member_deleted after delete on public.couple_members
   for each row execute function public.tg_couple_member_deleted();
-
--- 暫停分享（0 = 立即恢復）。對方會收到通知，避免「偷偷消失」造成誤會。
 create or replace function public.pause_sharing(p_minutes integer) returns timestamptz
 language plpgsql security definer set search_path = public as $$
 declare v_until timestamptz;
@@ -268,19 +138,12 @@ begin
   on conflict (user_id) do update set paused_until = excluded.paused_until, updated_at = now();
   return v_until;
 end $$;
-
--- =============================================================================
--- RPC：對方的開銷（可猜的那筆在猜之前不回傳金額）與猜花費
--- =============================================================================
-
--- 這筆開銷對方看不看得到（另外還要擁有者有分享開銷：shares(user_id, 'expenses')）
 create or replace function public.expense_shown(p_e public.expenses) returns boolean
 language sql stable security definer set search_path = public as $$
   select (p_e.visibility = 'shared' or (p_e.visibility = 'surprise' and p_e.reveal_on <= current_date))
          and not exists (select 1 from sharing_settings s
                          where s.user_id = p_e.user_id and p_e.category = any (s.hidden_categories))
 $$;
-
 create or replace function public.partner_expenses(p_from timestamptz, p_to timestamptz)
 returns table (
   id uuid, amount numeric, merchant text, category text, source text,
@@ -298,7 +161,126 @@ language sql stable security definer set search_path = public as $$
     and expense_shown(e)
   order by e.occurred_at desc
 $$;
-
+create or replace function public.submit_guess(p_expense uuid, p_guess numeric)
+returns table (actual_amount numeric, score_points smallint, error_ratio numeric)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_e      expenses;
+  v_ratio  numeric;
+  v_points smallint;
+begin
+  select * into v_e from expenses where expenses.id = p_expense;
+  if not found or v_e.user_id is distinct from partner_of(auth.uid()) or not v_e.guessable
+     or not shares(v_e.user_id, 'expenses') or v_e.visibility <> 'shared' then
+    raise exception 'expense_not_guessable';
+  end if;
+  if p_guess is null or p_guess < 0 then raise exception 'invalid_guess'; end if;
+  v_ratio := abs(p_guess - v_e.amount) / v_e.amount;
+  v_points := case when v_ratio <= 0.03 then 100 when v_ratio <= 0.10 then 80
+                   when v_ratio <= 0.25 then 50 when v_ratio <= 0.50 then 20 else 5 end;
+  insert into expense_guesses (expense_id, guesser_id, guess_amount, points)
+  values (p_expense, auth.uid(), p_guess, v_points);
+  perform log_activity(couple_of(auth.uid()), auth.uid(), 'guess', jsonb_build_object(
+    'expense_id', p_expense, 'merchant', v_e.merchant, 'guess', p_guess, 'actual', v_e.amount, 'points', v_points));
+  perform enqueue_notification(v_e.user_id, 'guess', display_name_of(auth.uid()) || ' 猜了你的花費',
+    v_e.merchant || '：猜 NT$' || round(p_guess) || '，實際 NT$' || round(v_e.amount) || '（' || v_points || ' 分）');
+  return query select v_e.amount, v_points, round(v_ratio, 4);
+end $$;
+create or replace function public.tg_mood_inserted() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not shares(new.user_id, 'mood') then return new; end if;
+  perform log_activity(couple_of(new.user_id), new.user_id, 'mood',
+    jsonb_build_object('mood', new.mood, 'note', new.note));
+  perform enqueue_notification(partner_of(new.user_id), 'mood',
+    display_name_of(new.user_id) || ' 現在覺得' || mood_label(new.mood),
+    case when new.mood in ('tired', 'anxious', 'sad', 'angry', 'sick')
+         then coalesce(new.note || '。', '') || '要不要安撫一下？'
+         else coalesce(new.note, '') end,
+    jsonb_build_object('mood', new.mood));
+  return new;
+end $$;
+create trigger mood_inserted after insert on public.moods
+  for each row execute function public.tg_mood_inserted();
+create or replace function public.tg_comfort_before() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from comforts where sender_id = new.sender_id
+      and created_at > now() - interval '10 minutes') >= 20 then
+    raise exception 'rate_limited';
+  end if;
+  return new;
+end $$;
+create trigger comfort_before before insert on public.comforts
+  for each row execute function public.tg_comfort_before();
+create or replace function public.tg_comfort_inserted() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform log_activity(new.couple_id, new.sender_id, 'comfort',
+    jsonb_build_object('kind', new.kind, 'message', new.message));
+  perform enqueue_notification(new.receiver_id, 'comfort',
+    display_name_of(new.sender_id) || ' ' || comfort_text(new.kind),
+    coalesce(new.message, '點開回應一下吧'), jsonb_build_object('comfort_id', new.id));
+  return new;
+end $$;
+create trigger comfort_inserted after insert on public.comforts
+  for each row execute function public.tg_comfort_inserted();
+create or replace function public.tg_place_event_inserted() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_place places;
+begin
+  select * into v_place from places where id = new.place_id;
+  if v_place.watch_user is not null and v_place.watch_user <> new.user_id then return new; end if;
+  perform log_activity(v_place.couple_id, new.user_id, 'place_' || new.kind,
+    jsonb_build_object('place_id', v_place.id, 'place', v_place.name));
+  if (new.kind = 'arrive' and v_place.notify_arrive) or (new.kind = 'leave' and v_place.notify_leave) then
+    perform enqueue_notification(partner_of(new.user_id), 'place',
+      display_name_of(new.user_id) || case new.kind when 'arrive' then ' 已抵達 ' else ' 已離開 ' end || v_place.name,
+      to_char(new.occurred_at at time zone 'Asia/Taipei', 'HH24:MI'),
+      jsonb_build_object('place_id', v_place.id));
+  end if;
+  return new;
+end $$;
+create trigger place_event_inserted after insert on public.place_events
+  for each row execute function public.tg_place_event_inserted();
+create or replace function public.tg_place_saved() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_actor   uuid := coalesce(auth.uid(), new.created_by);
+  v_partner uuid := partner_of(v_actor);
+begin
+  if v_partner is not null and (new.watch_user is null or new.watch_user = v_partner)
+     and (tg_op = 'INSERT' or new.watch_user is distinct from old.watch_user
+          or new.lat <> old.lat or new.lng <> old.lng or new.radius_m <> old.radius_m) then
+    insert into notification_outbox (recipient_id, kind, title, body, data)
+    values (v_partner, 'sharing_changed',
+            display_name_of(v_actor) || case when tg_op = 'INSERT' then ' 新增了地點「' else ' 修改了地點「' end || new.name || '」',
+            '你抵達或離開這裡時，對方會收到通知。可以在地圖頁查看或關閉位置分享。',
+            jsonb_build_object('place_id', new.id));
+  end if;
+  return new;
+end $$;
+create trigger place_saved after insert or update of watch_user, lat, lng, radius_m on public.places
+  for each row execute function public.tg_place_saved();
+create or replace function public.tg_event_changed() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    perform log_activity(new.couple_id, new.created_by, 'event_created',
+      jsonb_build_object('event_id', new.id, 'title', new.title, 'starts_at', new.starts_at));
+    perform enqueue_notification(partner_of(new.created_by), 'event',
+      display_name_of(new.created_by) || ' 約你：' || new.title,
+      to_char(new.starts_at at time zone 'Asia/Taipei', 'MM/DD HH24:MI'), jsonb_build_object('event_id', new.id));
+  elsif new.status is distinct from old.status and new.status in ('confirmed', 'declined') then
+    perform log_activity(new.couple_id, auth.uid(), 'event_' || new.status,
+      jsonb_build_object('event_id', new.id, 'title', new.title));
+    perform enqueue_notification(new.created_by, 'event',
+      display_name_of(auth.uid()) || case new.status when 'confirmed' then ' 答應了：' else ' 婉拒了：' end || new.title,
+      to_char(new.starts_at at time zone 'Asia/Taipei', 'MM/DD HH24:MI'), jsonb_build_object('event_id', new.id));
+  end if;
+  return new;
+end $$;
+create trigger event_changed after insert or update on public.events
+  for each row execute function public.tg_event_changed();
 select '第 2 份完成 ✅ 接著貼第 3 份' as "小倆口";
-
 commit;

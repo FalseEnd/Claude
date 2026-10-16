@@ -23,7 +23,8 @@
 
 ## 2. 建立資料表
 
-1. 打開這個專案的 [`supabase/setup.sql`](../supabase/setup.sql)。在 GitHub 上可以按檔案右上角的「Copy raw file」複製全部內容。
+1. 打開這個專案的 [`supabase/setup.sql`](../supabase/setup.sql)，在 GitHub 上按檔案右上角的 **Raw**，會打開一個純文字頁面，從這個頁面全選、複製。
+   > 一定要從 **Raw** 純文字頁面複製。從其他地方（例如聊天軟體、筆記 App、網頁預覽）複製，`$` 可能會變成 `\$`，或換行被吃掉，執行時就會出現 syntax error。
 2. 回到 Supabase 後台，左邊選 **SQL Editor**，會出現一個空白的編輯區（沒有的話，按左上角的 **＋** › **Create a new snippet**）。
 3. 把剛剛複製的內容全部貼上，按編輯區右下方的 **Run**。
 4. 跳出「Potential issue detected」的提醒是正常的（檔案裡有定期清掉過期通知的指令），按 **Run query** 繼續。
@@ -31,13 +32,13 @@
 
 > 只要執行一次。整個檔案是「全部成功，或全部不算」：如果不小心又按了一次，會出現「already exists」的錯誤，不會影響已經建立好的資料。
 
-### 一次複製不了那麼多字？分 8 份貼
+### 一次複製不了那麼多字？分 7 份貼
 
-Supabase 的 SQL Editor 沒辦法直接匯入檔案，只能貼上文字。如果手機或電腦一次複製不了整個 setup.sql，可以改用 [`supabase/setup-parts/`](../supabase/setup-parts) 裡的 8 個小檔案，內容和 setup.sql 完全一樣，只是切成 8 份：
+Supabase 的 SQL Editor 沒辦法直接匯入檔案，只能貼上文字。如果手機或電腦一次複製不了整個 setup.sql，可以改用 [`supabase/setup-parts/`](../supabase/setup-parts) 裡的 7 個小檔案，內容和 setup.sql 完全一樣，只是切成 7 份：
 
-1. 打開 `part-01.sql`，複製全部內容，貼到 SQL Editor（先把編輯區清空），按 **Run**（跳出提醒就按 **Run query**）。
+1. 打開 `part-01.sql`，按 **Raw** 從純文字頁面複製全部內容，貼到 SQL Editor（先把編輯區清空），按 **Run**（跳出提醒就按 **Run query**）。
 2. 看到「第 1 份完成 ✅ 接著貼第 2 份」，就清空編輯區，換貼 `part-02.sql`。
-3. 照順序一直做到 `part-08.sql`，看到「設定完成 🎉」就好了。
+3. 照順序一直做到 `part-07.sql`，看到「設定完成 🎉」就好了。
 
 每一份都是「全部成功，或全部不算」。如果某一份出現紅色的 Error，不用從頭來，修好後重貼那一份就好。已經成功的那幾份**不要**再執行，否則會出現「already exists」。
 
