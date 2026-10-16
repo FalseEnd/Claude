@@ -1,17 +1,12 @@
 'use strict';
-// 從 supabase/migrations/*.sql 產生給使用者貼到 SQL Editor 的檔案：
-//   supabase/setup.sql          全部一次貼上
-//   supabase/setup-parts/*.sql  切成幾個小份（每份約 15 KB），給一次複製不了太多文字的人
+// 從 supabase/migrations/*.sql 產生 supabase/setup.sql：使用者貼到 Supabase SQL Editor 執行一次，整個包在同一個交易裡。
 // 產生的檔案拿掉所有 -- 註解：複製貼上時如果換行被吃掉，註解會把後面的程式碼一起變成註解。
-// 只在最外層的分號切開（會跳過字串與 $$ 函式內容），每份自己包在 begin; … commit; 裡。
-//   node supabase/scripts/split-setup.js           產生
-//   node supabase/scripts/split-setup.js --check   只檢查是否和遷移檔一致
+//   node supabase/scripts/build-setup.js           產生
+//   node supabase/scripts/build-setup.js --check   只檢查是否和遷移檔一致
 const fs = require('fs');
 const path = require('path');
 
 const dir = path.join(__dirname, '..');
-const outDir = path.join(dir, 'setup-parts');
-const LIMIT = 15000;
 
 function statements(sql) {
   const out = [];
@@ -59,34 +54,19 @@ function build() {
   const files = fs.readdirSync(path.join(dir, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
   const stmts = [];
   for (const f of files) stmts.push(...statements(stripComments(fs.readFileSync(path.join(dir, 'migrations', f), 'utf8'))));
-  const parts = [];
-  let cur = '';
-  for (const s of stmts) {
-    if (cur && Buffer.byteLength(cur + s) > LIMIT) { parts.push(cur); cur = ''; }
-    cur += s;
-  }
-  if (cur.trim()) parts.push(cur);
   const wrap = (body, done) => `begin;\n${body.replace(/^\n+/, '').replace(/\n+$/, '')}\nselect '${done}' as "小倆口";\ncommit;\n`;
-  return {
-    whole: wrap(stmts.join(''), '設定完成 🎉 回到說明文件做第 3 步'),
-    parts: parts.map((body, n) => wrap(body, n === parts.length - 1
-      ? '設定完成 🎉 回到說明文件做第 3 步' : `第 ${n + 1} 份完成 ✅ 接著貼第 ${n + 2} 份`))
-  };
+  return { whole: wrap(stmts.join(''), '設定完成 🎉 回到說明文件做第 3 步') };
 }
 
-const { whole, parts } = build();
-const names = parts.map((_, n) => `part-${String(n + 1).padStart(2, '0')}.sql`);
+const { whole } = build();
 const wholeFile = path.join(dir, 'setup.sql');
 if (process.argv.includes('--check')) {
-  const existing = fs.existsSync(outDir) ? fs.readdirSync(outDir).filter((f) => f.endsWith('.sql')).sort() : [];
-  const ok = fs.existsSync(wholeFile) && fs.readFileSync(wholeFile, 'utf8') === whole
-    && existing.join() === names.join() && names.every((f, n) => fs.readFileSync(path.join(outDir, f), 'utf8') === parts[n]);
-  if (!ok) { console.error('supabase/setup.sql 或 setup-parts 和 migrations 不一致，請執行 bash supabase/scripts/build-setup.sh'); process.exit(1); }
-  console.log(`setup.sql 與 setup-parts（${names.length} 份）和 migrations 一致`);
+  if (!fs.existsSync(wholeFile) || fs.readFileSync(wholeFile, 'utf8') !== whole) {
+    console.error('supabase/setup.sql 和 migrations 不一致，請執行 bash supabase/scripts/build-setup.sh');
+    process.exit(1);
+  }
+  console.log('setup.sql 和 migrations 一致');
 } else {
   fs.writeFileSync(wholeFile, whole);
-  fs.mkdirSync(outDir, { recursive: true });
-  for (const f of fs.readdirSync(outDir)) if (f.endsWith('.sql')) fs.unlinkSync(path.join(outDir, f));
-  parts.forEach((p, n) => fs.writeFileSync(path.join(outDir, names[n]), p));
-  console.log(`已產生 setup.sql 與 ${names.length} 份 setup-parts：${names.join(', ')}`);
+  console.log('已產生 setup.sql');
 }
