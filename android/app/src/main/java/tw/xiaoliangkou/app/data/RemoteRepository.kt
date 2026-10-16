@@ -138,8 +138,9 @@ class RemoteRepository(
         val rows = v2 { api.dayEntries(from.toString(), to.toString()) }
         val a = from.toString()
         val b = to.toString()
+        val ids = rows.mapTo(HashSet()) { it.id }
         _state.update { st ->
-            val kept = st.dayEntries.filterNot { it.day in a..b }
+            val kept = st.dayEntries.filterNot { it.day in a..b || it.id in ids }
             st.copy(dayEntries = (kept + rows).sortedWith(DayEntry.ORDER))
         }
     }

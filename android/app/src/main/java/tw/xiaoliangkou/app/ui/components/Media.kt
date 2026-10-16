@@ -334,7 +334,10 @@ private fun rememberPhoto(vm: AppViewModel, path: String, maxSide: Int): Pic {
     val initial = remember(path, maxSide) { cache.cachedBitmap(path, maxSide)?.let { Pic.Ready(it.asImageBitmap()) } ?: Pic.Loading }
     return produceState(initial, path, maxSide) {
         value = initial
-        if (initial is Pic.Loading) value = cache.bitmap(path, maxSide)?.let { Pic.Ready(it.asImageBitmap()) } ?: Pic.Missing
+        if (initial !is Pic.Loading) return@produceState
+        val bmp = cache.bitmap(path, maxSide)
+        // 畫面的狀態在主執行緒改
+        withContext(Dispatchers.Main.immediate) { value = bmp?.let { Pic.Ready(it.asImageBitmap()) } ?: Pic.Missing }
     }.value
 }
 
