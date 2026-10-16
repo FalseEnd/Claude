@@ -21,6 +21,7 @@ import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.Errors
 import tw.xiaoliangkou.app.data.InviteLink
+import tw.xiaoliangkou.app.data.PlaceSearch
 import tw.xiaoliangkou.app.data.RealtimeClient
 import tw.xiaoliangkou.app.data.RemoteRepository
 import tw.xiaoliangkou.app.data.Session
@@ -54,6 +55,8 @@ class AppContainer(private val app: Application) {
     val settings = SettingsStore(app)
     val notifier = Notifier(app).also { it.createChannels() }
     val realtime = RealtimeClient(scope)
+    /** 地圖的地址搜尋 */
+    val placeSearch = PlaceSearch(app, "${BuildConfig.APPLICATION_ID}/${BuildConfig.VERSION_NAME}")
 
     private val _repo = MutableStateFlow<CoupleRepository?>(null)
     val repo: StateFlow<CoupleRepository?> = _repo

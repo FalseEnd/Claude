@@ -1,5 +1,7 @@
 package tw.xiaoliangkou.app
 
+import android.view.View
+import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,12 +10,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
@@ -28,6 +41,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -36,9 +51,11 @@ import org.robolectric.shadows.ShadowLooper
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.InviteLink
+import tw.xiaoliangkou.app.data.PlaceHit
 import tw.xiaoliangkou.app.data.SettingsStore
 import tw.xiaoliangkou.app.data.Session
 import tw.xiaoliangkou.app.ui.AppViewModel
+import tw.xiaoliangkou.app.ui.SheetSpec
 import tw.xiaoliangkou.app.ui.screens.AccountScreen
 import tw.xiaoliangkou.app.ui.screens.AnniversaryScreen
 import tw.xiaoliangkou.app.ui.screens.CalendarScreen
@@ -52,6 +69,7 @@ import tw.xiaoliangkou.app.ui.screens.HistoryScreen
 import tw.xiaoliangkou.app.ui.screens.HomeScreen
 import tw.xiaoliangkou.app.ui.screens.InviteConfirmDialog
 import tw.xiaoliangkou.app.ui.screens.LoginScreen
+import tw.xiaoliangkou.app.ui.screens.MapScreen
 import tw.xiaoliangkou.app.ui.screens.MoneyScreen
 import tw.xiaoliangkou.app.ui.screens.MoodScreen
 import tw.xiaoliangkou.app.ui.screens.MoreScreen
@@ -243,6 +261,82 @@ class ScreensTest {
     @Test fun eventSheet() = sheet("20_sheet_event") { EventSheet(s, vm, null, LocalDate.now()) {} }
     @Test fun placeSheet() = sheet("21_sheet_place") { PlaceSheet(s, vm, null, 25.04, 121.56) {} }
     @Test fun cycleDark() = shot("22_cycle_dark", dark = true) { CycleScreen(s, vm, {}, {}) }
+
+    /** 地圖搜尋：輸入地址按搜尋 → 選一個結果 → 地圖標出來，可以直接新增標點（名稱先填好） */
+    @Test fun mapSearch() {
+        val hits = listOf(
+            PlaceHit("台北101", "臺北市信義區信義路五段7號", 25.0338, 121.5645),
+            PlaceHit("台北101購物中心", "臺北市信義區市府路45號", 25.0340, 121.5643),
+            PlaceHit("台北101觀景台", "臺北市信義區信義路五段7號89樓", 25.0336, 121.5650),
+        )
+        var asked: String? = null
+        var opened: SheetSpec? = null
+        shot("27_map_search") { MapScreen(s, vm, { opened = it }) { q, _ -> asked = q; hits } }
+        val field = compose.onNode(hasSetTextAction())
+        field.performTextInput("台北101")
+        field.performImeAction()
+        compose.mainClock.advanceTimeBy(1000)
+        assertEquals("台北101", asked)
+        compose.onNodeWithText("台北101購物中心").assertExists()
+        compose.onRoot().captureRoboImage("build/screens/27_map_search.png")
+        compose.onNodeWithText("台北101購物中心").performClick()
+        compose.mainClock.advanceTimeBy(1500)
+        compose.onNodeWithText("台北101觀景台").assertDoesNotExist()
+        compose.onRoot().captureRoboImage("build/screens/28_map_pin.png")
+        compose.onNodeWithText("新增標點").performClick()
+        assertEquals(SheetSpec.PlaceEdit(null, 25.0340, 121.5643, "台北101購物中心"), opened)
+    }
+
+    /**
+     * 在地圖上往上拖：只動地圖，外面的頁面不能跟著捲。
+     * 以前地圖放在可以捲的頁面裡，手指一往上下移動，頁面就把觸控搶走，地圖拖到一半就停了。
+     */
+    @Test @Config(qualifiers = "w400dp-h700dp-xhdpi")
+    fun draggingTheMapDoesNotScrollThePage() {
+        compose.setContent {
+            XlkTheme { Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { MapScreen(s, vm, {}) { _, _ -> emptyList() } } }
+        }
+        compose.mainClock.advanceTimeBy(1000)
+        fun listTop() = compose.onNodeWithText("標點與通知").getUnclippedBoundsInRoot().top
+        val before = listTop()
+        val map = findMapView()
+        val center = GeoPoint(map.mapCenter.latitude, map.mapCenter.longitude)
+        compose.onNodeWithTag("map").performTouchInput {
+            swipe(Offset(width * 0.3f, height * 0.8f), Offset(width * 0.3f, height * 0.3f), durationMillis = 400)
+        }
+        compose.mainClock.advanceTimeBy(1000)
+        // 手指往上移動了地圖高度的一半，原本的中心點也要跟著往上移那麼多（不能拖到一半就停）
+        val moved = map.height / 2 - map.projection.toPixels(center, null).y
+        assertTrue("地圖只跟著移動了 $moved px（地圖高 ${map.height} px）", moved > map.height * 0.4)
+        assertEquals(before, listTop())
+        // 對照：在地圖外面往上拖，頁面會捲
+        compose.onNodeWithText("標點與通知").performTouchInput { swipeUp() }
+        compose.mainClock.advanceTimeBy(1000)
+        assertTrue(listTop() < before)
+    }
+
+    /** 畫面上的 osmdroid 地圖 */
+    private fun findMapView(): MapView {
+        val activity = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).single()
+        fun find(v: View): MapView? = v as? MapView ?: (v as? ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
+        return requireNotNull(find(activity.window.decorView))
+    }
+
+    /** 搜尋找不到、連不上網路時的提示 */
+    @Test fun mapSearchMessages() {
+        var fail = false
+        shot("29_map_search_empty") { MapScreen(s, vm, {}) { _, _ -> if (fail) throw java.io.IOException("offline") else emptyList() } }
+        val field = compose.onNode(hasSetTextAction())
+        field.performTextInput("asdfghjkl")
+        field.performImeAction()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("找不到「asdfghjkl」，試試加上縣市或路名").assertExists()
+        compose.onRoot().captureRoboImage("build/screens/29_map_search_empty.png")
+        fail = true
+        field.performImeAction()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("搜尋失敗，請確認網路連線").assertExists()
+    }
 
     /** 整個 App（示範模式）：底部分頁、導覽、地圖 */
     @Test fun appShell() {

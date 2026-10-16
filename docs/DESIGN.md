@@ -68,6 +68,7 @@
       ├─ 接下來（約會、紀念日、里程碑、經期預測）
       └─ 最近動態
 地圖 ─┬─ OpenStreetMap：兩人頭像、紅線、標點範圍圈（長按新增標點）
+      ├─ 搜尋地址或地點 → 地圖飛過去、標出來 → 「新增標點」（名稱先填好）
       └─ 標點列表（偵測誰、半徑、抵達／離開通知、對方在這）
 帳本 ─┬─ 對方的帳本：近 30 天統計、猜猜看、明細、禮物模式提示
       └─ 我的帳本：統計、記一筆、測試自動記帳、隱私標籤
@@ -113,6 +114,8 @@
 - 標點：名稱、圖示、半徑 50–500 公尺、偵測誰（對方／我／兩人）、抵達通知、離開通知。
 - **在被偵測者的手機上判斷進出**：進入條件是距離 ≤ 半徑；離開條件是距離 > 半徑 + 緩衝（半徑的 20%，至少 25 公尺），避免 GPS 在邊界飄移時反覆觸發。精確度差於 150 公尺的定位不拿來判斷。
 - 新增會偵測對方的標點時，對方一定收到通知（不能關），被偵測的人也可以修改或刪除。
+- **找地點**：可以長按地圖，也可以搜尋地址或地點名稱。搜尋先用手機內建的 Geocoder（有 Google 服務的手機用 Google 的地址資料，台灣門牌最準），沒有或找不到再查 OpenStreetMap 的 Nominatim。Nominatim 看不懂連在一起的台灣地址，所以會改寫成「45, 市府路, 信義區, 台北市」再查，查不到門牌就先帶到那條路。只在按下搜尋時查（Nominatim 規定不能邊打字邊查、一秒最多一次），最近查過的結果會記在手機裡。搜尋的文字會送到 Google 或 OpenStreetMap，不會存進你們的資料庫。
+- 地圖放在可以上下捲動的頁面裡：手指一按在地圖上，就請外層的頁面不要搶走這次觸控，上下拖地圖才不會拖到一半變成整頁在捲。
 - 暫停或關閉位置分享時，手機不再回報，資料庫的權限規則也會拒絕寫入。
 
 ### 4.4 自動記帳
@@ -213,7 +216,8 @@ flowchart LR
   API --> DB
   DB -- notification_outbox、realtime_events --> RT
   RT -- WebSocket --> SVC
-  UI -- OpenStreetMap 圖磚 --> OSM[(openstreetmap.org)]
+  UI -- OpenStreetMap 圖磚、地址搜尋（Nominatim） --> OSM[(openstreetmap.org)]
+  UI -- 地址搜尋（手機內建 Geocoder） --> GEO[(Google 地址服務)]
 ```
 
 | 層 | 選擇 | 理由 |
@@ -222,6 +226,7 @@ flowchart LR
 | 網路 | Retrofit + kotlinx.serialization、OkHttp WebSocket | 直接呼叫 Supabase 的 REST 與 Realtime，不需要額外的 SDK |
 | 定位 | Google Play 服務 Fused Location | 省電、室內也準 |
 | 地圖 | osmdroid（OpenStreetMap） | 免 API 金鑰、免費 |
+| 地址搜尋 | Android Geocoder，備援 OpenStreetMap Nominatim | 免 API 金鑰；有 Google 服務的手機台灣門牌最準，沒有的手機也能用 |
 | 本機設定 | DataStore | Supabase 網址與金鑰、登入權杖、標點進出狀態、步數基準 |
 | 後端 | Supabase 免費方案（Auth、PostgREST、Realtime、PostgreSQL、pg_cron） | 不用自己架伺服器；兩個人用遠低於免費額度 |
 | 資料存取 | 每個功能一個 `app_*` 資料庫函式（以登入者身分執行，受 RLS 保護），回傳 camelCase JSON | 權限與商業邏輯都在資料庫裡，App 不能繞過 |
@@ -239,7 +244,7 @@ flowchart LR
 
 | 測試 | 指令 | 內容 |
 |---|---|---|
-| App 核心邏輯 | `cd android && ./gradlew testDebugUnitTest` | 經期預測、地理圍欄、猜花費、付款通知解析、紀念日（與 JS 版相同案例） |
+| App 核心邏輯 | `cd android && ./gradlew testDebugUnitTest` | 經期預測、地理圍欄、猜花費、付款通知解析、紀念日（與 JS 版相同案例）；地址搜尋（Geocoder → Nominatim 的順序、台灣地址改寫、找不到與連不上）；在地圖上拖曳時頁面不會搶走觸控 |
 | App 畫面 | `./gradlew recordRoborazziDebug` | 不需模擬器，把每個畫面（含深色模式）畫成圖片 |
 | App ↔ Supabase | `XLK_TEST_SUPABASE_URL=… XLK_TEST_SUPABASE_KEY=… ./gradlew testDebugUnitTest` | App 的資料層對真的 Supabase（本機啟動）走完註冊、配對、狀態、通知、標點、記帳、猜花費、約會、經期、解除配對 |
 | 資料庫 | `npm run test:db` | 在本機 Supabase 上跑權限測試、`app_*` 函式、即時通知、排程，以及 setup.sql 的一致性 |

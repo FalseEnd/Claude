@@ -372,9 +372,9 @@ fun DemoConsole(s: AppState, vm: AppViewModel, back: () -> Unit) {
 }
 
 @Composable
-fun PlaceSheet(s: AppState, vm: AppViewModel, id: String?, lat: Double, lng: Double, close: () -> Unit) {
+fun PlaceSheet(s: AppState, vm: AppViewModel, id: String?, lat: Double, lng: Double, presetName: String = "", close: () -> Unit) {
     val p = id?.let { x -> s.places.firstOrNull { it.id == x } }
-    var name by remember { mutableStateOf(p?.name ?: "") }
+    var name by remember { mutableStateOf(p?.name ?: presetName.take(20)) }
     var icon by remember { mutableStateOf(p?.icon ?: "heart") }
     var radius by remember { mutableFloatStateOf((p?.radiusM ?: 150).toFloat()) }
     var watch by remember { mutableStateOf(when (p?.watchUser) { null -> if (p == null) "partner" else "both"; s.myId -> "me"; else -> "partner" }) }

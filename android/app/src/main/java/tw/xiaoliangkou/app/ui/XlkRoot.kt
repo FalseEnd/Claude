@@ -117,7 +117,8 @@ sealed interface SheetSpec {
     data class ExpenseEdit(val id: String?) : SheetSpec
     data class ExpenseView(val id: String) : SheetSpec
     data object ParseTest : SheetSpec
-    data class PlaceEdit(val id: String?, val lat: Double, val lng: Double) : SheetSpec
+    /** [name]：從地圖搜尋新增時，先填好的名稱 */
+    data class PlaceEdit(val id: String?, val lat: Double, val lng: Double, val name: String = "") : SheetSpec
     data class EventEdit(val id: String?, val date: LocalDate) : SheetSpec
     data class AnniversaryEdit(val id: String?) : SheetSpec
     data class PeriodEdit(val forPartner: Boolean) : SheetSpec
@@ -308,7 +309,7 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
                     is SheetSpec.ExpenseEdit -> ExpenseEditSheet(s, vm, current.id, close)
                     is SheetSpec.ExpenseView -> ExpenseViewSheet(s, current.id, close)
                     SheetSpec.ParseTest -> ParseTestSheet(vm, close)
-                    is SheetSpec.PlaceEdit -> PlaceSheet(s, vm, current.id, current.lat, current.lng, close)
+                    is SheetSpec.PlaceEdit -> PlaceSheet(s, vm, current.id, current.lat, current.lng, current.name, close)
                     is SheetSpec.EventEdit -> EventSheet(s, vm, current.id, current.date) { calendarDate = current.date; close() }
                     is SheetSpec.AnniversaryEdit -> AnniversarySheet(s, vm, current.id, close)
                     is SheetSpec.PeriodEdit -> PeriodSheet(vm, current.forPartner, close)
