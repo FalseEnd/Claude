@@ -132,14 +132,15 @@ class RemoteRepository(
     private suspend fun loadMemos() { val m = v2 { api.memos() }; _state.update { it.copy(memos = m) } }
     private suspend fun loadCurrentDays() { val (from, to) = dayRange; loadDays(from, to) }
 
-    /** 載入 [from]～[to] 的生活紀錄，取代 state 裡這段期間的舊資料 */
+    /** 載入 [from]～[to] 的生活紀錄，取代 state 裡這段期間的舊資料（沒配對就沒有紀錄） */
     private suspend fun loadDays(from: LocalDate, to: LocalDate) {
+        if (_state.value.couple == null) { _state.update { it.copy(dayEntries = emptyList()) }; return }
         val rows = v2 { api.dayEntries(from.toString(), to.toString()) }
         val a = from.toString()
         val b = to.toString()
         _state.update { st ->
             val kept = st.dayEntries.filterNot { it.day in a..b }
-            st.copy(dayEntries = (kept + rows).sortedWith(compareBy({ it.day }, { it.time })))
+            st.copy(dayEntries = (kept + rows).sortedWith(DayEntry.ORDER))
         }
     }
 
@@ -150,11 +151,17 @@ class RemoteRepository(
         _state.update { it.copy(schemaOutdated = schema < SCHEMA) }
     }
 
-    /** 新功能的 RPC、Storage：資料庫還沒更新的話標記起來，畫面上提醒使用者 */
+    /**
+     * 新功能的 RPC、Storage：資料庫還沒更新的話標記起來，畫面上提醒使用者。
+     * 舊功能都能用、只有新函式找不到，就是還沒執行 upgrade-v2.sql。
+     */
     private suspend fun <T> v2(block: suspend () -> T): T = try {
         apiCall { block() }
     } catch (e: AppException) {
-        if (e.code == Errors.SCHEMA_OUTDATED_CODE) _state.update { it.copy(schemaOutdated = true) }
+        if (e.code == Errors.SCHEMA_OUTDATED_CODE || e.code == "not_setup") {
+            _state.update { it.copy(schemaOutdated = true) }
+            throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE, e.status)
+        }
         throw e
     }
 
@@ -265,6 +272,7 @@ class RemoteRepository(
 
     // ---------------------------------------------------------------- 個人資料、備註
     override suspend fun updateProfileInfo(displayName: String, birthday: String?, info: JsonObject) {
+        Limits.profile(displayName, birthday, info)
         val row = apiCall {
             api.updateProfileRaw(buildJsonObject { put("displayName", displayName); put("birthday", birthday); put("info", info) })
         }
@@ -277,6 +285,7 @@ class RemoteRepository(
     }
 
     override suspend fun saveNote(id: String?, body: String) {
+        Limits.note(body)
         v2 { api.saveNote(buildJsonObject { if (id != null) put("id", id); put("body", body) }) }
         loadNotes()
     }
@@ -291,6 +300,7 @@ class RemoteRepository(
     }
 
     override suspend fun saveDayEntry(id: String?, day: LocalDate, body: String, media: List<MediaItem>) {
+        Limits.dayEntry(body, media)
         val row = v2 {
             api.saveDayEntry(buildJsonObject {
                 if (id != null) put("id", id)
@@ -298,7 +308,7 @@ class RemoteRepository(
             })
         }
         _state.update { st ->
-            st.copy(dayEntries = (st.dayEntries.filterNot { it.id == row.id } + row).sortedWith(compareBy({ it.day }, { it.time })))
+            st.copy(dayEntries = (st.dayEntries.filterNot { it.id == row.id } + row).sortedWith(DayEntry.ORDER))
         }
     }
 
@@ -309,25 +319,51 @@ class RemoteRepository(
 
     // ---------------------------------------------------------------- 備忘錄
     override suspend fun saveMemo(id: String?, title: String, body: String, media: List<MediaItem>, shared: Boolean, pinned: Boolean, color: String) {
+        Limits.memo(title, body, media, color)
+        val st = _state.value
+        val old = st.memo(id)
+        // 對方共用的備忘錄：不能改共用設定，照片也一直放在共用的地方
+        val theirs = old != null && old.userId != st.myId
+        val nowShared = old?.takeIf { theirs }?.shared ?: (shared && st.couple != null)
+        val moved = relocate(media, nowShared)
         v2 {
             api.saveMemo(buildJsonObject {
                 if (id != null) put("id", id)
-                put("title", title); put("body", body); put("media", Api.mediaJson(media))
-                put("shared", shared); put("pinned", pinned); put("color", color)
+                put("title", title); put("body", body); put("media", Api.mediaJson(moved))
+                if (!theirs) put("shared", nowShared)
+                put("pinned", pinned); put("color", color)
             })
         }
         loadMemos()
     }
+
+    /** 改成共用或私人時，照片、語音要搬到對的地方（c/<配對>/ 或 u/<我>/）：下載再重新上傳 */
+    private suspend fun relocate(media: List<MediaItem>, shared: Boolean): List<MediaItem> {
+        val prefix = mediaPrefix(shared)
+        return media.map { m ->
+            if (m.path.startsWith(prefix)) m
+            else {
+                val mime = m.mime ?: MediaPaths.mimeOf(m.path)
+                val bytes = v2 { api.downloadMedia(m.path) }
+                val path = MediaPaths.under(prefix, mime)
+                v2 { api.uploadMedia(path, mime, bytes) }
+                m.copy(path = path, mime = mime)
+            }
+        }
+    }
+
+    private fun mediaPrefix(shared: Boolean): String {
+        val st = _state.value
+        return if (shared) "c/${st.couple?.id ?: throw AppException(Errors.DB_MESSAGES.getValue("not_paired"), "not_paired")}/"
+        else "u/${st.myId ?: throw AppException(Errors.RELOGIN, "not_authenticated")}/"
+    }
+
     override suspend fun deleteMemo(id: String) { v2 { api.deleteMemo(id) }; loadMemos() }
 
     // ---------------------------------------------------------------- 照片、語音
     override suspend fun uploadMedia(bytes: ByteArray, mime: String, kind: String, shared: Boolean, width: Int?, height: Int?, durationMs: Long?): MediaItem {
-        val st = _state.value
-        val path = if (shared) {
-            MediaPaths.forCouple(st.couple?.id ?: throw AppException(Errors.DB_MESSAGES.getValue("not_paired"), "not_paired"), mime)
-        } else {
-            MediaPaths.forUser(st.myId ?: throw AppException(Errors.RELOGIN, "not_authenticated"), mime)
-        }
+        Limits.file(bytes)
+        val path = MediaPaths.under(mediaPrefix(shared), mime)
         v2 { api.uploadMedia(path, mime, bytes) }
         return MediaItem(path, kind, mime, width, height, durationMs)
     }

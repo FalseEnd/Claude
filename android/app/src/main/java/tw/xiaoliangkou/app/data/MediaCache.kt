@@ -65,9 +65,10 @@ class MediaCache(context: Context, private val repo: () -> CoupleRepository?) {
     suspend fun put(path: String, source: File) = withContext(Dispatchers.IO) { write(fileOf(path), source.readBytes()) }
 
     /** 登出時清掉（下一個登入的人不會看到） */
-    fun clear() {
+    suspend fun clear() = withContext(Dispatchers.IO) {
         bitmaps.evictAll()
         dir.listFiles()?.forEach { it.delete() }
+        Unit
     }
 
     private fun write(f: File, bytes: ByteArray) {

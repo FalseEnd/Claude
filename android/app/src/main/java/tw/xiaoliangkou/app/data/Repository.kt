@@ -52,6 +52,7 @@ data class AppState(
     fun dayEntriesOn(date: LocalDate): List<DayEntry> = date.toString().let { d -> dayEntries.filter { it.day == d } }
     /** 放在桌面小工具的備忘錄 */
     val pinnedMemos: List<Memo> get() = memos.filter { it.pinned }
+    fun memo(id: String?): Memo? = id?.let { i -> memos.firstOrNull { it.id == i } }
 
     /** 對方目前在哪些標點裡（只看偵測對方或兩人的標點） */
     val partnerInside: List<Place>
@@ -71,6 +72,58 @@ data class AppState(
         }
     val cycleSettings: Cycle.Settings
         get() = cycleBundle.settings.let { Cycle.Settings(it?.cycleLength, it?.periodLength, it?.lutealLength) }
+}
+
+/** 備註、日曆紀錄、備忘錄的限制（跟資料庫的 check 一樣）：先在手機上擋下，錯誤訊息比較好懂 */
+object Limits {
+    const val NOTE = 2000
+    const val DAY_BODY = 5000
+    const val MEMO_TITLE = 60
+    const val MEMO_BODY = 5000
+    /** 每則紀錄、備忘錄最多幾個照片或語音 */
+    const val MEDIA = 12
+    /** Storage 的 media bucket 單檔上限 */
+    const val FILE_BYTES = 10 * 1024 * 1024
+
+    const val NAME = 30
+    /** profiles.info 整包 JSON 最多幾個 byte */
+    const val INFO_BYTES = 4000
+
+    private fun fail(text: String): Nothing = throw AppException(text, "invalid_input")
+
+    fun profile(displayName: String, birthday: String?, info: JsonObject) {
+        if (displayName.isBlank()) fail("暱稱不能是空白的")
+        if (displayName.length > NAME) fail("暱稱最多 $NAME 字")
+        if (birthday != null) {
+            val d = runCatching { LocalDate.parse(birthday) }.getOrNull() ?: fail("生日的日期格式不正確")
+            if (d.year !in 1900..2200) fail("生日的日期格式不正確")
+        }
+        if (info.toString().toByteArray().size > INFO_BYTES) fail("個人資料寫太多了，精簡一點吧")
+    }
+
+    fun note(body: String) {
+        if (body.isBlank()) fail("寫點什麼吧 ✍️")
+        if (body.length > NOTE) fail("備註最多 $NOTE 字")
+    }
+
+    fun dayEntry(body: String, media: List<MediaItem>) {
+        if (body.isBlank() && media.isEmpty()) fail("寫點什麼或加一張照片吧 ✍️")
+        if (body.length > DAY_BODY) fail("最多 $DAY_BODY 字")
+        if (media.size > MEDIA) fail("照片和語音最多 $MEDIA 個")
+    }
+
+    fun memo(title: String, body: String, media: List<MediaItem>, color: String) {
+        if (title.isBlank() && body.isBlank() && media.isEmpty()) fail("寫點什麼吧 ✍️")
+        if (title.length > MEMO_TITLE) fail("標題最多 $MEMO_TITLE 字")
+        if (body.length > MEMO_BODY) fail("內容最多 $MEMO_BODY 字")
+        if (media.size > MEDIA) fail("照片和語音最多 $MEDIA 個")
+        if (color !in Memo.COLORS) fail("顏色不正確")
+    }
+
+    fun file(bytes: ByteArray) {
+        if (bytes.isEmpty()) throw AppException("檔案是空的，再試一次", "invalid_media")
+        if (bytes.size > FILE_BYTES) throw AppException("檔案太大了（最多 10 MB）", "too_large")
+    }
 }
 
 /** App 在前景時以卡片顯示、在背景時以系統通知顯示 */

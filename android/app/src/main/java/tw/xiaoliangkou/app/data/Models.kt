@@ -231,6 +231,11 @@ import java.time.ZoneId
 ) {
     val date: LocalDate? get() = runCatching { LocalDate.parse(day) }.getOrNull()
     val time: Instant get() = createdAt.toInstantOrNull() ?: Instant.EPOCH
+
+    companion object {
+        /** 跟 app_day_entries 一樣：依日期，同一天先寫的在前 */
+        val ORDER: Comparator<DayEntry> = compareBy({ it.day }, { it.time })
+    }
 }
 
 /** 備忘錄：[shared] 兩個人都看得到、都能編輯；[pinned] 放在桌面小工具 */
@@ -250,6 +255,8 @@ import java.time.ZoneId
 
     companion object {
         val COLORS = listOf("pink", "yellow", "mint", "sky", "lavender", "peach")
+        /** 跟 app_memos 一樣：釘選的在前，再來是最近改的 */
+        val ORDER: Comparator<Memo> = compareByDescending<Memo> { it.pinned }.thenByDescending { it.time }
     }
 }
 

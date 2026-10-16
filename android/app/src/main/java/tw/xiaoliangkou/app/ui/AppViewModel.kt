@@ -2,6 +2,7 @@ package tw.xiaoliangkou.app.ui
 
 import android.app.Application
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -44,8 +45,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _hearts = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
     val hearts: SharedFlow<Unit> = _hearts
 
-    var busy by mutableStateOf(false)
+    private var working by mutableStateOf(false)
+    /** 正在上傳的照片、語音有幾個 */
+    var uploads by mutableIntStateOf(0)
         private set
+    /** 正在存資料或上傳檔案：按鈕先停用（上傳完才能按儲存） */
+    val busy: Boolean get() = working || uploads > 0
+
+    /** 上傳照片、語音：上傳期間 [busy] */
+    suspend fun <T> uploading(block: suspend () -> T): T {
+        uploads++
+        try {
+            return block()
+        } finally {
+            uploads--
+        }
+    }
 
     val demo: DemoRepository? get() = repo.value as? DemoRepository
 
@@ -56,7 +71,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun act(success: String? = null, hearts: Boolean = false, onDone: () -> Unit = {}, block: suspend (CoupleRepository) -> Unit) {
         val r = repo.value ?: return
         viewModelScope.launch {
-            busy = true
+            working = true
             try {
                 block(r)
                 if (hearts) _hearts.emit(Unit)
@@ -67,7 +82,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 _messages.emit("發生錯誤：${e.message ?: e.javaClass.simpleName}")
             } finally {
-                busy = false
+                working = false
             }
         }
     }
@@ -75,7 +90,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 帳號相關（登入、註冊）：不需要已登入的資料來源 */
     fun account(onDone: () -> Unit = {}, block: suspend () -> Unit) {
         viewModelScope.launch {
-            busy = true
+            working = true
             try {
                 block()
                 onDone()
@@ -84,7 +99,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 _messages.emit("發生錯誤：${e.message ?: e.javaClass.simpleName}")
             } finally {
-                busy = false
+                working = false
             }
         }
     }

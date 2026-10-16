@@ -33,6 +33,7 @@ import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.Errors
 import tw.xiaoliangkou.app.data.InviteLink
+import tw.xiaoliangkou.app.data.MediaCache
 import tw.xiaoliangkou.app.data.PlaceSearch
 import tw.xiaoliangkou.app.data.RealtimeClient
 import tw.xiaoliangkou.app.data.RemoteRepository
@@ -41,6 +42,7 @@ import tw.xiaoliangkou.app.data.SessionManager
 import tw.xiaoliangkou.app.data.SettingsStore
 import tw.xiaoliangkou.app.data.Supabase
 import tw.xiaoliangkou.app.data.SupabaseClient
+import tw.xiaoliangkou.app.data.VoicePlayer
 import tw.xiaoliangkou.app.data.apiCall
 import tw.xiaoliangkou.app.service.AutoBookkeeping
 import tw.xiaoliangkou.app.service.Notifier
@@ -84,6 +86,10 @@ class AppContainer(private val app: Application) {
 
     private val _repo = MutableStateFlow<CoupleRepository?>(null)
     val repo: StateFlow<CoupleRepository?> = _repo
+    /** 照片、語音：下載過的檔案與縮圖 */
+    val media = MediaCache(app) { _repo.value }
+    /** 播放語音（同時只播一段） */
+    val voice = VoicePlayer()
     private val _prefs = MutableStateFlow<SettingsStore.Prefs?>(null)
     val prefs: StateFlow<SettingsStore.Prefs?> = _prefs
 
@@ -265,6 +271,7 @@ class AppContainer(private val app: Application) {
         stopCurrent()
         settings.clear()
         reloadPrefs()
+        media.clear()
         // 告訴 Supabase 這支手機登出了：token 過期的話先換新（最多等 5 秒），沒網路也沒關係
         if (c != null) scope.launch { runCatching { withTimeout(15_000) { c.logout(refreshTimeoutMs = 5_000) } } }
     }
@@ -275,6 +282,7 @@ class AppContainer(private val app: Application) {
     suspend fun setStatusItems(items: Set<String>) { settings.setStatusItems(items); reloadPrefs() }
 
     private fun stopCurrent() {
+        voice.stop()
         _repo.value?.close()
         _repo.value = null
         realtime.stop()
