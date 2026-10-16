@@ -63,6 +63,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -226,10 +227,11 @@ private fun HoroscopeTab(s: AppState, store: FortuneStore, today: LocalDate) {
                 picking = null
             }
         }
-        if (myBirth == null) Note("到「我的 › 我的資料」填上生日，就會自動算出你的星座", "🎂")
+        if (myBirth == null) Note("到「我的 › 我的資料」填上生日，就會自動算出星座", "🎂")
         else if (s.paired && partnerBirth == null) Note("${s.partnerName} 還沒填生日，可以先幫忙選一個星座看看", "🎂")
     }
 
+    if (sign == null) return
     Segmented(
         listOf("0" to "今天 ${Fmt.md(today)}", "1" to "明天 ${Fmt.md(today.plusDays(1))}"),
         day.toString(),
@@ -237,10 +239,8 @@ private fun HoroscopeTab(s: AppState, store: FortuneStore, today: LocalDate) {
 
     val date = today.plusDays(day.toLong())
     val dayWord = if (day == 0) "今天" else "明天"
-    if (sign != null) {
-        val daily = remember(sign, date) { Horoscope.daily(sign, date) }
-        DailyCard(daily, dayWord) { runCatching { uri.openUri(Horoscope.moreUrl(sign)) } }
-    }
+    val daily = remember(sign, date) { Horoscope.daily(sign, date) }
+    DailyCard(daily, dayWord) { runCatching { uri.openUri(Horoscope.moreUrl(sign)) } }
     if (mySign != null && partnerSign != null) {
         val match = remember(mySign, partnerSign, date) { Horoscope.matchOfDay(mySign, partnerSign, date) }
         MatchCard(match, s.me?.displayName ?: "我", s.partnerName, dayWord)
@@ -326,7 +326,7 @@ private fun DailyCard(daily: Horoscope.Daily, dayWord: String, onMore: () -> Uni
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             EmojiBubble(sign.emoji, Cute.colors.lavender.copy(alpha = 0.25f).compositeOver(Cute.colors.card), 52.dp)
             Column(Modifier.weight(1f)) {
-                Text("${sign.name}的${dayWord}運勢", style = MaterialTheme.typography.titleMedium)
+                Text("${sign.name}的${if (dayWord == "今天") "今日" else "明日"}運勢", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "${Fmt.md(daily.date)}（${Fmt.weekday(daily.date).substring(1)}）· ${sign.element.emoji} ${sign.element.label} · ${sign.trait}",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -352,7 +352,7 @@ private fun DailyCard(daily: Horoscope.Daily, dayWord: String, onMore: () -> Uni
                         .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
                 )
             })
-            StatTile("幸運數字", daily.luckyNumber.toString(), Modifier.weight(1f), icon = { Text("🍀", style = MaterialTheme.typography.titleSmall) })
+            StatTile("幸運數字", daily.luckyNumber.toString(), Modifier.weight(1f), icon = { Text("🎲", style = MaterialTheme.typography.titleSmall) })
         }
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Cute.colors.partnerSoft).padding(12.dp),
@@ -459,6 +459,7 @@ private fun OmikujiTab(store: FortuneStore, clock: () -> LocalDateTime, random: 
     val stick = remember { Animatable(0f) }
     val appear = remember { Animatable(1f) }
     val bring = remember { BringIntoViewRequester() }
+    val boxBring = remember { BringIntoViewRequester() }
     val draw = { if (drawing == null) drawing = Omikuji.draw(random) }
     val hasSensor = shakeToDraw(enabled = drawing == null, onShake = draw)
 
@@ -466,6 +467,8 @@ private fun OmikujiTab(store: FortuneStore, clock: () -> LocalDateTime, random: 
         val lot = drawing ?: return@LaunchedEffect
         shown = null
         stick.snapTo(0f)
+        // 從籤詩卡按「再抽一支」時，捲回籤筒看它搖
+        launch { delay(16); runCatching { boxBring.bringIntoView() } }
         repeat(6) { i -> shake.animateTo(if (i % 2 == 0) 14f else -14f, tween(if (i == 0) 70 else 120, easing = FastOutSlowInEasing)) }
         shake.animateTo(0f, spring(dampingRatio = 0.35f, stiffness = 420f))
         stick.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = 280f))
@@ -474,7 +477,8 @@ private fun OmikujiTab(store: FortuneStore, clock: () -> LocalDateTime, random: 
         draws = store.add(lot.no, clock())
         appear.snapTo(0f)
         shown = lot.no
-        launch { appear.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = 300f)) }
+        // 用畫面的 scope：drawing 清掉時這個 effect 會被取消，動畫不能跟著停
+        scope.launch { appear.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = 300f)) }
         delay(60)
         runCatching { bring.bringIntoView() }
         drawing = null
@@ -489,7 +493,7 @@ private fun OmikujiTab(store: FortuneStore, clock: () -> LocalDateTime, random: 
         label = "sway",
     )
 
-    CuteCard(padding = PaddingValues(20.dp)) {
+    CuteCard(Modifier.bringIntoViewRequester(boxBring), padding = PaddingValues(20.dp)) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("東京淺草觀音寺一百籤", style = MaterialTheme.typography.titleLarge)
             Text("心裡默念想問的事，再搖一搖籤筒 🙏", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
@@ -571,7 +575,7 @@ private fun HistoryRow(d: FortuneStore.Draw, lot: Omikuji.Lot, selected: Boolean
     ) {
         Text(hm.format(d.at), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("第 ${lot.no} 籤", style = MaterialTheme.typography.titleSmall, modifier = Modifier.width(64.dp), maxLines = 1)
-        lot.luck?.let { LuckPill(it) }
+        Box(Modifier.width(60.dp)) { lot.luck?.let { LuckPill(it) } }
         Text(
             lot.poem.first() + "…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -678,6 +682,7 @@ private fun OmikujiBox(rotation: Float, stickOut: Float, number: Int?, modifier:
     val cream = Color(0xFFFFF6DD)
     val shadow = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.10f)
     val cheek = Color(0xFFFFA7B5)
+    val glow = Cute.colors.butter.copy(alpha = if (dark()) 0.16f else 0.4f)
     Box(
         modifier.size(170.dp, 236.dp).graphicsLayer {
             rotationZ = rotation
@@ -692,6 +697,7 @@ private fun OmikujiBox(rotation: Float, stickOut: Float, number: Int?, modifier:
                 for (i in 2 until xy.size step 2) lineTo(xy[i] * u, xy[i + 1] * u)
                 close()
             }
+            drawCircle(Brush.radialGradient(listOf(glow, glow.copy(alpha = 0f)), p(85f, 138f), 104f * u), 104f * u, p(85f, 138f))
             drawOval(shadow, p(32f, 220f), Size(106f * u, 14f * u))
             // 左、正、右三面
             drawPath(poly(30f, 92f, 52f, 104f, 52f, 224f, 30f, 212f), lacquerLight)
@@ -757,13 +763,13 @@ private fun shakeToDraw(enabled: Boolean, onShake: () -> Unit): Boolean {
     val shake by rememberUpdatedState(onShake)
     DisposableEffect(sm, sensor, lifecycle) {
         if (sm == null || sensor == null) return@DisposableEffect onDispose {}
-        var last = 0L
+        var last = -1L
         val listener = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) {
                 val (x, y, z) = Triple(e.values[0], e.values[1], e.values[2])
                 val g = sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH
                 val now = SystemClock.elapsedRealtime()
-                if (g > SHAKE_G && now - last > 1500 && canShake) {
+                if (g > SHAKE_G && (last < 0 || now - last > 1500) && canShake) {
                     last = now
                     shake()
                 }
