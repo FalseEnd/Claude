@@ -238,11 +238,9 @@ class JournalScreensTest {
 
     /** 資料庫還沒更新：先說要更新，不讓人寫到一半才失敗 */
     @Test fun outdatedDatabaseExplainsFirst() {
-        compose.setContent {
-            XlkTheme {
-                val s by demo.state.collectAsState()
-                CalendarScreen(s.copy(schemaOutdated = true), vm, {}, today.minusDays(3))
-            }
+        shot("49_calendar_journal_outdated") {
+            val s by demo.state.collectAsState()
+            CalendarScreen(s.copy(schemaOutdated = true), vm, {}, today.minusDays(3))
         }
         compose.onNodeWithText("upgrade-v2.sql", substring = true).assertExists()
         compose.onNodeWithText("記錄這天 ✍️").assertDoesNotExist()
@@ -314,6 +312,38 @@ class JournalScreensTest {
         compose.waitForIdle()
         compose.onNodeWithText("${day.monthValue} 月 15 日", substring = true).assertExists()
         compose.onNodeWithText("${day.year} 年 ${day.monthValue} 月").assertExists()
+    }
+
+    /** 刪除要按兩次 */
+    @Test fun deleteNeedsConfirmation() {
+        val day = today.minusDays(6)
+        val e = mine(day)
+        var closed = false
+        compose.setContent {
+            XlkTheme {
+                val s by demo.state.collectAsState()
+                DayEntrySheet(s, vm, e.id, day) { closed = true }
+            }
+        }
+        compose.onNodeWithText("刪除這則紀錄").performClick()
+        compose.waitForIdle()
+        assertTrue(demo.state.value.dayEntries.any { it.id == e.id })
+        compose.onNodeWithText("再按一次就刪除").performClick()
+        compose.waitUntil(WAIT) { closed }
+        assertTrue(demo.state.value.dayEntries.none { it.id == e.id })
+    }
+
+    /** 對方的紀錄打開只能看（可以看全文） */
+    @Test fun partnerEntryIsReadOnly() {
+        val e = demo.state.value.dayEntriesOn(today.minusDays(1)).first { it.userId == DemoRepository.PARTNER }
+        sheet("47_sheet_day_entry_partner", photos = 1) {
+            val s by demo.state.collectAsState()
+            DayEntrySheet(s, vm, e.id, today.minusDays(1)) {}
+        }
+        compose.onNodeWithText("小雨 的紀錄").assertExists()
+        compose.onNodeWithText("只有 小雨 可以修改這則紀錄").assertExists()
+        compose.onNodeWithText("儲存").assertDoesNotExist()
+        compose.onNodeWithText("刪除這則紀錄").assertDoesNotExist()
     }
 
     /** 選照片：不開系統的相簿，直接回傳這張圖 */
