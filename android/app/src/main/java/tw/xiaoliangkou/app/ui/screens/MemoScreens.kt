@@ -25,8 +25,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.AddToHomeScreen
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.AddToHomeScreen
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.Icon
@@ -410,7 +410,7 @@ fun MemoWidgetCard(s: AppState, vm: AppViewModel) {
                 modifier = Modifier.width(PREVIEW_W.dp).height(PREVIEW_H.dp),
             )
         }
-        CuteButton("加到桌面", Modifier.fillMaxWidth(), icon = Icons.Rounded.AddToHomeScreen) {
+        CuteButton("加到桌面", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.AddToHomeScreen) {
             if (Widgets.pin(context, MemoWidget::class.java)) vm.toast("跟著畫面上的提示放到桌面就好了 ✨")
             else vm.toast("這個桌面不能直接加入，請長按桌面空白處 › 小工具 › 小倆口")
         }
