@@ -307,6 +307,21 @@ class ScreensTest {
         shot("34_widgets") { WidgetsScreen(s, vm) {} }
     }
 
+    /** 測試自動記帳：LINE錢包的付款格式，和最近收到的付款通知（示範模式不會真的記帳） */
+    @Test fun parseTestSheet() {
+        val app = RuntimeEnvironment.getApplication()
+        val book = vm.container.autoBookkeeping
+        fun notice(title: String, text: String) = androidx.core.app.NotificationCompat.Builder(app, "x")
+            .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(title).setContentText(text).build()
+        runBlocking {
+            book.clear()
+            book.handle(tw.xiaoliangkou.app.core.PaymentParser.LINE_APP, notice("LINE錢包", "NT$ 300 儲值完成。 銀行名稱 連線銀行 餘額 NT$ 350"), System.currentTimeMillis() - 3_600_000)
+            book.handle(tw.xiaoliangkou.app.core.PaymentParser.LINE_APP, notice("LINE錢包", "付款 NT$ 24 付款完成。 商店名稱 OK超商 付款後餘額 NT$ 111"), System.currentTimeMillis() - 120_000)
+        }
+        sheet("35_sheet_parse_test") { tw.xiaoliangkou.app.ui.screens.ParseTestSheet(vm) {} }
+        compose.onNodeWithText("OK超商").assertExists()
+    }
+
     /** 通知設定：常駐通知顯示對方狀態的開關、項目與預覽（對方是表情頭像） */
     @Test fun notificationSettings() = shot("33_notification_settings") { NotificationScreen(s, vm) {} }
 

@@ -24,7 +24,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.osmdroid.config.Configuration
+import tw.xiaoliangkou.app.core.PaymentParser
 import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DemoRepository
@@ -39,6 +42,7 @@ import tw.xiaoliangkou.app.data.SettingsStore
 import tw.xiaoliangkou.app.data.Supabase
 import tw.xiaoliangkou.app.data.SupabaseClient
 import tw.xiaoliangkou.app.data.apiCall
+import tw.xiaoliangkou.app.service.AutoBookkeeping
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.ShareService
 import tw.xiaoliangkou.app.widget.WidgetSnapshot
@@ -67,6 +71,14 @@ class AppContainer(private val app: Application) {
     val settings = SettingsStore(app)
     val notifier = Notifier(app).also { it.createChannels() }
     val realtime = RealtimeClient(scope)
+    /** 自動記帳（付款通知）與最近處理過的付款通知 */
+    val autoBookkeeping = AutoBookkeeping(app, ledger = { (_repo.value as? RemoteRepository)?.let(::RemoteLedger) }, enabled = { _prefs.value?.autoBookkeeping != false })
+
+    private class RemoteLedger(private val r: RemoteRepository) : AutoBookkeeping.Ledger {
+        override suspend fun add(p: PaymentParser.Parsed, dedupeKey: String) = r.addAutoExpense(p, dedupeKey)
+        override suspend fun rename(id: String, merchant: String, category: String) =
+            r.saveExpense(id, buildJsonObject { put("merchant", merchant); put("category", category) })
+    }
     /** 地圖的地址搜尋 */
     val placeSearch = PlaceSearch(app, "${BuildConfig.APPLICATION_ID}/${BuildConfig.VERSION_NAME}")
 

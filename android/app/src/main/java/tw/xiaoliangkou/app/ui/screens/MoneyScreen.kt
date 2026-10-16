@@ -28,10 +28,12 @@ import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,7 +41,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import tw.xiaoliangkou.app.core.Catalog
@@ -303,28 +307,43 @@ fun ExpenseEditSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Un
     }
 }
 
+/** 測試自動記帳：貼一則通知看看會怎麼記；下面是最近收到的付款通知（原文、有沒有記、為什麼） */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ParseTestSheet(vm: AppViewModel, close: () -> Unit) {
+    // 通知標題、內容（LINE Pay 是 2026-10 實際收到的「LINE錢包」付款訊息）
     val samples = listOf(
-        "LINE Pay" to "LINE Pay｜付款完成 NT$135 商店：星巴克 信義新天地門市",
-        "信用卡" to "【國泰世華】您的卡片末四碼1234於10/15 12:03消費新台幣1,280元，商店：UNIQLO 微風南山店",
-        "街口" to "街口支付：您已付款 65 元給 全家便利商店 松仁店",
-        "行動支付" to "Apple Pay 交易：台灣高鐵 NT$1,490",
+        Triple("LINE Pay", "LINE錢包", "付款\nNT$ 24\n付款完成。\n2026.10.16 12:22 (GMT+0800)\n商店名稱\nOK超商\n付款後餘額\nNT$ 111"),
+        Triple("信用卡", "國泰世華", "【國泰世華】您的卡片末四碼1234於10/15 12:03消費新台幣1,280元，商店：UNIQLO 微風南山店"),
+        Triple("街口", "街口支付", "您已付款 65 元給 全家便利商店 松仁店"),
+        Triple("行動支付", null, "Apple Pay 交易：台灣高鐵 NT$1,490"),
     )
-    var text by remember { mutableStateOf(samples[0].second) }
-    val parsed = PaymentParser.parse(text)
+    val log by vm.container.autoBookkeeping.entries.collectAsState()
+    val scope = rememberCoroutineScope()
+    var title by remember { mutableStateOf(samples[0].second) }
+    var text by remember { mutableStateOf(samples[0].third) }
+    val result = remember(title, text) { PaymentParser.parseNotification(PaymentParser.Notice("", title, listOf(text))) }
+    val parsed = (result as? PaymentParser.Result.Payment)?.parsed
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("測試自動記帳 🤖", style = MaterialTheme.typography.titleLarge)
         Text("開啟通知存取權後，App 會在背景自動處理付款通知。這裡可以貼一則通知看看會怎麼被記下來。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { samples.forEach { (l, t) -> ChoiceChip(l, text == t) { text = t } } }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            samples.forEach { (l, ti, t) -> ChoiceChip(l, text == t) { title = ti; text = t } }
+        }
+        CuteField(title.orEmpty(), { title = it.ifEmpty { null } }, "通知標題（例如 LINE錢包）")
         CuteField(text, { text = it }, "通知內容", singleLine = false)
-        if (parsed == null) Note("找不到金額，這則通知不會被記帳。", "🤔")
-        else CuteCard(color = MaterialTheme.colorScheme.surfaceVariant) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatTile("金額", Fmt.money(parsed.amount), Modifier.weight(1f))
-                StatTile("類別", Catalog.category(parsed.category).label, Modifier.weight(1f))
+        when {
+            result is PaymentParser.Result.Skipped -> Note("不會記帳：${result.reason}", "🤔")
+            parsed != null -> CuteCard(color = MaterialTheme.colorScheme.surfaceVariant) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatTile("金額", Fmt.money(parsed.amount), Modifier.weight(1f))
+                    StatTile("類別", Catalog.category(parsed.category).label, Modifier.weight(1f))
+                }
+                StatTile("商家", parsed.merchant, Modifier.fillMaxWidth(), sub = "來源：${Catalog.sources[parsed.source]}")
+                if (!parsed.knownMerchant) {
+                    Text("通知裡沒有店名，先記成「${parsed.merchant}」，之後點這筆就能改。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            StatTile("商家", parsed.merchant, Modifier.fillMaxWidth(), sub = "來源：${Catalog.sources[parsed.source]}")
         }
         CuteButton("加入我的帳本", Modifier.fillMaxWidth(), enabled = parsed != null) {
             val p = parsed ?: return@CuteButton
@@ -334,6 +353,35 @@ fun ParseTestSheet(vm: AppViewModel, close: () -> Unit) {
                 })
             }
         }
+
+        Text("最近收到的付款通知", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+        if (log.isEmpty()) {
+            Note("還沒有收到付款通知。開啟通知存取權後，付款通知會出現在這裡，看得到通知原文和有沒有記帳。", "📭")
+        } else {
+            log.forEach { e -> PaymentLogRow(e) { title = e.title.ifEmpty { null }; text = e.text } }
+            Text("點一則可以把原文放到上面測試。紀錄只存在這支手機，最多留 ${tw.xiaoliangkou.app.service.AutoBookkeeping.MAX_ENTRIES} 則。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SoftButton("清除紀錄", Modifier.fillMaxWidth(), icon = Icons.Rounded.Delete) { scope.launch { vm.container.autoBookkeeping.clear() } }
+        }
+    }
+}
+
+@Composable
+private fun PaymentLogRow(e: tw.xiaoliangkou.app.service.AutoBookkeeping.Entry, onClick: () -> Unit) {
+    val (emoji, color) = when (e.outcome) {
+        "記下" -> "✅" to Cute.colors.mint.copy(alpha = 0.25f)
+        "補上店名" -> "✏️" to Cute.colors.sky.copy(alpha = 0.25f)
+        else -> "⏭️" to MaterialTheme.colorScheme.surfaceVariant
+    }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(color).bouncyClick(onClick = onClick).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            "$emoji ${e.outcome} · ${e.app}${e.title.takeIf { it.isNotBlank() && it != e.app }?.let { "（$it）" }.orEmpty()} · ${Fmt.rel(java.time.Instant.ofEpochMilli(e.at))}",
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Text(e.detail, style = MaterialTheme.typography.bodyMedium)
+        Text(e.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis)
     }
 }
 

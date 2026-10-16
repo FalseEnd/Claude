@@ -13,7 +13,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import tw.xiaoliangkou.app.core.PaymentParser
@@ -239,13 +241,15 @@ class RemoteRepository(
     override suspend fun reportPlaceEvent(placeId: String, arrive: Boolean) {
         apiCall { api.placeEvent(placeId, buildJsonObject { put("kind", if (arrive) "arrive" else "leave") }) }
     }
-    override suspend fun addAutoExpense(parsed: PaymentParser.Parsed, dedupeKey: String) {
-        apiCall {
+    override suspend fun addAutoExpense(parsed: PaymentParser.Parsed, dedupeKey: String): String? {
+        val row = apiCall {
             api.createExpense(buildJsonObject {
                 put("amount", parsed.amount); put("merchant", parsed.merchant.take(60)); put("category", parsed.category)
                 put("source", "notification"); put("dedupeKey", dedupeKey)
             })
         }
+        loadExpenses()
+        return (row["id"] as? JsonPrimitive)?.contentOrNull
     }
 
     fun setMyLocation(lat: Double, lng: Double) = _state.update { it.copy(myLocation = LatLng(lat, lng)) }

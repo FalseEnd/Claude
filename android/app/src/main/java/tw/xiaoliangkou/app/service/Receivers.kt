@@ -12,32 +12,22 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import tw.xiaoliangkou.app.container
-import tw.xiaoliangkou.app.core.PaymentParser
 import tw.xiaoliangkou.app.data.AppException
-import tw.xiaoliangkou.app.data.RemoteRepository
 import tw.xiaoliangkou.app.data.SettingsStore
-import java.security.MessageDigest
 
 /**
- * 自動記帳：讀取 LINE Pay、街口、銀行等 App 的付款通知。
- * 需要使用者在系統設定開啟「通知存取權」；只處理含「付款／消費／交易」等字眼且有金額的通知。
+ * 自動記帳：讀取 LINE Pay（LINE錢包）、街口、銀行等 App 的付款通知。
+ * 需要使用者在系統設定開啟「通知存取權」；怎麼判斷、怎麼去重見 [AutoBookkeeping] 和 [tw.xiaoliangkou.app.core.PaymentParser]。
  */
 class PaymentListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
-        val extras = sbn.notification.extras
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
-        val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString()
-        val parsed = PaymentParser.parsePaymentNotification(title, text) ?: return
         val c = applicationContext.container
         c.scope.launch {
-            if (c.prefs.value?.autoBookkeeping == false) return@launch
-            val repo = c.repo.value as? RemoteRepository ?: return@launch
-            // 同一筆交易可能被通知兩次（例如銀行與錢包 App 各一則）：用金額、商家與 10 分鐘區間去重
-            val raw = "${parsed.amount}|${parsed.merchant}|${sbn.postTime / 600_000}"
-            val key = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray()).joinToString("") { "%02x".format(it) }.take(32)
-            runCatching { repo.addAutoExpense(parsed, key) }
+            // App 可能才剛被叫起來：先等設定載入，才知道有沒有登入、有沒有開自動記帳
+            withTimeoutOrNull(10_000) { c.prefs.first { it != null } }
+            runCatching { c.autoBookkeeping.handle(sbn.packageName, sbn.notification, sbn.postTime) }
         }
     }
 }

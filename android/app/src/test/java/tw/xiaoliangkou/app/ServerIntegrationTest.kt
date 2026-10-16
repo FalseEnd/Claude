@@ -165,8 +165,14 @@ class ServerIntegrationTest {
             eventually("抵達通知") { zhe.notes.any { it.kind == "place" && it.title.contains("已抵達 小雨公司") } }
 
             // 自動記帳與猜花費
-            zhe.repo.addAutoExpense(PaymentParser.parse("LINE Pay｜付款完成 NT$135 商店：星巴克 信義新天地門市")!!, "k1")
-            zhe.repo.addAutoExpense(PaymentParser.parse("LINE Pay｜付款完成 NT$135 商店：星巴克 信義新天地門市")!!, "k1")
+            // LINE錢包的付款訊息：同一個去重 key 只記一筆；記下的 id 之後可以補上店名
+            val auto = PaymentParser.parse("付款\nNT$ 135\n付款完成。\n商店名稱\n星巴克 信義新天地門市\n付款後餘額\nNT$ 111")!!
+            assertEquals("星巴克 信義新天地門市", auto.merchant)
+            val autoId = zhe.repo.addAutoExpense(auto, "k1")
+            assertNotNull(autoId)
+            assertNull("同一筆不重記", zhe.repo.addAutoExpense(auto, "k1"))
+            zhe.repo.saveExpense(autoId, buildJsonObject { put("merchant", "星巴克"); put("category", "drink") })
+            assertEquals("星巴克", zhe.repo.state.value.myExpenses.first { it.id == autoId }.merchant)
             zhe.repo.saveExpense(null, buildJsonObject { put("merchant", "路易莎咖啡"); put("amount", 95); put("category", "drink"); put("guessable", true) })
             eventually("帳本同步") { zhe.repo.state.value.myExpenses.size == 2 }
             eventually("對方看到待猜開銷") { yu.repo.state.value.partnerExpenses.any { it.waitingForGuess } }

@@ -120,5 +120,6 @@ interface CoupleRepository {
     suspend fun reportDevice(body: JsonObject) {}
     suspend fun reportLocation(lat: Double, lng: Double, accuracy: Float?, speed: Float?) {}
     suspend fun reportPlaceEvent(placeId: String, arrive: Boolean) {}
-    suspend fun addAutoExpense(parsed: PaymentParser.Parsed, dedupeKey: String) {}
+    /** 回傳新記帳的 id；同一筆已經記過就是 null */
+    suspend fun addAutoExpense(parsed: PaymentParser.Parsed, dedupeKey: String): String? = null
 }
