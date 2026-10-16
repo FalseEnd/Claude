@@ -145,7 +145,7 @@ fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
         item(span = full) {
             Note(
                 (if (s.paired) "共用的備忘錄 ${s.partnerName} 也看得到、也能一起改。" else "配對後就可以和另一半共用備忘錄。") +
-                    "打開「放在桌面」的會出現在桌面的「備忘錄」小工具（我的 › 桌面小工具）。",
+                    "打開「放在桌面」，就會出現在桌面的「備忘錄」小工具上。",
                 "📌",
             )
         }
