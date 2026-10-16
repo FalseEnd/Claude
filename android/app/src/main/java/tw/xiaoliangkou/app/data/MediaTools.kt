@@ -64,6 +64,7 @@ object MediaPaths {
 object PhotoTools {
     const val MAX_SIDE = 1600
     const val QUALITY = 82
+    const val MIME = "image/jpeg"
 
     /** 縮到最長邊 [maxSide] 以內、存成 JPEG */
     fun compress(bmp: Bitmap, maxSide: Int = MAX_SIDE, quality: Int = QUALITY): Pair<ByteArray, IntSize> {
