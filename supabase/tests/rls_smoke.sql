@@ -578,6 +578,8 @@ select test.ok(test.error_of($$update public.notification_outbox set sent_at = n
                'clients cannot mark notifications sent directly');
 
 -- ---------------------------------------------------------------- 解除配對
+select test.login(test.id('zhe'));
+select public.app_save_memo('{"title": "一起存錢去日本"}') as japan_memo \gset
 select test.login(test.id('yu'));
 select public.unpair();
 select test.ok(public.partner_id() is null, 'no partner after unpairing');
@@ -639,7 +641,7 @@ select test.ok(not exists (select 1 from pg_trigger where tgrelid = 'public.memo
 -- ---------------------------------------------------------------- 解除配對 30 天後清除（daily_reminders 的 delete from couples）
 delete from public.couples where id = :'couple_id';
 select test.ok(not exists (select 1 from public.day_entries where couple_id = :'couple_id'), 'diary entries are removed with the couple');
-select test.ok((select count(*) from public.memos where user_id = test.id('zhe') and couple_id is null and shared) = 1,
+select test.ok((select count(*) from public.memos where user_id = test.id('zhe') and couple_id is null and shared) = 2,
                'shared memos stay with their creator (the media check does not block the cleanup)');
 
 -- ---------------------------------------------------------------- 每日提醒（以 postgres 執行）
@@ -706,6 +708,28 @@ values (test.id('zhe'), 'mood', 'old', 'old', now() - interval '40 days', now() 
 select test.ok((public.app_job_cleanup())->>'realtimeEvents' = '1', 'old realtime events are removed');
 select test.ok(not exists (select 1 from public.notification_outbox where title = 'old'), 'old notifications are removed');
 select test.ok((select count(*) from cron.job where jobname in ('xlk-minutely', 'xlk-daily', 'xlk-cleanup')) = 3, 'pg_cron jobs are scheduled');
+
+-- ---------------------------------------------------------------- v2：和以前的配對共用的備忘錄
+-- zhe 現在和 mia 是一對（每日提醒那一段建立的）；和小雨共用過的備忘錄只剩自己看得到
+set local role authenticated;
+select test.login(test.id('zhe'));
+select test.ok((select count(*) filter (where m->>'shared' = 'false') from jsonb_array_elements(public.app_memos()) m
+                where m->>'id' in ((:'shared_memo'::jsonb)->>'id', (:'japan_memo'::jsonb)->>'id')) = 2,
+               'memos shared with a former partner show as private');
+select public.app_save_memo(jsonb_build_object('id', (:'japan_memo'::jsonb)->>'id', 'body', '一個人也要去')) as japan \gset
+select test.ok((:'japan'::jsonb)->>'shared' = 'false', 'editing one does not share it with the new partner');
+select public.app_save_memo(jsonb_build_object('id', (:'shared_memo'::jsonb)->>'id', 'body', '牛奶')) as old_list \gset
+select test.ok((:'old_list'::jsonb)->>'shared' = 'false' and (:'old_list'::jsonb)->'media' = '[]',
+               'media left in the old couple folder (nobody can read it anymore) is dropped');
+select test.login(test.id('mia'));
+select test.ok(not exists (select 1 from public.memos where user_id = test.id('zhe'))
+               and public.app_memos() = '[]', 'the new partner sees none of them');
+select test.login(test.id('zhe'));
+select public.app_save_memo(jsonb_build_object('id', (:'japan_memo'::jsonb)->>'id', 'shared', true));
+select test.login(test.id('mia'));
+select test.ok(public.app_memos()->0->>'title' = '一起存錢去日本' and jsonb_array_length(public.app_memos()) = 1,
+               'until it is shared again on purpose');
+reset role;
 
 -- ---------------------------------------------------------------- 刪除帳號（Supabase 後台 › Authentication › Users）
 -- zhe 和 mia 在上面的每日提醒測試裡是一對；刪掉 mia 後 zhe 不能卡在「只剩一個人」的配對裡

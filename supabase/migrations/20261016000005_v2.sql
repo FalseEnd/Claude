@@ -431,21 +431,27 @@ end $$;
 -- RPC：備忘錄
 -- -----------------------------------------------------------------------------
 
--- 自己的全部＋對方共用的（目前的配對）；放在桌面的在前，再依更新時間新的在前
+-- 自己的全部＋對方共用的（目前的配對）；放在桌面的在前，再依更新時間新的在前。
+-- 和以前的配對共用的備忘錄現在只有自己看得到，shared 回傳 false
 create or replace function public.app_memos(jsonb default '{}') returns jsonb
 language sql stable set search_path = public set timezone to 'UTC' as $$
-  select camel_rows((select jsonb_agg(to_jsonb(m) - 'couple_id' order by m.pinned desc, m.updated_at desc) from memos m
+  select camel_rows((select jsonb_agg((to_jsonb(m) - 'couple_id')
+                                      || jsonb_build_object('shared', coalesce(m.shared and m.couple_id = my_couple_id(), false))
+                                      order by m.pinned desc, m.updated_at desc) from memos m
                      where m.user_id = auth.uid() or (m.shared and m.couple_id = my_couple_id())))
 $$;
 
 -- 新增：掛在目前的配對，沒配對只能私人。修改：自己的全部都能改（改成共用時掛到目前的配對）；
--- 對方共用的只能改標題、內容、照片語音、桌面、顏色
+-- 對方共用的只能改標題、內容、照片語音、桌面、顏色。
+-- 和以前的配對共用的備忘錄當成私人的：不會因為改了內容就分享給現在的對方；
+-- 留在以前那個資料夾的照片語音已經沒有人讀得到，存檔時拿掉
 create or replace function public.app_save_memo(jsonb default '{}') returns jsonb
 language plpgsql set search_path = public set timezone to 'UTC' as $$
 declare
   v_couple uuid := my_couple_id();
   v_media  jsonb := nullif($1->'media', 'null');
   v_memo   memos;
+  v_was    boolean;
   v_shared boolean;
   v_row    jsonb;
 begin
@@ -461,9 +467,17 @@ begin
   select * into v_memo from memos where id = ($1->>'id')::uuid;
   if not found then raise exception 'not_found'; end if;
   if v_memo.user_id = auth.uid() then
-    v_shared := coalesce(($1->>'shared')::boolean, v_memo.shared) and v_couple is not null;
+    v_was := coalesce(v_memo.shared and v_memo.couple_id = v_couple, false);
+    v_shared := coalesce(($1->>'shared')::boolean, v_was) and v_couple is not null;
+    v_media := coalesce(v_media, v_memo.media);
+    if v_memo.shared and not v_was then
+      v_media := coalesce((select jsonb_agg(e.value order by e.i) from jsonb_array_elements(v_media) with ordinality as e(value, i)
+                           where not coalesce(e.value->>'path' like 'c/%'
+                                              and not starts_with(e.value->>'path', 'c/' || coalesce(v_couple::text, '') || '/'), false)),
+                          '[]');
+    end if;
     update memos t set title = coalesce($1->>'title', t.title), body = coalesce($1->>'body', t.body),
-                       media = coalesce(v_media, t.media), shared = v_shared,
+                       media = v_media, shared = v_shared,
                        couple_id = case when v_shared then v_couple else t.couple_id end,
                        pinned = coalesce(($1->>'pinned')::boolean, t.pinned),
                        color = coalesce(nullif($1->>'color', ''), t.color), updated_at = now()
