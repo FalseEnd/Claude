@@ -443,7 +443,6 @@ object Widgets {
                 v.show(id, text != null)
                 if (text != null) v.setTextViewText(id, text)
             }
-            rows[4]?.let { v.setTextViewText(R.id.hug_button, it) }
             if (!r.scaled) {
                 // 跟版面裡一樣的大小，只是不跟著系統放大
                 v.size(R.id.partner_name, 17f, r)
@@ -490,7 +489,7 @@ object Widgets {
         v.show(R.id.updated, updated != null)
         updated?.let { v.setTextViewText(R.id.updated, it) }
         v.setTextViewText(R.id.status, status)
-        v.setInt(R.id.status, "setMaxLines", if ('\n' in status) 2 else 1)
+        v.setInt(R.id.status, "setMaxLines", status.count { it == '\n' } + 1)
         if (paired) {
             // 🤗 是圖示，不跟著系統字體放大，不然會塞不進圓圈
             v.setInt(R.id.hug_button, "setBackgroundResource", if (style.hug > 38) R.drawable.widget_hug_big else R.drawable.widget_hug)
@@ -501,7 +500,7 @@ object Widgets {
 
     /**
      * 一格高的狀態：放得下幾項就放幾項，不要切在一半；只有一句太長的說明就留逗號前面那段，還是太長才變「…」。
-     * 比較高的一格（[roomy]）、高度（[room]，dp）也夠才放第二行，一樣整項整項放；說明就把逗號後面那段放第二行。
+     * 比較高的一格（[roomy]）、高度（[room]，dp）也夠才往下多放幾行，一樣只放整項放得下的；說明就把逗號後面那段放第二行。
      */
     private fun statusLines(r: Ruler, style: PartnerStyle, parts: List<String>, column: Float, room: Float, roomy: Boolean): String {
         fun fits(text: String) = r.width(text, style.status) <= column
@@ -513,17 +512,23 @@ object Widgets {
         }
         val items = if (fits(parts.first())) parts else listOf(parts.first().substringBefore("，")) + parts.drop(1)
         val n = take(items)
-        val one = items.take(n).joinToString(" · ")
-        val rest = items.drop(n)
-        val second = if (rest.isNotEmpty()) rest.take(take(rest)).joinToString(" · ")
-        else parts.singleOrNull()?.takeIf { it != items.first() }?.substringAfter("，")
-        val two = second?.let { "$one\n$it" }?.takeIf { roomy && fits(one) && r.height(it, style.status) <= room }
-        return two ?: one
+        val lines = mutableListOf(items.take(n).joinToString(" · "))
+        if (!roomy || !fits(lines[0])) return lines[0]
+        var rest = items.drop(n).ifEmpty { listOfNotNull(parts.singleOrNull()?.takeIf { it != items.first() }?.substringAfter("，")) }
+        while (rest.isNotEmpty()) {
+            val k = take(rest)
+            val line = rest.take(k).joinToString(" · ")
+            // 一整項就放不下、或高度不夠（上下留一點空，不要貼著邊）：後面不放了
+            if (!fits(line) || r.height((lines + line).joinToString("\n"), style.status) > room - 4) break
+            lines += line
+            rest = rest.drop(k)
+        }
+        return lines.joinToString("\n")
     }
 
     /**
      * 兩格高以上的大版面每行的字（在哪、其他項目兩個一行、更新時間；null 是不顯示）：第一行在哪；沒有的就說明原因。
-     * 最後一個是 🤗 按鈕上的字（沒配對是 null）。照版面裡的字的大小量過，整個放不下就回傳 null（改用一格高的排法）。
+     * 照版面裡的字的大小量過，整個放不下就回傳 null（改用一格高的排法）。
      */
     private fun tallRows(
         r: Ruler,
@@ -536,9 +541,9 @@ object Widgets {
         w: Float,
         h: Float,
     ): List<String?>? {
-        // 版面：左右留白 14、頭像 60、間距 12；上下留白 10。🤗 按鈕旁邊至少要留一點位置給名字，窄的時候只寫 🤗
+        // 版面：左右留白 14、頭像 60、間距 12；上下留白 10。「🤗 抱抱」旁邊至少要留一點位置給名字
         val column = w - 28 - 60 - 12
-        val hug = if (!paired) null else listOf("🤗 抱抱", "🤗").firstOrNull { r.width(it, 12f) + 20 + 40 <= column } ?: return null
+        if (paired && r.width("🤗 抱抱", 12f) + 20 + 40 > column) return null
         val rows: List<String?> = if (!paired) {
             listOf(waiting.firstOrNull { r.width(it, 13f) <= column } ?: waiting.last(), null, null, null)
         } else {
@@ -550,10 +555,10 @@ object Widgets {
             val together = days(snap, Fmt.localDate(now))?.let { "在一起第 ${Fmt.int(it)} 天" }
             listOf(lines.getOrNull(0), lines.getOrNull(1), lines.getOrNull(2), listOfNotNull(at?.let { "$it 更新" }, together).joinToString(" · ").ifEmpty { " " })
         }
-        val head = max(r.height(name, 17f, pad = true), if (hug != null) 8 + r.height(hug, 12f, pad = true) else 0f)
+        val head = max(r.height(name, 17f, pad = true), if (paired) 8 + r.height("🤗 抱抱", 12f, pad = true) else 0f)
         val body = rows.mapIndexed { i, text ->
             text?.let { (if (i == 0 || i == 3) 2 else 0) + r.height(it, if (i == 3) 11f else 13f, pad = true) } ?: 0f
         }.sum()
-        return (rows + hug).takeIf { 20 + max(60f, head + body) <= h }
+        return rows.takeIf { 20 + max(60f, head + body) <= h }
     }
 }
