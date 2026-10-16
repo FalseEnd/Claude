@@ -302,10 +302,12 @@ class RemoteRepository(
 
     override suspend fun saveDayEntry(id: String?, day: LocalDate, body: String, media: List<MediaItem>) {
         Limits.dayEntry(body, media)
+        // 日曆是兩個人共用的：照片一定要放在 c/<配對>/
+        val moved = relocate(media, shared = true)
         val row = v2 {
             api.saveDayEntry(buildJsonObject {
                 if (id != null) put("id", id)
-                put("day", day.toString()); put("body", body); put("media", Api.mediaJson(media))
+                put("day", day.toString()); put("body", body); put("media", Api.mediaJson(moved))
             })
         }
         _state.update { st ->
