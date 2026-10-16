@@ -1,5 +1,7 @@
 'use strict';
-// 從 supabase/migrations/*.sql 產生 supabase/setup.sql：使用者貼到 Supabase SQL Editor 執行一次，整個包在同一個交易裡。
+// 從 supabase/migrations/*.sql 產生使用者貼到 Supabase SQL Editor 執行一次的檔案，各自包在同一個交易裡：
+//   supabase/setup.sql        新專案：全部的 migrations
+//   supabase/upgrade-v2.sql   已經跑過舊版 setup.sql 的專案：只有 20261016000005 這一個
 // 產生的檔案拿掉所有 -- 註解：複製貼上時如果換行被吃掉，註解會把後面的程式碼一起變成註解。
 //   node supabase/scripts/build-setup.js           產生
 //   node supabase/scripts/build-setup.js --check   只檢查是否和遷移檔一致
@@ -50,23 +52,34 @@ function stripComments(sql) {
   return out.split('\n').map((l) => l.replace(/\s+$/, '')).filter((l) => l !== '').join('\n') + '\n';
 }
 
-function build() {
-  const files = fs.readdirSync(path.join(dir, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
+const OUTPUTS = [
+  { file: 'setup.sql', only: () => true, done: '設定完成 🎉 回到說明文件做第 3 步' },
+  { file: 'upgrade-v2.sql', only: (f) => f.startsWith('20261016000005_'), done: '更新完成 🎉' }
+];
+
+function build(out) {
+  const files = fs.readdirSync(path.join(dir, 'migrations')).filter((f) => f.endsWith('.sql') && out.only(f)).sort();
   const stmts = [];
   for (const f of files) stmts.push(...statements(stripComments(fs.readFileSync(path.join(dir, 'migrations', f), 'utf8'))));
-  const wrap = (body, done) => `begin;\n${body.replace(/^\n+/, '').replace(/\n+$/, '')}\nselect '${done}' as "小倆口";\ncommit;\n`;
-  return { whole: wrap(stmts.join(''), '設定完成 🎉 回到說明文件做第 3 步') };
+  const body = stmts.join('').replace(/^\n+/, '').replace(/\n+$/, '');
+  return `begin;\n${body}\nselect '${out.done}' as "小倆口";\ncommit;\n`;
 }
 
-const { whole } = build();
-const wholeFile = path.join(dir, 'setup.sql');
-if (process.argv.includes('--check')) {
-  if (!fs.existsSync(wholeFile) || fs.readFileSync(wholeFile, 'utf8') !== whole) {
-    console.error('supabase/setup.sql 和 migrations 不一致，請執行 bash supabase/scripts/build-setup.sh');
-    process.exit(1);
+const check = process.argv.includes('--check');
+let stale = false;
+for (const out of OUTPUTS) {
+  const sql = build(out);
+  const file = path.join(dir, out.file);
+  if (check) {
+    if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== sql) {
+      console.error(`supabase/${out.file} 和 migrations 不一致，請執行 bash supabase/scripts/build-setup.sh`);
+      stale = true;
+    } else {
+      console.log(`${out.file} 和 migrations 一致`);
+    }
+  } else {
+    fs.writeFileSync(file, sql);
+    console.log(`已產生 ${out.file}`);
   }
-  console.log('setup.sql 和 migrations 一致');
-} else {
-  fs.writeFileSync(wholeFile, whole);
-  console.log('已產生 setup.sql');
 }
+if (stale) process.exit(1);

@@ -1,4 +1,5 @@
--- 資料庫冒煙測試：配對、分享權限、通知、RPC 輸出格式、函式權限、排程與即時事件。
+-- 資料庫冒煙測試：配對、分享權限、通知、RPC 輸出格式、函式權限、排程與即時事件，
+-- 以及 v2 的個人資料、私人備註、日曆紀錄、備忘錄與 Storage 權限。
 -- 以 postgres 身分執行：psql "$DB_URL" -f supabase/tests/rls_smoke.sql
 -- 全部在一個交易裡，最後 rollback，不會在資料庫留下任何資料。
 -- 任何一個 test.ok() 失敗都會中止並顯示訊息。
@@ -37,6 +38,22 @@ $$;
 create function test.outbox_titled(p_user uuid, p_title text) returns bigint
 language sql security definer set search_path = public as $$
   select count(*) from public.notification_outbox where recipient_id = p_user and title = p_title
+$$;
+
+create function test.outbox_body(p_user uuid, p_title text) returns text
+language sql security definer set search_path = public as $$
+  select body from public.notification_outbox where recipient_id = p_user and title = p_title order by id desc limit 1
+$$;
+-- 某人收到某張表的 changed 幾次（不受 Row Level Security 限制，才能確認「對方真的沒收到」）
+create function test.changed(p_user uuid, p_table text) returns bigint
+language sql security definer set search_path = public as $$
+  select count(*) from public.realtime_events where user_id = p_user and table_name = p_table
+$$;
+-- 所有人的即時事件、通知、歷史紀錄筆數：寫私人備註前後要一模一樣
+create function test.trace() returns text
+language sql security definer set search_path = public as $$
+  select format('%s/%s/%s', (select count(*) from public.realtime_events), (select count(*) from public.notification_outbox),
+                (select count(*) from public.activity_log))
 $$;
 
 -- 預期會失敗的語句：回傳錯誤訊息（SQLSTATE: message），沒失敗則回傳 null
@@ -298,7 +315,7 @@ select test.ok(public.app_update_event(jsonb_build_object('id', :'event_id', 'no
 -- ---------------------------------------------------------------- RPC：camelCase 輸出、錯誤代碼
 select test.login(test.id('zhe'));
 select public.app_me() as me \gset
-select test.ok((:'me'::jsonb)->'user' ?& array['id', 'displayName', 'avatarUrl', 'birthday', 'email'], 'app_me user has camelCase keys and email');
+select test.ok((:'me'::jsonb)->'user' ?& array['id', 'displayName', 'avatarUrl', 'birthday', 'info', 'email'], 'app_me user has camelCase keys and email');
 select test.ok((:'me'::jsonb)#>>'{user,email}' = 'azhe@example.com', 'app_me returns the login email');
 select test.ok((:'me'::jsonb)#>>'{partner,displayName}' = '小雨', 'app_me returns the partner');
 select test.ok((:'me'::jsonb)->'mySharing' ?& array['userId', 'shareLocation', 'hiddenCategories', 'pausedUntil', 'updatedAt'],
@@ -311,7 +328,11 @@ select test.ok((select bool_and(e ? 'theirGuess' and e ? 'theirPoints' and e ? '
                and jsonb_array_length(public.app_expenses()) = 4, 'app_expenses includes theirGuess / theirPoints');
 select test.ok((select (e->>'theirGuess')::numeric = 130 and jsonb_typeof(e->'amount') = 'number'
                 from jsonb_array_elements(public.app_expenses()) e where e->>'guessable' = 'true'), 'numbers stay JSON numbers');
-select test.ok((select count(*) from jsonb_object_keys(public.app_notification_prefs())) = 10, 'notification prefs list every kind');
+select test.ok((select count(*) from jsonb_object_keys(public.app_notification_prefs())) = 12
+               and public.app_notification_prefs() ?& array['diary', 'memo'], 'notification prefs list every kind');
+select public.app_set_notification_prefs('{"diary": false}');
+select test.ok(public.app_notification_prefs()->'diary' = 'false', 'diary notifications can be turned off');
+select public.app_set_notification_prefs('{"diary": true}');
 select test.ok((public.app_history('{"kinds": ["mood"]}')->0->'payload') ? 'note', 'nested jsonb (activity payload) keeps its keys');
 select test.ok(test.error_of($$select public.app_update_profile('{}')$$) like 'P0001: nothing_to_update%', 'empty update raises nothing_to_update');
 select test.ok(test.error_of($$select public.app_delete_place('{"id": "00000000-0000-0000-0000-000000000000"}')$$) like 'P0001: not_found%',
@@ -323,6 +344,204 @@ select test.ok(test.error_of($$select public.app_create_expense('{"amount": -1, 
 select test.ok((public.app_create_expense('{"amount": 50, "merchant": "7-11", "dedupeKey": "d1"}')) ? 'id'
                and public.app_create_expense('{"amount": 50, "merchant": "7-11", "dedupeKey": "d1"}') = '{"duplicate": true}',
                'duplicate auto-recorded expense returns {duplicate: true}');
+
+-- ---------------------------------------------------------------- v2：個人資料（info）
+select test.login(test.id('zhe'));
+select test.ok(public.app_update_profile('{"info": {"heightCm": 175, "bloodType": "O", "likes": "珍奶半糖"}}')->'info'
+               = '{"heightCm": 175, "bloodType": "O", "likes": "珍奶半糖"}', 'app_update_profile saves and returns info');
+select test.ok((public.app_me())#>>'{user,info,likes}' = '珍奶半糖', 'app_me returns my info');
+select test.ok(test.error_of($$select public.app_update_profile('{"info": ["O"]}')$$) like '23514:%', 'info must be a JSON object');
+select test.ok(test.error_of(format('select public.app_update_profile(%L)', jsonb_build_object('info', jsonb_build_object('intro', repeat('好', 1500)))))
+               like '23514:%', 'info is limited to 4000 bytes');
+select test.login(test.id('yu'));
+select test.ok((public.app_me())#>>'{partner,info,heightCm}' = '175', 'the partner sees my info with its keys untouched');
+select test.ok((public.app_me())#>'{user,info}' = '{}', 'info defaults to an empty object');
+
+-- ---------------------------------------------------------------- v2：只有自己看得到的備註
+select test.login(test.id('zhe'));
+select test.trace() as trace_before \gset
+insert into public.partner_notes (about_user, body, created_at) values (test.id('yu'), '她喜歡半糖少冰', now() - interval '1 day')
+returning id as note_id \gset
+select test.ok(public.app_save_note(jsonb_build_object('id', :'note_id', 'body', '她喜歡半糖去冰'))->>'body' = '她喜歡半糖去冰', 'notes can be edited');
+select public.app_save_note('{"body": "生日想要的耳環款式"}') as note \gset
+select test.ok((:'note'::jsonb) ?& array['id', 'aboutUser', 'body', 'createdAt', 'updatedAt'] and not (:'note'::jsonb) ? 'ownerId'
+               and (:'note'::jsonb)->>'aboutUser' = test.id('yu')::text, 'a new note is about the current partner');
+select test.ok(jsonb_array_length(public.app_notes()) = 2 and public.app_notes()->0->>'body' = '生日想要的耳環款式', 'app_notes lists my notes, newest first');
+select test.ok(test.error_of($$select public.app_save_note('{"body": ""}')$$) like '23514:%', 'empty notes are rejected');
+select test.ok(not exists (select 1 from pg_trigger where tgrelid = 'public.partner_notes'::regclass and not tgisinternal)
+               and not exists (select 1 from pg_publication_tables where schemaname = 'public' and tablename = 'partner_notes'),
+               'partner_notes has no triggers and is not published to Realtime');
+select test.login(test.id('yu'));
+select test.ok((select count(*) from public.partner_notes) = 0, 'the partner cannot read or even count my notes');
+select test.ok(public.app_notes() = '[]', 'app_notes shows the partner nothing');
+select test.ok(test.error_of(format($$select public.app_save_note(%L)$$, jsonb_build_object('id', :'note_id', 'body', '偷看'))) like 'P0001: not_found%',
+               'the partner cannot edit my note');
+select test.ok(test.error_of(format($$select public.app_delete_note(%L)$$, jsonb_build_object('id', :'note_id'))) like 'P0001: not_found%',
+               'the partner cannot delete my note');
+update public.partner_notes set body = '偷改';
+delete from public.partner_notes;
+select test.ok(test.error_of(format($$insert into public.partner_notes (owner_id, body) values (%L, '假的')$$, test.id('zhe'))) like '42501:%',
+               'the partner cannot write a note in my name');
+select test.login(test.id('zhe'));
+select test.ok((select string_agg(body, ',' order by created_at) from public.partner_notes) = '她喜歡半糖去冰,生日想要的耳環款式', 'my notes are untouched');
+select test.ok(public.app_delete_note(jsonb_build_object('id', :'note_id')) = '{"ok": true}', 'app_delete_note deletes my note');
+select test.ok(jsonb_array_length(public.app_notes()) = 1, 'and it is gone');
+select test.ok(test.trace() = :'trace_before', 'notes create no realtime event, notification or history for anyone');
+
+-- ---------------------------------------------------------------- v2：日曆紀錄
+select public.app_save_day_entry(jsonb_build_object('day', '2026-10-10', 'body', '一起去淡水看夕陽', 'media', jsonb_build_array(
+  jsonb_build_object('path', 'c/' || :'couple_id' || '/a1.jpg', 'kind', 'photo', 'width', 1600, 'height', 1200)))) as entry \gset
+select test.ok((:'entry'::jsonb) ?& array['id', 'userId', 'day', 'body', 'media', 'createdAt', 'updatedAt'] and not (:'entry'::jsonb) ? 'coupleId'
+               and (:'entry'::jsonb)->>'day' = '2026-10-10' and (:'entry'::jsonb)#>>'{media,0,width}' = '1600',
+               'app_save_day_entry returns the entry with media as given');
+select test.ok(test.outbox_body(test.id('yu'), '阿哲 記錄了 10/10 的生活') = '一起去淡水看夕陽', 'the partner is told about a new diary entry');
+select public.app_save_day_entry(jsonb_build_object('day', '2026-10-11', 'media', jsonb_build_array(
+  jsonb_build_object('path', 'c/' || :'couple_id' || '/v1.m4a', 'kind', 'voice', 'durationMs', 12000))));
+select test.ok(test.outbox_body(test.id('yu'), '阿哲 記錄了 10/11 的生活') = '🎙️ 錄了一段語音', 'a voice-only entry says so in the notification');
+select test.ok(test.error_of($$select public.app_save_day_entry('{"day": "2026-10-12", "body": ""}')$$) like '23514:%', 'empty entries are rejected');
+select test.ok(test.changed(test.id('yu'), 'day_entries') = 2 and test.changed(test.id('zhe'), 'day_entries') = 2,
+               'diary entries tell both of us to reload');
+select test.login(test.id('yu'));
+select public.app_save_day_entry(jsonb_build_object('day', '2026-10-10', 'body', '風好大但很開心')) as yu_entry \gset
+select test.ok(test.outbox_body(test.id('zhe'), '小雨 記錄了 10/10 的生活') = '風好大但很開心', 'the other way around too');
+select test.ok(jsonb_array_length(public.app_day_entries('{"from": "2026-10-01", "to": "2026-10-31"}')) = 3, 'both of us see every entry of the couple');
+select test.ok(public.app_day_entries('{"from": "2026-10-11", "to": "2026-10-11"}')->0->>'day' = '2026-10-11'
+               and jsonb_array_length(public.app_day_entries('{"from": "2026-10-11", "to": "2026-10-11"}')) = 1, 'from and to are inclusive days');
+select test.ok(jsonb_typeof(public.app_day_entries()) = 'array', 'the default range works');
+select test.ok(test.error_of($$select public.app_day_entries('{"from": "someday"}')$$) like 'P0001: invalid_range%', 'bad dates raise invalid_range');
+select test.ok(test.error_of(format($$select public.app_save_day_entry(%L)$$, jsonb_build_object('id', (:'entry'::jsonb)->>'id', 'body', '偷改')))
+               like 'P0001: not_found%', 'the partner cannot edit my entry');
+select test.ok(test.error_of(format($$select public.app_delete_day_entry(%L)$$, jsonb_build_object('id', (:'entry'::jsonb)->>'id')))
+               like 'P0001: not_found%', 'the partner cannot delete my entry');
+update public.day_entries set body = '偷改' where user_id = test.id('zhe');
+delete from public.day_entries where user_id = test.id('zhe');
+select test.ok(test.error_of(format($$insert into public.day_entries (couple_id, user_id, day, body) values (%L, %L, '2026-10-12', '假的')$$,
+                                    :'couple_id', test.id('zhe'))) like '42501:%', 'the partner cannot write an entry in my name');
+select test.ok((select count(*) from public.day_entries where user_id = test.id('zhe') and body <> '偷改') = 2, 'my entries are untouched');
+select test.ok(public.app_save_day_entry(jsonb_build_object('id', (:'yu_entry'::jsonb)->>'id', 'day', '2026-10-10', 'body', '風好大但很開心！',
+                 'media', jsonb_build_array(jsonb_build_object('path', 'c/' || :'couple_id' || '/y1.jpg', 'kind', 'photo'))))#>>'{media,0,path}'
+               = 'c/' || :'couple_id' || '/y1.jpg', 'I can edit my own entry');
+-- 照片語音的路徑只能指到這對情侶的資料夾；直接寫資料表也一樣會檢查
+select test.ok(test.error_of($$select public.app_save_day_entry('{"day": "2026-10-12", "media": [{"path": "c/11111111-1111-1111-1111-111111111111/x.jpg", "kind": "photo"}]}')$$)
+               like 'P0001: invalid_media%', 'diary media cannot point at another couple''s folder');
+select test.ok(test.error_of(format($$select public.app_save_day_entry(%L)$$, jsonb_build_object('day', '2026-10-12', 'media',
+                 jsonb_build_array(jsonb_build_object('path', 'u/' || test.id('yu') || '/x.jpg', 'kind', 'photo'))))) like 'P0001: invalid_media%',
+               'diary media cannot point at a private folder');
+select test.ok(test.error_of(format($$select public.app_save_day_entry(%L)$$, jsonb_build_object('day', '2026-10-12', 'media',
+                 jsonb_build_array(jsonb_build_object('path', 'c/' || :'couple_id' || '/../../u/' || test.id('zhe') || '/x.jpg', 'kind', 'photo')))))
+               like 'P0001: invalid_media%', 'media paths cannot climb out of the folder');
+select test.ok(test.error_of(format($$select public.app_save_day_entry(%L)$$, jsonb_build_object('day', '2026-10-12', 'media',
+                 jsonb_build_array(jsonb_build_object('path', 'c/' || :'couple_id' || '/x.mp4', 'kind', 'video'))))) like 'P0001: invalid_media%',
+               'media kind is photo or voice');
+select test.ok(test.error_of(format($$select public.app_save_day_entry(%L)$$, jsonb_build_object('day', '2026-10-12', 'media',
+                 jsonb_build_array('c/' || :'couple_id' || '/x.jpg')))) like 'P0001: invalid_media%', 'media items are objects');
+select test.ok(test.error_of(format($$insert into public.day_entries (couple_id, day, media) values (%L, '2026-10-12', %L)$$, :'couple_id',
+                 '[{"path": "c/11111111-1111-1111-1111-111111111111/x.jpg", "kind": "photo"}]')) like 'P0001: invalid_media%',
+               'writing the table directly is checked too');
+select test.ok(test.error_of(format($$update public.day_entries set media = %L where id = %L$$,
+                 jsonb_build_array(jsonb_build_object('path', 'u/' || test.id('zhe') || '/x.jpg', 'kind', 'photo')), (:'yu_entry'::jsonb)->>'id'))
+               like 'P0001: invalid_media%', 'updating the table directly is checked too');
+select test.login(test.id('mia'));
+select test.ok((select count(*) from public.day_entries) = 0 and public.app_day_entries('{"from": "2026-10-01", "to": "2026-10-31"}') = '[]',
+               'outsiders see no diary entries');
+select test.ok(test.error_of($$select public.app_save_day_entry('{"day": "2026-10-12", "body": "我也要"}')$$) like 'P0001: not_paired%',
+               'diary entries need a partner');
+
+-- ---------------------------------------------------------------- v2：備忘錄
+select test.login(test.id('zhe'));
+select public.app_save_memo(jsonb_build_object('title', '週末採買清單', 'body', '牛奶、雞蛋', 'pinned', true, 'color', 'yellow', 'media',
+  jsonb_build_array(jsonb_build_object('path', 'c/' || :'couple_id' || '/m1.jpg', 'kind', 'photo')))) as shared_memo \gset
+select test.ok((:'shared_memo'::jsonb) ?& array['id', 'userId', 'title', 'body', 'media', 'shared', 'pinned', 'color', 'createdAt', 'updatedAt']
+               and not (:'shared_memo'::jsonb) ? 'coupleId' and (:'shared_memo'::jsonb)->>'shared' = 'true', 'memos are shared by default');
+select test.ok(test.outbox_body(test.id('yu'), '阿哲 新增了共同備忘錄') = '週末採買清單', 'the partner is told about a new shared memo');
+select test.ok(test.changed(test.id('yu'), 'memos') = 1 and test.changed(test.id('zhe'), 'memos') = 1, 'a shared memo tells both of us to reload');
+select public.app_save_memo(jsonb_build_object('title', '生日驚喜計畫', 'body', '偷偷訂餐廳', 'shared', false, 'color', 'lavender', 'media',
+  jsonb_build_array(jsonb_build_object('path', 'u/' || test.id('zhe') || '/p1.jpg', 'kind', 'photo')))) as private_memo \gset
+select public.app_save_memo(jsonb_build_object('id', (:'private_memo'::jsonb)->>'id', 'body', '偷偷訂餐廳，記得蛋糕'));
+select test.ok((:'private_memo'::jsonb)->>'shared' = 'false' and test.changed(test.id('zhe'), 'memos') = 3, 'my private memo changes tell me');
+select test.ok(test.changed(test.id('yu'), 'memos') = 1 and test.outbox(test.id('yu'), 'memo') = 1, 'but tell the partner nothing');
+select test.ok(test.error_of(format($$select public.app_save_memo(%L)$$, jsonb_build_object('title', 'x', 'shared', false, 'media',
+                 jsonb_build_array(jsonb_build_object('path', 'c/' || :'couple_id' || '/x.jpg', 'kind', 'photo'))))) like 'P0001: invalid_media%',
+               'a private memo cannot use the shared folder');
+select test.ok(test.error_of(format($$select public.app_save_memo(%L)$$, jsonb_build_object('title', 'x', 'shared', false, 'media',
+                 jsonb_build_array(jsonb_build_object('path', 'u/' || test.id('yu') || '/x.jpg', 'kind', 'photo'))))) like 'P0001: invalid_media%',
+               'a memo cannot point at the partner''s private files');
+select test.ok(test.error_of(format($$select public.app_save_memo(%L)$$, jsonb_build_object('title', 'x', 'media',
+                 jsonb_build_array(jsonb_build_object('path', 'u/' || test.id('zhe') || '/x.jpg', 'kind', 'photo'))))) like 'P0001: invalid_media%',
+               'a shared memo cannot point at my private files');
+select test.ok(test.error_of($$select public.app_save_memo('{"title": "x", "media": [{"path": "c/11111111-1111-1111-1111-111111111111/x.jpg", "kind": "photo"}]}')$$)
+               like 'P0001: invalid_media%', 'a shared memo cannot point at another couple''s folder');
+select test.ok(test.error_of($$select public.app_save_memo('{"title": "x", "color": "black"}')$$) like '23514:%', 'unknown colors are rejected');
+-- 改成私人時照片語音要搬到自己的資料夾（App 會重新上傳）
+select test.ok(test.error_of(format($$select public.app_save_memo(%L)$$, jsonb_build_object('id', (:'shared_memo'::jsonb)->>'id', 'shared', false)))
+               like 'P0001: invalid_media%', 'a memo cannot become private while its media sit in the shared folder');
+select public.app_save_memo('{"title": "要一起看的電影"}') as movie_memo \gset
+select test.ok(test.changed(test.id('yu'), 'memos') = 2 and test.outbox(test.id('yu'), 'memo') = 2, 'another shared memo');
+select public.app_save_memo(jsonb_build_object('id', (:'movie_memo'::jsonb)->>'id', 'shared', false));
+select test.ok(test.changed(test.id('yu'), 'memos') = 3, 'making a shared memo private tells the partner to drop it');
+select public.app_save_memo(jsonb_build_object('id', (:'movie_memo'::jsonb)->>'id', 'body', '其實想自己先看'));
+select test.ok(test.changed(test.id('yu'), 'memos') = 3 and test.changed(test.id('zhe'), 'memos') = 6, 'later edits of the now-private memo are silent');
+select test.login(test.id('yu'));
+select test.ok((select count(*) from public.memos) = 1 and jsonb_array_length(public.app_memos()) = 1 and public.app_memos()->0->>'title' = '週末採買清單',
+               'the partner sees my shared memo but none of my private ones');
+select test.ok(test.error_of(format($$select public.app_save_memo(%L)$$, jsonb_build_object('id', (:'private_memo'::jsonb)->>'id', 'title', '偷看')))
+               like 'P0001: not_found%', 'the partner cannot edit my private memo');
+select public.app_save_memo(jsonb_build_object('id', (:'shared_memo'::jsonb)->>'id', 'body', '牛奶、雞蛋、吐司', 'shared', false, 'pinned', false)) as edited \gset
+select test.ok((:'edited'::jsonb)->>'body' = '牛奶、雞蛋、吐司' and (:'edited'::jsonb)->>'shared' = 'true' and (:'edited'::jsonb)->>'pinned' = 'false'
+               and (:'edited'::jsonb)->>'userId' = test.id('zhe')::text, 'the partner can edit a shared memo but not make it private');
+select test.ok(test.changed(test.id('zhe'), 'memos') = 7, 'the creator is told when the partner edits a shared memo');
+select test.ok(test.error_of(format($$select public.app_save_memo(%L)$$, jsonb_build_object('id', (:'shared_memo'::jsonb)->>'id', 'media',
+                 jsonb_build_array(jsonb_build_object('path', 'u/' || test.id('yu') || '/x.jpg', 'kind', 'photo'))))) like 'P0001: invalid_media%',
+               'the partner cannot attach private files to a shared memo');
+-- 被 Row Level Security 擋下，或照片還在共用資料夾先被路徑檢查擋下
+select test.ok(test.error_of(format($$update public.memos set shared = false where id = %L$$, (:'shared_memo'::jsonb)->>'id'))
+               ~ '^(42501: new row violates row-level security|P0001: invalid_media)', 'the partner cannot make my memo private directly');
+select test.ok(test.error_of(format($$update public.memos set shared = false, media = '[]' where id = %L$$, (:'shared_memo'::jsonb)->>'id'))
+               like '42501: new row violates row-level security%', 'not even after removing its media');
+select test.ok(test.error_of(format($$update public.memos set couple_id = null where id = %L$$, (:'shared_memo'::jsonb)->>'id')) like '42501:%',
+               'the partner cannot move my memo out of the couple');
+select test.ok(test.error_of(format($$update public.memos set user_id = auth.uid() where id = %L$$, (:'shared_memo'::jsonb)->>'id')) like '42501:%',
+               'the partner cannot take over my memo');
+select test.ok(test.error_of(format($$select public.app_delete_memo(%L)$$, jsonb_build_object('id', (:'shared_memo'::jsonb)->>'id')))
+               like 'P0001: not_found%', 'the partner cannot delete my shared memo');
+delete from public.memos;
+select test.ok(test.error_of(format($$insert into public.memos (user_id, title) values (%L, '假的')$$, test.id('zhe'))) like '42501:%',
+               'the partner cannot write a memo in my name');
+select test.ok(test.error_of($$insert into public.memos (title, couple_id) values ('別人的', '11111111-1111-1111-1111-111111111111')$$) like '42501:%',
+               'a shared memo must belong to my couple');
+select test.login(test.id('zhe'));
+select test.ok((select count(*) from public.memos where user_id = test.id('zhe')) = 3, 'my memos are all still there');
+select public.app_save_memo(jsonb_build_object('id', (:'private_memo'::jsonb)->>'id', 'pinned', true));
+select test.ok(public.app_memos()->0->>'id' = (:'private_memo'::jsonb)->>'id', 'pinned memos come first');
+select test.ok(public.app_delete_memo(jsonb_build_object('id', (:'movie_memo'::jsonb)->>'id')) = '{"ok": true}', 'the creator can delete a memo');
+
+-- ---------------------------------------------------------------- v2：照片與語音（Storage）
+-- storage-api 以登入者的身分寫入 storage.objects，這裡直接寫來測 policy
+insert into storage.objects (bucket_id, name, owner_id) values
+  ('media', 'c/' || :'couple_id' || '/s1.jpg', auth.uid()::text), ('media', 'u/' || test.id('zhe') || '/s2.jpg', auth.uid()::text);
+select test.ok(test.error_of(format($$insert into storage.objects (bucket_id, name) values ('media', %L)$$, 'u/' || test.id('yu') || '/s3.jpg'))
+               like '42501:%', 'cannot upload into the partner''s private folder');
+select test.ok(test.error_of($$insert into storage.objects (bucket_id, name) values ('media', 'c/11111111-1111-1111-1111-111111111111/s4.jpg')$$)
+               like '42501:%', 'cannot upload into another couple''s folder');
+select test.ok(test.error_of(format($$insert into storage.objects (bucket_id, name) values ('media', %L)$$,
+                 'c/' || :'couple_id' || '/../../u/' || test.id('yu') || '/s5.jpg')) like '42501:%', 'upload paths cannot climb out of the folder');
+select test.ok(test.error_of(format($$insert into storage.objects (bucket_id, name) values ('media', %L)$$, 'c/' || :'couple_id' || '/a/s6.jpg'))
+               like '42501:%', 'uploads go straight into the folder');
+select test.login(test.id('yu'));
+insert into storage.objects (bucket_id, name, owner_id) values ('media', 'c/' || :'couple_id' || '/y1.jpg', auth.uid()::text);
+select test.ok((select string_agg(name, ',' order by name) from storage.objects where bucket_id = 'media')
+               = 'c/' || :'couple_id' || '/s1.jpg,c/' || :'couple_id' || '/y1.jpg', 'the partner reads the couple folder but not my private folder');
+select set_config('storage.allow_delete_query', 'true', true);
+delete from storage.objects where bucket_id = 'media' and owner_id = test.id('zhe')::text;
+select test.login(test.id('mia'));
+select test.ok((select count(*) from storage.objects where bucket_id = 'media') = 0, 'outsiders read no media');
+select test.login(test.id('zhe'));
+delete from storage.objects where name = 'c/' || :'couple_id' || '/y1.jpg';
+select test.ok((select count(*) from storage.objects where bucket_id = 'media') = 3, 'only the uploader can delete a file');
+select test.login(test.id('yu'));
+delete from storage.objects where name = 'c/' || :'couple_id' || '/y1.jpg';
+select test.ok((select count(*) from storage.objects where bucket_id = 'media') = 1, 'the uploader can delete a file');
+select test.login(test.id('zhe'));
 
 -- ---------------------------------------------------------------- 即時事件與通知補送
 select test.ok((select count(*) from public.realtime_events where kind = 'changed' and table_name = 'expenses' and by_user = test.id('zhe')) > 0,
@@ -367,6 +586,15 @@ select test.ok((select count(*) from public.moods) = 0, 'former partner mood is 
 select test.ok((select count(*) from public.places) = 0, 'shared places are no longer visible');
 select test.ok((select count(*) from public.profiles) = 1, 'former partner profile is no longer visible');
 select test.ok((public.app_me())->'partner' = 'null' and (public.app_me())->'couple' = 'null', 'app_me has null couple and partner after unpairing');
+select test.ok(public.app_day_entries('{"from": "2026-10-01", "to": "2026-10-31"}') = '[]', 'diary entries are no longer visible after unpairing');
+select test.ok((select count(*) from storage.objects where bucket_id = 'media') = 1, 'the old couple folder is no longer readable (only my own folder is)');
+select test.ok(public.app_notes() = '[]', 'notes about the former partner are hidden');
+select test.ok(test.error_of($$select public.app_save_day_entry('{"day": "2026-10-20", "body": "一個人"}')$$) like 'P0001: not_paired%',
+               'diary entries need a partner');
+select test.ok((public.app_save_memo('{"title": "一個人的清單", "shared": true}'))->>'shared' = 'false', 'memos are private while unpaired');
+select test.login(test.id('yu'));
+select test.ok(not exists (select 1 from jsonb_array_elements(public.app_memos()) m where m->>'userId' = test.id('zhe')::text)
+               and (select count(*) from public.memos where user_id = test.id('zhe')) = 0, 'shared memos of the former partner are no longer visible');
 
 -- ---------------------------------------------------------------- 匿名（沒登入）
 reset role;
@@ -388,7 +616,9 @@ select test.ok(not exists (select 1 from pg_proc p where p.pronamespace = 'publi
                            and p.proname in ('app_job_event_reminders', 'app_job_daily', 'app_job_cycle_care', 'app_job_cleanup',
                                              'predict_cycle', 'enqueue_notification', 'log_activity', 'daily_reminders',
                                              'couple_of', 'partner_of', 'shares', 'display_name_of', 'handle_new_user', 'tg_changed',
-                                             'expense_shown', 'tg_couple_member_deleted', 'tg_place_saved')
+                                             'expense_shown', 'tg_couple_member_deleted', 'tg_place_saved',
+                                             'media_valid', 'media_summary', 'tg_media_valid', 'tg_day_entry_inserted',
+                                             'tg_memo_inserted', 'tg_changed_memo')
                            and has_function_privilege('authenticated', p.oid, 'execute')),
                'jobs and internal helpers are not callable by clients');
 select test.ok(not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef
@@ -399,6 +629,18 @@ select test.ok(not exists (select 1 from pg_proc p where p.pronamespace = 'publi
                            and (pg_get_function_identity_arguments(p.oid) <> 'jsonb'
                                 or not exists (select 1 from unnest(p.proconfig) c where c = 'TimeZone=UTC'))),
                'every app_* RPC takes one jsonb argument and runs in UTC');
+select test.ok((select not public and file_size_limit = 10485760 and allowed_mime_types @> array['image/jpeg', 'audio/mp4']
+                from storage.buckets where id = 'media'), 'the media bucket is private, 10 MB, photos and voice only');
+select test.ok((select array_agg(cmd order by cmd) from pg_policies where schemaname = 'storage' and policyname like 'xlk media:%')
+               = '{DELETE,INSERT,SELECT}', 'media files can be read, uploaded and deleted but never overwritten');
+select test.ok(not exists (select 1 from pg_trigger where tgrelid = 'public.memos'::regclass and tgfoid = 'public.tg_changed'::regproc),
+               'memos do not use tg_changed (it would tell the partner about private memos)');
+
+-- ---------------------------------------------------------------- 解除配對 30 天後清除（daily_reminders 的 delete from couples）
+delete from public.couples where id = :'couple_id';
+select test.ok(not exists (select 1 from public.day_entries where couple_id = :'couple_id'), 'diary entries are removed with the couple');
+select test.ok((select count(*) from public.memos where user_id = test.id('zhe') and couple_id is null and shared) = 1,
+               'shared memos stay with their creator (the media check does not block the cleanup)');
 
 -- ---------------------------------------------------------------- 每日提醒（以 postgres 執行）
 insert into public.couples (id, together_since) values ('11111111-1111-1111-1111-111111111111', '2025-05-20');

@@ -143,7 +143,7 @@ create index if not exists memos_couple on public.memos (couple_id) where shared
 create or replace function public.media_valid(p_media jsonb, p_folder text) returns boolean
 language sql immutable parallel safe set search_path = public as $$
   select case
-    when p_media is null or jsonb_typeof(p_media) <> 'array' or p_folder is null then false
+    when p_media is null or jsonb_typeof(p_media) <> 'array' then false
     else not exists (
       select 1 from jsonb_array_elements(p_media) e
       where not coalesce(jsonb_typeof(e) = 'object'
