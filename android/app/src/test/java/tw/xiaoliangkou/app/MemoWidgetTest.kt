@@ -187,6 +187,17 @@ class MemoWidgetTest {
         listOf(p(250, 180), p(340, 120), p(330, 72), p(250, 110), p(330, 280)).forEach { assertTrue(it.toString(), it.noteH >= 49f && it.noteW >= 100f) }
     }
 
+    /** 內容排進幾行：只在兩項中間換行，不會把一項拆成兩行 */
+    @Test fun bodyLinesBreakBetweenItems() {
+        val trip = listOf("京都賞楓 🍁", "墾丁看海 🌊", "九份吃芋圓")
+        assertEquals("京都賞楓 🍁\n墾丁看海 🌊\n九份吃芋圓", MemoWidget.pack(trip, 3, 200f, 12f))
+        assertEquals("京都賞楓 🍁　墾丁看海 🌊\n九份吃芋圓", MemoWidget.pack(trip, 2, 200f, 12f))
+        assertEquals("京都賞楓 🍁　墾丁看海 🌊　九份吃芋圓", MemoWidget.pack(trip, 1, 200f, 12f))
+        val shopping = listOf("🥚 雞蛋", "🥛 鮮奶", "🍓 草莓", "🧻 衛生紙", "🐱 貓砂")
+        assertEquals("🥚 雞蛋　🥛 鮮奶\n🍓 草莓　🧻 衛生紙　🐱 貓砂", MemoWidget.pack(shopping, 2, 120f, 12f))
+        assertEquals("", MemoWidget.pack(shopping, 0, 120f, 12f))
+    }
+
     @Test fun twoByOneShowsJustTheFirstMemo() {
         primeCache()
         val snap = MemoWidgetSnapshot.of(pinThree())

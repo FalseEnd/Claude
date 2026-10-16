@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -129,7 +128,7 @@ fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
         }
         if (s.memos.isEmpty()) item(span = full) {
             CuteCard {
-                EmptyState("還沒有備忘錄\n採買清單、想去的地方、給 ${s.partnerName} 的小紙條，都可以記在這裡", "📝")
+                EmptyState("還沒有備忘錄\n採買清單、想去的地方、${if (s.paired) "給 ${s.partnerName} 的小紙條" else "給自己的小提醒"}\n都可以記在這裡", "📝")
                 CuteButton("新增第一則備忘錄", Modifier.fillMaxWidth(), icon = Icons.Rounded.Add) { sheet(SheetSpec.MemoEdit(null)) }
             }
         }
@@ -144,7 +143,11 @@ fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
             items(others, key = { it.id }) { MemoCard(it, s, vm) { open(it) } }
         }
         item(span = full) {
-            Note("共用的備忘錄 ${s.partnerName} 也看得到、也能一起改。打開「放在桌面」，就會出現在桌面的「備忘錄」小工具（我的 › 桌面小工具）。", "📌")
+            Note(
+                (if (s.paired) "共用的備忘錄 ${s.partnerName} 也看得到、也能一起改。" else "配對後就可以和另一半共用備忘錄。") +
+                    "打開「放在桌面」的會出現在桌面的「備忘錄」小工具（我的 › 桌面小工具）。",
+                "📌",
+            )
         }
     }
 }
@@ -186,9 +189,11 @@ private fun MemoCard(m: Memo, s: AppState, vm: AppViewModel, onClick: () -> Unit
                     )
                 }
                 if (m.body.isNotBlank()) {
+                    val plain = m.title.isBlank()
                     Text(
-                        m.body.trim(), style = MaterialTheme.typography.bodySmall, maxLines = 8, overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                        m.body.trim(), style = if (plain) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+                        maxLines = 8, overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (plain) 0.9f else 0.78f),
                     )
                 }
                 if (voices.isNotEmpty()) {
@@ -204,9 +209,8 @@ private fun MemoCard(m: Memo, s: AppState, vm: AppViewModel, onClick: () -> Unit
                     Text(
                         if (!mine) s.partnerName else if (m.shared) "👫 共用" else "🔒 只有我",
                         style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f, fill = false),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.weight(1f))
                     Text(Fmt.rel(m.time), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
             }
@@ -269,8 +273,10 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
                 style = MaterialTheme.typography.titleLarge,
             )
             if (original != null) {
+                val at = Fmt.rel(original.time)
                 Text(
-                    "${if (mine) "你" else partner}寫的 · ${Fmt.rel(original.time)}更新",
+                    // 「剛剛更新」、「昨天 22:30 更新」
+                    "${if (mine) "你" else partner}寫的 · $at${if (at.last().isDigit()) " " else ""}更新",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

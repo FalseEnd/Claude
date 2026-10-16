@@ -17,6 +17,7 @@ import android.graphics.Shader
 import android.os.Build
 import android.os.Bundle
 import android.util.SizeF
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.RemoteViews
@@ -253,6 +254,49 @@ class MemoWidget : AppWidgetProvider() {
             else -> R.drawable.widget_memo_note_pink
         }
 
+        /** 內容的字級（widget_memo_item 的 memo_body） */
+        private const val BODY_SP = 12f
+
+        /**
+         * 把每一項排進 [lines] 行裡：放得下就一行一項；放不下就把短的接在同一行（用全形空白隔開），
+         * 只在兩項中間換行，不會把「九份」拆成兩行。最後一行放不下的由 TextView 加…。
+         * [widthDp] 是文字可以用的寬度，[em] 是一個中文字大約多寬。
+         */
+        internal fun pack(items: List<String>, lines: Int, widthDp: Float, em: Float): String {
+            if (lines <= 0 || items.isEmpty()) return ""
+            if (items.size <= lines) return items.joinToString("\n")
+            val out = ArrayList<String>()
+            var cur = ""
+            for (item in items) {
+                val next = if (cur.isEmpty()) item else "$cur　$item"
+                if (cur.isNotEmpty() && out.size < lines - 1 && textWidth(next, em) > widthDp) {
+                    out += cur
+                    cur = item
+                } else {
+                    cur = next
+                }
+            }
+            out += cur
+            return out.joinToString("\n")
+        }
+
+        /** 大概估一下文字多寬（中文、全形一個字寬，表情符號再寬一點，英數字半個字寬），寧可估寬一點 */
+        private fun textWidth(text: String, em: Float): Float {
+            var units = 0f
+            var i = 0
+            while (i < text.length) {
+                val c = text.codePointAt(i)
+                units += when {
+                    c == 0x200D || c in 0xFE00..0xFE0F || c in 0x1F3FB..0x1F3FF -> 0f
+                    c >= 0x1F000 || c in 0x2600..0x27BF -> 1.2f
+                    c >= 0x2E80 -> 1f
+                    else -> 0.6f
+                }
+                i += Character.charCount(c)
+            }
+            return units * em * 1.05f
+        }
+
         /** 依大小排版的結果：放幾則、要不要標題列、並排還是由上往下、每張便利貼多大 */
         internal data class Plan(val count: Int, val header: Boolean, val side: Boolean, val pad: Float, val noteW: Float, val noteH: Float)
 
@@ -355,22 +399,28 @@ class MemoWidget : AppWidgetProvider() {
             val padH = px(context, if (w < 130f) 8f else 10f)
             v.setViewPadding(R.id.memo_note, padH, px(context, padV), padH, px(context, padV))
             val content = h - padV * 2
-            val lines = ((content - TITLE_H) / LINE_H).toInt().coerceIn(0, 12)
+            // 空間很多（只放一兩則）時字大一點，不要留一大片空白
+            val roomy = h >= 110f && w >= 200f
+            val titleSp = if (roomy) 16f else 14f
+            val bodySp = if (roomy) 14f else BODY_SP
+            v.setTextViewTextSize(R.id.memo_title, TypedValue.COMPLEX_UNIT_SP, titleSp)
+            v.setTextViewTextSize(R.id.memo_body, TypedValue.COMPLEX_UNIT_SP, bodySp)
+            val lines = ((content - TITLE_H * titleSp / 14f) / (LINE_H * bodySp / BODY_SP)).toInt().coerceIn(0, 12)
 
             val bodyLines = m.body.lines().map { it.trim() }.filter { it.isNotEmpty() }
             val title = m.title.ifBlank { bodyLines.firstOrNull() }
                 ?: if (m.photos > 0) "📷 照片" else if (m.voices > 0) "🎙️ 語音" else "備忘錄"
             val rest = if (m.title.isBlank()) bodyLines.drop(1) else bodyLines
             v.setTextViewText(R.id.memo_title, title)
-            // 放得下就一行一項；放不下時寬的接成一段、窄的照樣一行一項（最後一行加…）
-            val body = if (rest.size <= lines || (w < 200f && lines >= 2)) rest.joinToString("\n") else rest.joinToString("　")
-            v.setViewVisibility(R.id.memo_body, if (lines > 0 && body.isNotEmpty()) View.VISIBLE else View.GONE)
-            v.setTextViewText(R.id.memo_body, body)
-            v.setInt(R.id.memo_body, "setMaxLines", lines.coerceAtLeast(1))
 
             // 縮圖：又寬又高放大張的，不然放小張的，太擠就不放
             val big = thumb != null && w >= 220f && content >= 64f && lines >= 3
             val small = thumb != null && !big && w >= 140f && content >= 36f
+            val textW = w - (if (w < 130f) 16f else 20f) - (if (big) 66f else if (small) 44f else 0f)
+            val body = pack(rest, lines, textW, bodySp * context.resources.configuration.fontScale)
+            v.setViewVisibility(R.id.memo_body, if (body.isNotEmpty()) View.VISIBLE else View.GONE)
+            v.setTextViewText(R.id.memo_body, body)
+            v.setInt(R.id.memo_body, "setMaxLines", lines.coerceAtLeast(1))
             v.setViewVisibility(R.id.memo_thumb_big, if (big) View.VISIBLE else View.GONE)
             v.setViewVisibility(R.id.memo_thumb, if (small) View.VISIBLE else View.GONE)
             if (big) v.setImageViewBitmap(R.id.memo_thumb_big, thumb)
