@@ -62,9 +62,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
@@ -164,7 +166,6 @@ private fun ProfileField(
             onValueChange = onChange,
             placeholder = placeholder?.let { { Text(it, color = placeholderColor(), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             singleLine = singleLine,
-            minLines = if (singleLine) 1 else 2,
             maxLines = if (singleLine) 1 else 6,
             isError = error != null,
             supportingText = (error ?: counter)?.let { { Text(it) } },
@@ -258,9 +259,9 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
         )
     }
 
-    Column(Modifier.fillMaxSize().imePadding()) {
+    Box(Modifier.fillMaxSize().imePadding()) {
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 104.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             ScreenHeader("我的資料", onBack = leave)
@@ -350,21 +351,24 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
             }
         }
 
-        // 一直浮在下面的儲存列：長長的表單不用捲到最下面才能存
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 8.dp).fillMaxWidth()
-                .shadow(18.dp, RoundedCornerShape(30.dp), ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-                .clip(RoundedCornerShape(30.dp)).background(c.card).padding(start = 20.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            val (status, color) = when {
-                !valid -> "有欄位要修正一下 ✋" to MaterialTheme.colorScheme.error
-                dirty -> "有修改還沒儲存" to MaterialTheme.colorScheme.onSurfaceVariant
-                else -> "都儲存好了 ✓" to c.good
+        // 一直浮在下面的儲存列：長長的表單不用捲到最下面才能存；後面的內容淡出，不會從縫隙露出來
+        val bg = MaterialTheme.colorScheme.background
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(0f to bg.copy(alpha = 0f), 0.3f to bg)).padding(top = 16.dp)) {
+            Row(
+                Modifier.padding(horizontal = 14.dp, vertical = 8.dp).fillMaxWidth()
+                    .shadow(18.dp, RoundedCornerShape(30.dp), ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                    .clip(RoundedCornerShape(30.dp)).background(c.card).padding(start = 20.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                val (status, color) = when {
+                    !valid -> "有欄位要修正一下 ✋" to MaterialTheme.colorScheme.error
+                    dirty -> "有修改還沒儲存" to MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> "都儲存好了 ✓" to c.good
+                }
+                Text(status, style = MaterialTheme.typography.bodyMedium, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                CuteButton("儲存", icon = Icons.Rounded.Check, enabled = dirty && valid && !vm.busy) { save() }
             }
-            Text(status, style = MaterialTheme.typography.bodyMedium, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            CuteButton("儲存", icon = Icons.Rounded.Check, enabled = dirty && valid && !vm.busy) { save() }
         }
     }
 
@@ -531,7 +535,7 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
                 CuteButton("新增", icon = Icons.Rounded.Add, small = true) { sheet(SheetSpec.NoteEdit(null)) }
             }
         }
-        item { Note("$name 看不到這些備註，也不會收到通知。只有你自己知道 🤫", "🔒", c.butter.copy(alpha = 0.3f)) }
+        item { Note("$name 看不到這些備註，也不會收到通知 🤫", "🔒", noteTint(strong = true)) }
         if (notes.isEmpty()) item {
             CuteCard {
                 EmptyState("記下 $name 的小喜好、想要的禮物、\n不能踩的地雷，只有你看得到", "📝")
@@ -562,7 +566,7 @@ private fun UnpairedHint(back: () -> Unit) {
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
             )
         }
-        Note("邀請另一半配對後，這一頁就會出現 TA 的資料 💌", "💡")
+        Note("和另一半配對之後，這裡就會出現對方的資料 💌", "💡")
     }
 }
 
@@ -605,11 +609,22 @@ private fun InfoTile(emoji: String, label: String, value: String, modifier: Modi
     }
 }
 
+/** 私人備註的便利貼顏色（深色模式淡一點，才不會變成土黃色） */
+@Composable
+private fun noteTint(strong: Boolean = false): Color {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val alpha = when {
+        dark -> if (strong) 0.14f else 0.09f
+        else -> if (strong) 0.32f else 0.2f
+    }
+    return Cute.colors.butter.copy(alpha = alpha).compositeOver(Cute.colors.card)
+}
+
 /** 便利貼一樣的私人備註：點一下編輯 */
 @Composable
 private fun NoteCard(n: PrivateNote, onOpen: () -> Unit, onDelete: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Cute.colors.butter.copy(alpha = 0.18f).compositeOver(Cute.colors.card))
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(noteTint())
             .clickable(onClick = onOpen).padding(start = 16.dp, top = 14.dp, bottom = 12.dp, end = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -640,7 +655,7 @@ private fun DeleteNoteDialog(body: String, onDismiss: () -> Unit, onConfirm: () 
 // ---------------------------------------------------------------- 備註面板
 
 /** 新增備註時可以點的開頭 */
-private val NOTE_IDEAS = listOf("🧋" to "飲料", "🎁" to "想要的禮物", "🍽️" to "愛吃的", "🙅" to "地雷", "📏" to "尺寸", "💡" to "小提醒")
+private val NOTE_IDEAS = listOf("🥤" to "飲料", "🎁" to "想要的禮物", "🍽️" to "愛吃的", "🙅" to "地雷", "📏" to "尺寸", "💡" to "小提醒")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -658,11 +673,11 @@ fun NoteSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
     val text = body.text.trim()
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(if (note == null) "寫一則備註 📝" else "編輯備註 📝", style = MaterialTheme.typography.titleLarge)
-        Note("只有你看得到，${s.partnerName} 看不到，也不會收到通知 🤫", "🔒", Cute.colors.butter.copy(alpha = 0.3f))
+        Note("只有你看得到，${s.partnerName} 看不到，也不會收到通知 🤫", "🔒", noteTint(strong = true))
         OutlinedTextField(
             value = body,
             onValueChange = { body = if (it.text.length <= Limits.NOTE) it else it.copy(text = it.text.take(Limits.NOTE)) },
-            placeholder = { Text("例如：珍奶半糖少冰、生日想要的耳環款式…", color = placeholderColor()) },
+            placeholder = { Text("例如：飲料要半糖少冰、生日想要的耳環款式", color = placeholderColor()) },
             minLines = 5, maxLines = 12,
             supportingText = { Text("${body.text.length} / ${Limits.NOTE}", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.End) },
             shape = FIELD_SHAPE,
