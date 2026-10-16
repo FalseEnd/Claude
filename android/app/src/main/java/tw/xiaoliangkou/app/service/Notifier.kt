@@ -26,6 +26,7 @@ class Notifier(private val context: Context) {
         const val CH_REMIND = "remind"
         const val CH_SERVICE = "service"
         const val CH_STATUS = "partner_status"
+        const val CH_SHARE = "share"
         const val SERVICE_ID = 1
         const val EXTRA_ROUTE = "route"
         private const val PINK = 0xFFFF7AA2.toInt()
@@ -39,6 +40,7 @@ class Notifier(private val context: Context) {
             NotificationChannel(CH_LOVE, "抱抱、心情與悄悄話", NotificationManager.IMPORTANCE_HIGH).apply { description = "對方安撫你、更新心情、猜了你的花費" },
             NotificationChannel(CH_PLACE, "抵達與離開", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "對方進出你們設定的標點、電量低" },
             NotificationChannel(CH_REMIND, "約會與紀念日", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "約會邀請、紀念日與經期關懷提醒" },
+            NotificationChannel(CH_SHARE, "日曆紀錄與備忘錄", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "對方記錄了那天的生活、新增共同備忘錄" },
             NotificationChannel(CH_SERVICE, "背景連線", NotificationManager.IMPORTANCE_MIN).apply { description = "保持即時連線、分享位置時常駐"; setShowBadge(false) },
             NotificationChannel(CH_STATUS, "對方狀態", NotificationManager.IMPORTANCE_LOW).apply { description = "常駐在通知列，顯示對方的電量、位置、心情"; setShowBadge(false) },
         ))
@@ -47,6 +49,7 @@ class Notifier(private val context: Context) {
     private fun channelFor(kind: String) = when (kind) {
         "comfort", "mood", "guess" -> CH_LOVE
         "place", "battery_low", "sharing_changed", "pairing" -> CH_PLACE
+        "diary", "memo" -> CH_SHARE
         else -> CH_REMIND
     }
 

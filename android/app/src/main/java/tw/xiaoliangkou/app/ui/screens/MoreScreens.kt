@@ -246,6 +246,7 @@ fun NotificationScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
         Triple("comfort", "抱抱與悄悄話", "🤗"), Triple("mood", "心情更新", "😊"), Triple("place", "抵達與離開標點", "📍"),
         Triple("battery_low", "對方電量低", "🔋"), Triple("guess", "猜花費", "💰"), Triple("event", "約會邀請與提醒", "📅"),
         Triple("anniversary", "紀念日與里程碑", "🎂"), Triple("cycle_care", "經期關懷提醒", "🌸"),
+        Triple("diary", "對方記錄那天的生活", "📔"), Triple("memo", "新的共同備忘錄", "📝"),
     )
     val prefs by vm.prefs.collectAsState()
     val scope = rememberCoroutineScope()

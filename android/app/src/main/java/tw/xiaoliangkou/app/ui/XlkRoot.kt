@@ -147,7 +147,8 @@ private val TABS = listOf(
 
 private fun bannerEmoji(kind: String) = when (kind) {
     "comfort" -> "🤗"; "mood" -> "😊"; "place" -> "📍"; "battery_low" -> "🔋"; "guess" -> "💰"
-    "event" -> "📅"; "anniversary" -> "🎂"; "cycle_care" -> "🌸"; "sharing_changed" -> "🔒"; "pairing" -> "💞"; else -> "💗"
+    "event" -> "📅"; "anniversary" -> "🎂"; "cycle_care" -> "🌸"; "sharing_changed" -> "🔒"; "pairing" -> "💞"
+    "diary" -> "📔"; "memo" -> "📝"; else -> "💗"
 }
 
 @Composable
