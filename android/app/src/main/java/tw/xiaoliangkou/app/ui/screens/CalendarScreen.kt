@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +43,7 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,10 +52,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -104,6 +108,11 @@ fun CalendarScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, in
     }.groupBy({ it.first }, { it.second })
     val journal = remember(s.dayEntries) { journalMarks(s.dayEntries) }
     LoadJournal(s, vm, month)
+    // 已經在日曆時又從通知、存好的約會指定了日期：跳到那一天
+    LaunchedEffect(initialDate) {
+        val d = initialDate ?: return@LaunchedEffect
+        if (d != selected) { selected = d; month = YearMonth.from(d) }
+    }
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             ScreenHeader("日曆") { CuteButton("約會", icon = Icons.Rounded.Add, small = true) { sheet(SheetSpec.EventEdit(null, selected)) } }
@@ -169,9 +178,24 @@ private fun DayCell(
         today -> MaterialTheme.colorScheme.primary
         else -> Color.Transparent
     }
+    // 讀螢幕時：格子裡的小標記改用文字說明
+    val marks = listOfNotNull(
+        if (today) "今天" else null,
+        if (event) "有約會" else null,
+        if (ann) "紀念日" else null,
+        if (milestone) "里程碑" else null,
+        when (journal) { JournalMark.PHOTO -> "有生活紀錄和照片"; JournalMark.DOT -> "有生活紀錄"; null -> null },
+        when (phase?.phase) {
+            Cycle.Phase.PERIOD -> if (phase.predicted) "預測經期" else "經期"
+            Cycle.Phase.FERTILE -> "易孕期"
+            Cycle.Phase.OVULATION -> "排卵日"
+            else -> null
+        },
+    ).joinToString("、")
     Column(
         modifier.aspectRatio(0.92f).clip(RoundedCornerShape(14.dp)).background(bg)
             .border(1.5.dp, border, RoundedCornerShape(14.dp))
+            .semantics { if (marks.isNotEmpty()) stateDescription = marks; this.selected = selected }
             .bouncyClick(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
@@ -179,22 +203,20 @@ private fun DayCell(
             "${d.dayOfMonth}", style = MaterialTheme.typography.labelLarge,
             color = when { selected -> MaterialTheme.colorScheme.onPrimary; !inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f); today -> MaterialTheme.colorScheme.primary; else -> MaterialTheme.colorScheme.onSurface },
         )
-        Row(Modifier.height(10.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.height(10.dp).clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
             val dot = if (selected) MaterialTheme.colorScheme.onPrimary else null
             if (event) Box(Modifier.size(5.dp).clip(CircleShape).background(dot ?: MaterialTheme.colorScheme.onSurfaceVariant))
             if (ann) Text("♥", style = MaterialTheme.typography.labelSmall.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize * 0.8f), color = dot ?: c.thread)
             if (milestone) Box(Modifier.size(5.dp).clip(CircleShape).background(dot ?: c.butter))
+            // 有照片是小相機，其他是小點；跟小點同色，深色模式、選到的格子也看得清楚
             when (journal) {
-                JournalMark.PHOTO -> Text("📷", style = MarkEmoji)
+                JournalMark.PHOTO -> Icon(Icons.Rounded.PhotoCamera, null, tint = dot ?: MaterialTheme.colorScheme.secondary, modifier = Modifier.size(10.dp))
                 JournalMark.DOT -> Box(Modifier.size(5.dp).clip(CircleShape).background(dot ?: MaterialTheme.colorScheme.secondary))
                 null -> Unit
             }
         }
     }
 }
-
-/** 格子裡的小 📷：行高跟字一樣高，才不會撐開格子 */
-private val MarkEmoji = TextStyle(fontSize = 9.sp, lineHeight = 10.sp)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -205,7 +227,7 @@ private fun Legend(cycle: Boolean) {
         LegendItem("紀念日") { Text("♥", color = c.thread, style = MaterialTheme.typography.labelSmall) }
         LegendItem("里程碑") { Box(Modifier.size(6.dp).clip(CircleShape).background(c.butter)) }
         LegendItem("生活紀錄") { Box(Modifier.size(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary)) }
-        LegendItem("有照片") { Text("📷", style = MarkEmoji) }
+        LegendItem("有照片") { Icon(Icons.Rounded.PhotoCamera, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(12.dp)) }
         if (cycle) {
             LegendItem("經期") { Box(Modifier.size(12.dp).clip(RoundedCornerShape(4.dp)).background(c.periodSoft)) }
             LegendItem("預測經期") { Box(Modifier.size(12.dp).border(1.5.dp, c.period, RoundedCornerShape(4.dp))) }

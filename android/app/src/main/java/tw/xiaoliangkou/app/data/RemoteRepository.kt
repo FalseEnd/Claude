@@ -52,7 +52,7 @@ class RemoteRepository(
                 when (e) {
                     is RealtimeClient.Event.Notification -> {
                         onNotification(e)
-                        _banners.emit(Banner(e.title, e.body.ifBlank { null }, e.kind, routeFor(e.kind)))
+                        _banners.emit(Banner(e.title, e.body.ifBlank { null }, e.kind, routeFor(e.kind, e.data)))
                     }
                     is RealtimeClient.Event.Changed -> queueRefresh(e.table)
                     RealtimeClient.Event.Locate -> Unit // 由背景服務處理
@@ -302,6 +302,7 @@ class RemoteRepository(
 
     override suspend fun saveDayEntry(id: String?, day: LocalDate, body: String, media: List<MediaItem>) {
         Limits.dayEntry(body, media)
+        val old = id?.let { x -> _state.value.dayEntries.firstOrNull { it.id == x } }
         // 日曆是兩個人共用的：照片一定要放在 c/<配對>/
         val moved = relocate(media, shared = true)
         val row = v2 {
@@ -313,11 +314,15 @@ class RemoteRepository(
         _state.update { st ->
             st.copy(dayEntries = (st.dayEntries.filterNot { it.id == row.id } + row).sortedWith(DayEntry.ORDER))
         }
+        // 這次拿掉的照片、語音：沒有其他地方用到就刪掉
+        if (old != null) deleteUnused(old.media.map { it.path }, exceptMemo = null)
     }
 
     override suspend fun deleteDayEntry(id: String) {
+        val old = _state.value.dayEntries.firstOrNull { it.id == id }
         v2 { api.deleteDayEntry(id) }
         _state.update { st -> st.copy(dayEntries = st.dayEntries.filterNot { it.id == id }) }
+        if (old != null) deleteUnused(old.media.map { it.path }, exceptMemo = null)
     }
 
     // ---------------------------------------------------------------- 備忘錄
@@ -375,11 +380,12 @@ class RemoteRepository(
         return Relocated(out, from)
     }
 
-    /** 刪掉共用資料夾裡已經沒有用到的檔案（盡量刪，失敗就算了；只有上傳的人刪得掉） */
+    /** 刪掉共用資料夾（和自己資料夾）裡已經沒有用到的檔案（盡量刪，失敗就算了；只有上傳的人刪得掉） */
     private suspend fun deleteUnused(paths: List<String>, exceptMemo: String?) {
         val st = _state.value
         val used = (st.memos.filter { it.id != exceptMemo }.flatMap { it.media } + st.dayEntries.flatMap { it.media }).mapTo(HashSet()) { it.path }
-        val unused = paths.filter { it.startsWith("c/") && it !in used }
+        val mine = st.myId?.let { "u/$it/" }
+        val unused = paths.filter { (it.startsWith("c/") || mine != null && it.startsWith(mine)) && it !in used }
         if (unused.isEmpty()) return
         try { apiCall { api.deleteMedia(unused) } } catch (e: AppException) { }
     }
@@ -401,6 +407,8 @@ class RemoteRepository(
     }
 
     override suspend fun downloadMedia(path: String): ByteArray = v2 { api.downloadMedia(path) }
+
+    override suspend fun discardMedia(items: List<MediaItem>) = deleteUnused(items.map { it.path }, exceptMemo = null)
 
     // ---------------------------------------------------------------- 背景服務
     override suspend fun reportDevice(body: JsonObject) { apiCall { api.putDevice(body) } }
@@ -443,10 +451,13 @@ class RemoteRepository(
             return if (apart) listOf(default, b) else listOf(minOf(default.first, b.first) to maxOf(default.second, b.second))
         }
 
-        fun routeFor(kind: String) = when (kind) {
+        /** 點通知、卡片要打開的畫面；生活紀錄直接打開那一天（calendar/2026-10-15） */
+        fun routeFor(kind: String, data: JsonObject? = null) = when (kind) {
             "place" -> "map"
             "guess" -> "money"
-            "event", "anniversary", "diary" -> "calendar"
+            "diary" -> (data?.get("day") as? JsonPrimitive)?.contentOrNull
+                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }?.let { "calendar/$it" } ?: "calendar"
+            "event", "anniversary" -> "calendar"
             "memo" -> "memos"
             "cycle_care" -> "cycle"
             "mood", "comfort", "battery_low" -> "home"

@@ -203,6 +203,8 @@ interface CoupleRepository {
     suspend fun uploadMedia(bytes: ByteArray, mime: String, kind: String, shared: Boolean, width: Int? = null, height: Int? = null, durationMs: Long? = null): MediaItem
     /** 下載（給 MediaCache 用） */
     suspend fun downloadMedia(path: String): ByteArray
+    /** 上傳了最後沒存的（面板關掉、存之前就移除）：沒有被用到的就刪掉，盡量刪、失敗就算了 */
+    suspend fun discardMedia(items: List<MediaItem>) {}
 
     // 背景服務回報（示範模式不做事）
     suspend fun reportDevice(body: JsonObject) {}

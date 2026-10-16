@@ -258,7 +258,7 @@ class AppContainer(private val app: Application) {
         supabase = c
         realtime.start(url, key, s.userId, { session.freshToken() }, c.api)
         val repo = RemoteRepository(c.api, realtime, scope) { n ->
-            if (!isForeground) notifier.show(n.id, n.title, n.body, n.kind)
+            if (!isForeground) notifier.show(n.id, n.title, n.body, n.kind, n.data)
         }
         _repo.value = repo
         scope.launch { runCatching { repo.refreshAll() } }

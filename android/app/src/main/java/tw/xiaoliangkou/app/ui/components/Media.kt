@@ -186,12 +186,17 @@ fun VoiceChip(item: MediaItem, vm: AppViewModel) {
  * 「📷 照片」「🎙️ 錄音」：選照片（一次最多 9 張，壓縮後上傳）、錄音（按一下開始、再按一下停止，停止後上傳）。
  * 上傳好一個就呼叫 [onAdded]；上傳期間 vm.busy。[shared] 決定檔案放在兩個人共用的地方還是只有自己的地方。
  * [remaining] 是還能加幾個（每則最多 [Limits.MEDIA] 個）。
+ * 開始、停止錄音時呼叫 [onRecordingChange]（錄音中先別讓人按儲存，不然那段錄音會不見）。
  */
 @Composable
-fun MediaPickerRow(vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Unit, enabled: Boolean = true, remaining: Int = Limits.MEDIA) {
+fun MediaPickerRow(
+    vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Unit, enabled: Boolean = true, remaining: Int = Limits.MEDIA,
+    onRecordingChange: (Boolean) -> Unit = {},
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val added by rememberUpdatedState(onAdded)
+    val recordingChanged by rememberUpdatedState(onRecordingChange)
     val isShared by rememberUpdatedState(shared)
     val left by rememberUpdatedState(remaining)
     var status by remember { mutableStateOf<String?>(null) }
@@ -276,6 +281,7 @@ fun MediaPickerRow(vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Un
     }
 
     LaunchedEffect(recording) {
+        recordingChanged(recording != null)
         while (recording != null) { elapsed = recorder.elapsedMs; delay(250) }
     }
     DisposableEffect(recorder) {
@@ -284,6 +290,7 @@ fun MediaPickerRow(vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Un
         // 離開畫面：沒停的錄音直接丟掉，麥克風放開（還在開麥克風的也會馬上關掉）
         onDispose {
             recorder.onLimit = {}
+            recordingChanged(false)
             vm.container.scope.launch(Dispatchers.IO) { recorder.release() }
         }
     }
