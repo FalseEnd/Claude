@@ -1,6 +1,7 @@
 package tw.xiaoliangkou.app
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tw.xiaoliangkou.app.core.Horoscope
@@ -83,6 +84,21 @@ class HoroscopeTest {
         }
         val today = signs.map { Horoscope.daily(it, start) }
         assertTrue(today.map { it.aspects.map { a -> a.stars } }.toSet().size >= 8)
+    }
+
+    @Test fun noSameLineTwoDaysInARow() {
+        // 也跨過 1970-01-01（epoch day 變負數）
+        listOf(d("2026-01-01") to 400L, d("1969-11-01") to 90L).forEach { (start, count) ->
+            signs.forEach { s ->
+                var prev = Horoscope.daily(s, start.minusDays(1))
+                for (i in 0L until count) {
+                    val day = Horoscope.daily(s, start.plusDays(i))
+                    day.aspects.zip(prev.aspects).forEach { (a, b) -> assertNotEquals(b.text, a.text) }
+                    assertNotEquals(prev.advice, day.advice)
+                    prev = day
+                }
+            }
+        }
     }
 
     @Test fun dailyContent() {

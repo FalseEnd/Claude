@@ -2,7 +2,6 @@ package tw.xiaoliangkou.app.core
 
 import java.time.LocalDate
 import java.time.MonthDay
-import kotlin.math.min
 
 private typealias Line = (Horoscope.Sign, Horoscope.Sign) -> String
 
@@ -79,23 +78,27 @@ object Horoscope {
     // ---------- 每日運勢 ----------
 
     fun daily(sign: Sign, date: LocalDate): Daily {
-        val rng = Rng(date.toEpochDay() * 16 + sign.id)
+        val day = date.toEpochDay()
+        val rng = Rng(day * 16 + sign.id)
         val love = stars(rng)
         val work = stars(rng)
         val money = stars(rng)
         val health = stars(rng)
+        // 綜合：四項平均，四捨五入
         val overall = ((love + work + money + health) * 10 / 4 + 5) / 10
+        fun aspect(i: Int, label: String, emoji: String, stars: Int, lines: Lines) =
+            Aspect(label, emoji, stars, lines.pick(stars, sign.id * 8L + i, day))
         return Daily(
             sign = sign,
             date = date,
-            overall = Aspect("綜合", "🌟", overall, overallLines.pick(overall, rng)),
-            love = Aspect("愛情", "💗", love, loveLines.pick(love, rng)),
-            work = Aspect("工作", "💼", work, workLines.pick(work, rng)),
-            money = Aspect("財運", "💰", money, moneyLines.pick(money, rng)),
-            health = Aspect("健康", "🍀", health, healthLines.pick(health, rng)),
+            overall = aspect(0, "綜合", "🌟", overall, overallLines),
+            love = aspect(1, "愛情", "💗", love, loveLines),
+            work = aspect(2, "工作", "💼", work, workLines),
+            money = aspect(3, "財運", "💰", money, moneyLines),
+            health = aspect(4, "健康", "🍀", health, healthLines),
             luckyColor = colors[rng.int(colors.size)],
             luckyNumber = 1 + rng.int(9),
-            advice = advices[rng.int(advices.size)],
+            advice = rotate(advices, 1000L + sign.id, day),
         )
     }
 
@@ -108,15 +111,31 @@ object Horoscope {
         return 3
     }
 
+    /** 每 n 天把句庫洗牌一次、依序輪流，所以連續兩天不會抽到同一句 */
+    private fun rotate(pool: List<String>, seed: Long, day: Long): String {
+        val n = pool.size.toLong()
+        val block = Math.floorDiv(day, n)
+        val order = shuffled(pool.size, seed, block)
+        if (order[0] == shuffled(pool.size, seed, block - 1).last()) order[0] = order[1].also { order[1] = order[0] }
+        return pool[order[Math.floorMod(day, n).toInt()]]
+    }
+
+    private fun shuffled(n: Int, seed: Long, block: Long): IntArray {
+        val rng = Rng(seed * 1_000_003 + block)
+        val a = IntArray(n) { it }
+        for (i in n - 1 downTo 1) {
+            val j = rng.int(i + 1)
+            a[i] = a[j].also { a[j] = a[i] }
+        }
+        return a
+    }
+
     /** 句庫：好（4–5 星）、普通（3 星）、放慢一點（1–2 星），都要溫暖不嚇人 */
     internal class Lines(val good: List<String>, val okay: List<String>, val soft: List<String>) {
         val all get() = good + okay + soft
-        fun forStars(stars: Int) = when {
-            stars >= 4 -> good
-            stars == 3 -> okay
-            else -> soft
-        }
-        fun pick(stars: Int, rng: Rng): String = forStars(stars).let { it[rng.int(it.size)] }
+        private fun tier(stars: Int) = if (stars >= 4) 0 else if (stars == 3) 1 else 2
+        fun forStars(stars: Int) = listOf(good, okay, soft)[tier(stars)]
+        fun pick(stars: Int, seed: Long, day: Long): String = rotate(forStars(stars), seed * 3 + tier(stars), day)
     }
 
     internal val overallLines = Lines(
@@ -331,21 +350,14 @@ object Horoscope {
 
     /** 兩人的速配指數（60–98 的固定值）與一句話，順序不影響結果 */
     fun match(a: Sign, b: Sign): Match {
-        val (x, y) = if (a.id <= b.id) a to b else b to a
-        val d = min(y.id - x.id, 12 - (y.id - x.id))
-        val score = (baseScore[d] + (x.id * 7 + y.id * 11 + x.id * y.id) % 7 - 3).coerceIn(60, 98)
-        val lines = when (d) {
-            0 -> sameSign
-            6 -> opposite
-            else -> byElements.getValue(setOf(x.element, y.element))
-        }
-        return Match(a, b, score, label(score), lines[(x.id * 5 + y.id * 3) % lines.size](x, y))
+        val (score, text) = matches.getValue(minOf(a.id, b.id) to maxOf(a.id, b.id))
+        return Match(a, b, score, label(score), text)
     }
 
     /** 今天的速配：在固定值上下浮動 3 分 */
     fun matchOfDay(a: Sign, b: Sign, date: LocalDate): Match {
         val base = match(a, b)
-        val pair = min(a.id, b.id) * 12 + maxOf(a.id, b.id)
+        val pair = minOf(a.id, b.id) * 12 + maxOf(a.id, b.id)
         val score = (base.score + Rng(date.toEpochDay() * 256 + pair + 0x5A5A).int(7) - 3).coerceIn(60, 98)
         return base.copy(score = score, label = label(score))
     }
@@ -359,73 +371,94 @@ object Horoscope {
         else -> "慢慢磨合"
     }
 
+    /** 78 組（含同星座）的分數與一句話：依元素組合挑句型，同一類的組合輪流用不同句型 */
+    private val matches: Map<Pair<Int, Int>, Pair<Int, String>> by lazy {
+        val used = mutableMapOf<String, Int>()
+        buildMap {
+            for (x in signs) for (y in signs.drop(x.id)) {
+                val gap = minOf(y.id - x.id, 12 - (y.id - x.id))
+                val score = (baseScore[gap] + (x.id * 7 + y.id * 11 + x.id * y.id) % 7 - 3).coerceIn(60, 98)
+                val (p, q) = if (gap in 1..5 && (x.element to y.element) !in byElements) y to x else x to y
+                val (key, lines) = when (gap) {
+                    0 -> "same" to sameSign
+                    6 -> "opposite" to opposite
+                    else -> "${p.element}${q.element}" to byElements.getValue(p.element to q.element)
+                }
+                val rank = used.merge(key, 1, Int::plus)!! - 1
+                put(x.id to y.id, score to lines[rank % lines.size](p, q))
+            }
+        }
+    }
+
     private val sameSign = listOf<Line>(
         { a, _ -> "兩個${a.name}在一起，像照鏡子一樣懂彼此；${a.trait}加倍，也記得欣賞對方的小不同。" },
         { a, _ -> "同星座默契滿分，${a.gift}直接乘以二！偶爾太像會互不相讓，輪流讓一下就好。" },
         { a, _ -> "都是${a.name}，最懂對方要什麼，把自己的${a.gift}好好用在彼此身上吧。" },
+        { a, _ -> "${a.name}遇上${a.name}，一樣${a.trait}，連喜歡的約會都差不多，一拍即合！" },
     )
 
     private val opposite = listOf<Line>(
-        { a, b -> "${a.name}和${b.name}是對宮星座，像磁鐵兩端互相吸引，你有的他剛好缺，越相處越互補 🧲" },
-        { a, b -> "對宮的兩個人，${a.trait}的${a.name}和${b.trait}的${b.name}剛好互補，懂得欣賞差異就是天生一對。" },
+        { a, b -> "${a.name}和${b.name}是對宮星座，像磁鐵兩端互相吸引，彼此擁有的剛好是對方缺少的 🧲" },
+        { a, b -> "對宮的兩個人，${a.trait}的${a.name}和${b.trait}的${b.name}剛好互補，懂得欣賞差異就是最佳拍檔。" },
         { a, b -> "${a.name}的${a.gift}遇上${b.name}的${b.gift}，看似相反卻深深吸引，是很有火花的組合。" },
     )
 
-    private val byElements: Map<Set<Element>, List<Line>> = mapOf(
-        setOf(Element.FIRE) to listOf<Line>(
+    /** key 的元素順序就是句子裡兩個星座的順序 */
+    private val byElements: Map<Pair<Element, Element>, List<Line>> = mapOf(
+        (Element.FIRE to Element.FIRE) to listOf<Line>(
             { a, b -> "${a.trait}的${a.name}遇上${b.trait}的${b.name}，兩團火湊在一起，熱戀感可以一直延續下去 🔥" },
             { a, b -> "${a.name}和${b.name}都是行動派，說走就走的約會最適合你們；吵架時就比賽誰先道歉吧！" },
-            { a, b -> "${a.name}的${a.gift}加上${b.name}的${b.gift}，你們是彼此最熱情的啦啦隊。" },
+            { a, b -> "${a.name}的${a.gift}加上${b.name}的${b.gift}，你們是彼此最強的啦啦隊。" },
         ),
-        setOf(Element.EARTH) to listOf<Line>(
+        (Element.EARTH to Element.EARTH) to listOf<Line>(
             { a, b -> "${a.trait}的${a.name}和${b.trait}的${b.name}，一步一步把日子過得踏實又安心。" },
             { a, b -> "${a.name}和${b.name}都重視實際的生活，一起存錢、一起規劃未來，是最穩的組合。" },
             { a, b -> "不用轟轟烈烈，${a.name}的${a.gift}和${b.name}的${b.gift}，就是最長久的浪漫。" },
         ),
-        setOf(Element.AIR) to listOf<Line>(
+        (Element.AIR to Element.AIR) to listOf<Line>(
             { a, b -> "${a.name}和${b.name}一聊就停不下來，是能一起天馬行空的靈魂伴侶 💬" },
             { a, b -> "${a.trait}的${a.name}遇上${b.trait}的${b.name}，給足彼此空間，又有說不完的話題。" },
             { a, b -> "${a.name}的${a.gift}加上${b.name}的${b.gift}，一起學新東西、一起去旅行，越相處越有趣。" },
         ),
-        setOf(Element.WATER) to listOf<Line>(
+        (Element.WATER to Element.WATER) to listOf<Line>(
             { a, b -> "${a.name}和${b.name}都很重感情，一個眼神就懂對方在想什麼 💧" },
             { a, b -> "${a.trait}的${a.name}和${b.trait}的${b.name}互相包容，是彼此最安心的避風港。" },
             { a, b -> "${a.name}的${a.gift}遇上${b.name}的${b.gift}，記得常把愛說出口，甜度還會再翻倍。" },
         ),
-        setOf(Element.FIRE, Element.AIR) to listOf<Line>(
-            { a, b -> "風讓火燒得更旺，${a.name}的${a.gift}加上${b.name}的${b.gift}，在一起總有新鮮事 ✨" },
-            { a, b -> "${a.trait}的${a.name}和${b.trait}的${b.name}很合拍，聊天、出遊都充滿火花。" },
-            { a, b -> "${a.name}和${b.name}都愛自由又好玩，是朋友眼中最會約會的一對。" },
+        (Element.FIRE to Element.AIR) to listOf<Line>(
+            { f, a -> "風讓火燒得更旺，${f.name}的${f.gift}加上${a.name}的${a.gift}，每天都過得很精彩 ✨" },
+            { f, a -> "${f.trait}的${f.name}和${a.trait}的${a.name}很合拍，聊天、出遊都充滿火花。" },
+            { f, a -> "${a.name}出點子、${f.name}馬上行動，是朋友眼中最會玩的一對。" },
         ),
-        setOf(Element.EARTH, Element.WATER) to listOf<Line>(
-            { a, b -> "水滋潤大地，${a.name}的${a.gift}和${b.name}的${b.gift}，讓彼此慢慢長成更好的人 🌱" },
-            { a, b -> "${a.trait}的${a.name}遇上${b.trait}的${b.name}，細水長流，是越久越甜的組合。" },
-            { a, b -> "${a.name}和${b.name}都需要安全感，也都願意給，穩穩的就是幸福。" },
+        (Element.EARTH to Element.WATER) to listOf<Line>(
+            { e, w -> "水滋潤大地，${e.name}的${e.gift}和${w.name}的${w.gift}，讓彼此慢慢長成更好的人 🌱" },
+            { e, w -> "${e.trait}的${e.name}遇上${w.trait}的${w.name}，細水長流，是越久越甜的組合。" },
+            { e, w -> "${e.name}負責踏實、${w.name}負責溫柔，兩個人在一起特別有安全感。" },
         ),
-        setOf(Element.FIRE, Element.EARTH) to listOf<Line>(
-            { a, b -> "${a.trait}的${a.name}和${b.trait}的${b.name}步調不太一樣，一個想衝、一個想穩，配合好就是最佳平衡。" },
-            { a, b -> "${a.name}的${a.gift}加上${b.name}的${b.gift}，多聽聽對方的節奏，會是很互補的一對。" },
-            { a, b -> "熱情遇上踏實，${a.name}和${b.name}偶爾要磨合，但一起完成目標時特別有成就感。" },
+        (Element.FIRE to Element.EARTH) to listOf<Line>(
+            { f, e -> "${f.name}想衝、${e.name}想穩，${f.trait}遇上${e.trait}，配合好就是最佳平衡。" },
+            { f, e -> "${f.name}的${f.gift}加上${e.name}的${e.gift}，多聽聽對方的節奏，會是很互補的一對。" },
+            { f, e -> "${f.name}帶來熱情、${e.name}帶來踏實，偶爾要磨合，但一起完成目標時特別有成就感。" },
         ),
-        setOf(Element.FIRE, Element.WATER) to listOf<Line>(
-            { a, b -> "火和水很不一樣，${a.trait}的${a.name}和${b.trait}的${b.name}多一點耐心，就能熱情又溫柔。" },
-            { a, b -> "一個直接、一個細膩，${a.name}和${b.name}多說一句「我是在乎你」，誤會就會少很多。" },
-            { a, b -> "${a.name}的${a.gift}和${b.name}的${b.gift}都很珍貴，用對方需要的方式去愛，就會很甜。" },
+        (Element.FIRE to Element.WATER) to listOf<Line>(
+            { f, w -> "火和水很不一樣，${f.trait}的${f.name}和${w.trait}的${w.name}多一點耐心，就能熱情又溫柔。" },
+            { f, w -> "${f.name}比較直接、${w.name}比較細膩，多說一句「我是在乎你」，誤會就會少很多。" },
+            { f, w -> "${f.name}的${f.gift}和${w.name}的${w.gift}都很珍貴，用對方需要的方式去愛，就會很甜。" },
         ),
-        setOf(Element.AIR, Element.EARTH) to listOf<Line>(
-            { a, b -> "${a.trait}的${a.name}遇上${b.trait}的${b.name}，一個愛想像、一個重實際，剛好互補。" },
-            { a, b -> "${a.name}的${a.gift}加上${b.name}的${b.gift}，放在一起很能把夢想變成真。" },
-            { a, b -> "想法和步調不太一樣，但${a.name}和${b.name}多一點好奇和耐心，會發現彼此其實很可愛。" },
+        (Element.AIR to Element.EARTH) to listOf<Line>(
+            { a, e -> "${a.trait}的${a.name}愛想像、${e.trait}的${e.name}重實際，剛好互補。" },
+            { a, e -> "${a.name}的${a.gift}加上${e.name}的${e.gift}，放在一起很能把夢想變成真。" },
+            { a, e -> "${a.name}想得遠、${e.name}走得穩，多一點好奇和耐心，會發現彼此其實很可愛。" },
         ),
-        setOf(Element.AIR, Element.WATER) to listOf<Line>(
-            { a, b -> "${a.trait}的${a.name}和${b.trait}的${b.name}，一個重想法、一個重感覺，多分享心情就會越來越懂彼此。" },
-            { a, b -> "理性遇上感性，${a.name}和${b.name}互相學習，是會一起成長的組合。" },
-            { a, b -> "${a.name}給${a.gift}、${b.name}給${b.gift}，記得常常抱抱、說說心裡話 🤍" },
+        (Element.AIR to Element.WATER) to listOf<Line>(
+            { a, w -> "${a.trait}的${a.name}重想法、${w.trait}的${w.name}重感覺，多分享心情就會越來越懂彼此。" },
+            { a, w -> "理性的${a.name}遇上感性的${w.name}，互相學習，是會一起成長的組合。" },
+            { a, w -> "${a.name}給${a.gift}、${w.name}給${w.gift}，記得常常抱抱、說說心裡話 🤍" },
         ),
     )
 
     /** SplitMix64：不依賴標準函式庫的實作，版本更新也不會讓同一天的結果改變 */
-    internal class Rng(seed: Long) {
+    private class Rng(seed: Long) {
         private var x = seed
 
         fun next(): Long {
