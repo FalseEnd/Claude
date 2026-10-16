@@ -57,8 +57,9 @@ class SettingsStore(private val context: Context) {
         return Prefs(
             // 舊版留下的 REMOTE 沒有 Supabase 登入狀態：當作還沒設定
             mode = if (mode == Mode.REMOTE && session == null) Mode.NONE else mode,
-            supabaseUrl = p[K.supabaseUrl] ?: "",
-            supabaseKey = p[K.supabaseKey] ?: "",
+            // 還沒設定過就用預設的 Supabase 專案
+            supabaseUrl = p[K.supabaseUrl] ?: Supabase.DEFAULT_URL,
+            supabaseKey = p[K.supabaseKey] ?: Supabase.DEFAULT_KEY,
             session = session,
             lastEmail = p[K.email] ?: "",
             autoBookkeeping = p[K.autoBookkeeping] ?: true,

@@ -105,7 +105,8 @@ fun SplashScreen() {
 }
 
 @Composable
-fun WelcomeScreen(vm: AppViewModel, onConnect: () -> Unit) {
+fun WelcomeScreen(vm: AppViewModel, onOther: () -> Unit = {}, onStart: () -> Unit) {
+    val prefs by vm.prefs.collectAsState()
     Column(
         Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Cute.colors.partnerSoft, MaterialTheme.colorScheme.background, Cute.colors.meSoft)))
             .padding(horizontal = 24.dp, vertical = 32.dp),
@@ -117,9 +118,13 @@ fun WelcomeScreen(vm: AppViewModel, onConnect: () -> Unit) {
         HeartBeat { Text("小倆口", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.primary) }
         Text("用一條紅線，牽起兩個人的日常", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(Modifier.weight(1f))
-        CuteButton("連接 Supabase", Modifier.fillMaxWidth(), icon = Icons.Rounded.Link, onClick = onConnect)
+        // 自動連上預設（或之前設定的）Supabase，成功就直接到註冊
+        CuteButton(if (vm.busy) "連線中…" else "開始使用", Modifier.fillMaxWidth(), icon = Icons.Rounded.Link, enabled = !vm.busy) {
+            val p = prefs ?: return@CuteButton
+            vm.account(onDone = onStart) { vm.container.testConnection(p.supabaseUrl, p.supabaseKey) }
+        }
         SoftButton("先看看示範", Modifier.fillMaxWidth(), icon = Icons.Rounded.Science) { vm.container.startDemo() }
-        Text("資料存在你們自己的 Supabase 專案，在哪裡都能連。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Text("使用其他 Supabase 專案", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.bouncyClick(onClick = onOther).padding(4.dp))
     }
 }
 

@@ -55,7 +55,7 @@
 
 ## 5. 在 App 裡連線
 
-1. 打開小倆口 App，選「連接 Supabase」。
+1. 打開小倆口 App，按下面的「使用其他 Supabase 專案」。（App 預設連到作者的專案，直接按「開始使用」會連到那裡）
 2. 貼上 **Project URL** 和 **Publishable key**，按「測試連線」。
 3. 用 Email、密碼和暱稱註冊。
 4. 到「我的 › Supabase 與帳號」，按「分享給另一半」，用 LINE 傳出邀請連結。

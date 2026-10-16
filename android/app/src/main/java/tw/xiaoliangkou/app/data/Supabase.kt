@@ -39,6 +39,10 @@ import java.util.concurrent.TimeUnit
 
 /** Supabase 專案的網址與金鑰：整理使用者貼上的內容 */
 object Supabase {
+    /** 預設連線的 Supabase 專案：第一次打開 App 就自動連上，直接註冊。publishable key 本來就是公開金鑰，資料由資料庫的權限規則保護 */
+    const val DEFAULT_URL = "https://mdlevoygfciwzlqtsids.supabase.co"
+    const val DEFAULT_KEY = "sb_publishable_9lupdPr_yHbpvggEtuSjGg_nM4zFNh-"
+
     /** 設定教學（說明文件） */
     const val GUIDE_URL = "https://github.com/FalseEnd/Claude/blob/claude/couples-app-design-bg9e2n/docs/SUPABASE_SETUP.md"
 

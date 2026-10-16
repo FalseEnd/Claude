@@ -215,7 +215,7 @@ private fun StartFlow(vm: AppViewModel) {
             "setup" -> SupabaseSetupScreen(vm, back = toWelcome) { page = it }
             "login" -> LoginScreen(vm, back = { page = "setup" }) { page = "register" }
             "register" -> RegisterScreen(vm, back = { page = "setup" }) { page = "login" }
-            else -> WelcomeScreen(vm) { page = "setup" }
+            else -> WelcomeScreen(vm, onOther = { page = "setup" }) { page = if (prefs?.lastEmail?.isNotEmpty() == true) "login" else "register" }
         }
     }
 }
