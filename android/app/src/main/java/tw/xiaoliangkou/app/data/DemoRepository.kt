@@ -739,6 +739,13 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
     override suspend fun downloadMedia(path: String): ByteArray =
         files[path] ?: withContext(Dispatchers.Default) { DemoMedia.sample(path) }?.also { files[path] = it } ?: throw notFound()
 
+    /** 上傳了沒存的：從記憶體拿掉（還在用的不動） */
+    override suspend fun discardMedia(items: List<MediaItem>) {
+        val st = _state.value
+        val used = (st.memos.flatMap { it.media } + st.dayEntries.flatMap { it.media }).mapTo(HashSet()) { it.path }
+        items.forEach { if (it.path !in used) files.remove(it.path) }
+    }
+
     fun buildPlaceBody(name: String, lat: Double, lng: Double) = buildJsonObject { put("name", name); put("lat", lat); put("lng", lng) }
 }
 
