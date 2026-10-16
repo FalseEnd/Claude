@@ -47,6 +47,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/widget_chip"
+                android:contentDescription="抱抱"
                 android:fontFamily="@font/huninn"
                 android:paddingHorizontal="10dp"
                 android:paddingVertical="4dp"

@@ -178,6 +178,7 @@ class WidgetRowScreensTest {
             listOf(partner(snap, 320, 140, "4×2 · 320×140")),
             listOf(together(snap, 150, 120, "2×1 拉高 · 150×120"), together(snap, 160, 160, "2×2 · 160×160")),
             listOf(together(snap, 320, 100, "直向 4×1 · 320×100")),
+            listOf(partner(snap, 196, 220, "3×2 · 196×220"), partner(snap, 180, 140, "最窄 · 180×140")),
         )
     }
 

@@ -209,6 +209,10 @@ class StatusWidgetTest {
         assertEquals("🔋 34%　😩 好累：開了一整天的會", tall.text(R.id.line1))
         assertTrue(tall.text(R.id.updated)!!.contains("在一起第 "))
         assertEquals("🤗 抱抱", tall.text(R.id.hug_button))
+        // 窄的 3×2 也用大版面，🤗 按鈕只寫 🤗
+        val narrowTall = views(Widgets.partner(context, snap, size = SizeF(196f, 220f)))
+        assertTrue(narrowTall.text(R.id.place)!!.startsWith("📍"))
+        assertEquals("🤗", narrowTall.text(R.id.hug_button))
         val big = views(Widgets.together(context, snap, today, size = SizeF(160f, 160f)))
         assertEquals("%,d".format(days), big.text(R.id.together_days))
         // 示範資料在一起第 514 天：一個月內有第 520 天（示範模式放不下「在一起（示範）」，小字寫「示範」）
