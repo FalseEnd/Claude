@@ -1,10 +1,11 @@
 package tw.xiaoliangkou.app.ui.screens
 
 import android.appwidget.AppWidgetProvider
+import android.util.SizeF
 import android.widget.FrameLayout
 import android.widget.RemoteViews
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import tw.xiaoliangkou.app.data.AppState
@@ -32,6 +32,7 @@ import tw.xiaoliangkou.app.widget.PartnerWidget
 import tw.xiaoliangkou.app.widget.TogetherWidget
 import tw.xiaoliangkou.app.widget.WidgetSnapshot
 import tw.xiaoliangkou.app.widget.Widgets
+import kotlin.math.min
 
 /** 桌面小工具：用現在的資料預覽，一鍵加到桌面 */
 @Composable
@@ -45,33 +46,37 @@ fun WidgetsScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenHeader("桌面小工具", onBack = back) }
         item {
-            WidgetCard("在一起", "兩個人的頭像和在一起的天數，快到 100、520 這種里程碑時會提醒", 150.dp, 150.dp,
-                remember(snap) { Widgets.together(context, snap, interactive = false) }) { pin(TogetherWidget::class.java) }
+            WidgetCard("在一起", "兩個人的頭像和在一起的天數，快到 100、520 這種里程碑時會提醒", snap, Widgets.TOGETHER_SIZE,
+                { Widgets.together(context, snap, interactive = false, size = it) }) { pin(TogetherWidget::class.java) }
         }
         item {
-            WidgetCard("${s.partnerName} 的狀態", "在哪、電量、心情、手機使用；右上角可以直接抱抱 ${s.partnerName}", 320.dp, 140.dp,
-                remember(snap) { Widgets.partner(context, snap, interactive = false) }) { pin(PartnerWidget::class.java) }
+            WidgetCard("${s.partnerName} 的狀態", "在哪、電量、心情，放得下多少放多少；按右邊的 🤗 就能直接抱抱 ${s.partnerName}", snap, Widgets.PARTNER_SIZE,
+                { Widgets.partner(context, snap, interactive = false, size = it) }) { pin(PartnerWidget::class.java) }
         }
+        item { MemoWidgetCard(s, vm) }
         item {
             Note("也可以長按桌面空白處 › 小工具 › 找到「小倆口」。App 收到新的狀態就會更新小工具，系統也會每 30 分鐘更新一次。只會顯示 ${s.partnerName} 有分享的項目。", "📱")
         }
     }
 }
 
+/** [max] 是預覽的大小（dp）；卡片裡比較窄（小螢幕）就照卡片的寬度畫，不會被擠扁 */
 @Composable
-private fun WidgetCard(title: String, desc: String, width: Dp, height: Dp, views: RemoteViews, onPin: () -> Unit) {
+private fun WidgetCard(title: String, desc: String, snap: WidgetSnapshot, max: SizeF, draw: (SizeF) -> RemoteViews, onPin: () -> Unit) {
     CuteCard {
         Text(title, style = MaterialTheme.typography.titleMedium)
         Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         // 用真的小工具版面預覽，和桌面上看到的一樣
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            val size = SizeF(min(maxWidth.value, max.width), max.height)
+            val views = remember(snap, size) { draw(size) }
             AndroidView(
                 factory = { FrameLayout(it) },
                 update = { frame ->
                     frame.removeAllViews()
                     runCatching { frame.addView(views.apply(frame.context, frame)) }
                 },
-                modifier = Modifier.width(width).height(height),
+                modifier = Modifier.width(size.width.dp).height(size.height.dp),
             )
         }
         CuteButton("加到桌面", Modifier.fillMaxWidth(), icon = Icons.Rounded.AddToHomeScreen, onClick = onPin)

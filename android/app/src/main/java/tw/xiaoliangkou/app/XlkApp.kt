@@ -47,6 +47,8 @@ import tw.xiaoliangkou.app.data.apiCall
 import tw.xiaoliangkou.app.service.AutoBookkeeping
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.ShareService
+import tw.xiaoliangkou.app.widget.MemoWidget
+import tw.xiaoliangkou.app.widget.MemoWidgetSnapshot
 import tw.xiaoliangkou.app.widget.WidgetSnapshot
 import tw.xiaoliangkou.app.widget.Widgets
 
@@ -135,6 +137,26 @@ class AppContainer(private val app: Application) {
                     withContext(Dispatchers.IO) { Widgets.publish(app, snap) }
                 }
         }
+        // 備忘錄小工具：放在桌面的備忘錄（照片縮圖從 media 讀；登出後就清掉）
+        scope.launch {
+            _prefs.first { it != null }
+            _repo.flatMapLatest { r -> r?.state ?: flowOf(null) }
+                .filter { it == null || it.loaded }
+                .map { MemoWidgetSnapshot.of(it) }
+                .distinctUntilChanged()
+                .collectLatest { snap ->
+                    delay(800)
+                    // 有縮圖沒抓到（網路不穩、對方的照片還沒上傳好）：等一下再試一次
+                    if (!withContext(Dispatchers.IO) { MemoWidget.publish(app, snap, media) }) {
+                        delay(60_000)
+                        withContext(Dispatchers.IO) { MemoWidget.refresh(app, media) }
+                    }
+                }
+        }
+        // 回到 App：補抓還沒抓到的縮圖；系統字型大小改了也重新排版
+        ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_START) scope.launch(Dispatchers.IO) { MemoWidget.refresh(app, media) }
+        })
         // 回到前景：即時連線斷了的話馬上重連，也先用 RPC 補抓通知
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_START && supabase != null) {
@@ -258,7 +280,7 @@ class AppContainer(private val app: Application) {
         supabase = c
         realtime.start(url, key, s.userId, { session.freshToken() }, c.api)
         val repo = RemoteRepository(c.api, realtime, scope) { n ->
-            if (!isForeground) notifier.show(n.id, n.title, n.body, n.kind)
+            if (!isForeground) notifier.show(n.id, n.title, n.body, n.kind, n.data)
         }
         _repo.value = repo
         scope.launch { runCatching { repo.refreshAll() } }

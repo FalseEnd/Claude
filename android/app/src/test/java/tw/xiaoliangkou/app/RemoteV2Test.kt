@@ -307,6 +307,43 @@ class RemoteV2Test {
         assertTrue(calls("POST /rest/v1/rpc/app_save_memo").last().json["media"]!!.jsonArray.single().jsonObject["path"]!!.jsonPrimitive.content.startsWith("u/u-1/"))
     }
 
+    /** 生活紀錄拿掉、刪掉的照片語音，還有上傳了沒存的：從 Storage 刪掉（別的地方還在用的留著） */
+    @Test fun dayEntryMediaIsCleanedUp() = runBlocking<Unit> {
+        rpc("app_health") { """{"ok":true,"schema":2}""" }
+        val today = LocalDate.now()
+        fun media(vararg p: String) = p.joinToString(",", "[", "]") { """{"path":"$it","kind":"photo"}""" }
+        rpc("app_day_entries") { """[{"id":"d1","userId":"u-1","day":"$today","media":${media("c/c-1/a.jpg", "c/c-1/b.jpg", "c/c-1/memo.jpg")},"createdAt":"2026-10-15T02:16:21+00:00"}]""" }
+        rpc("app_memos") { "[${memo("m1", "u-1", true, media("c/c-1/memo.jpg"))}]" }
+        rpc("app_save_day_entry") { req ->
+            val b = req.json
+            """{"id":"d1","userId":"u-1","day":${b["day"]},"body":${b["body"]},"media":${b["media"]},"createdAt":"2026-10-15T02:16:21+00:00"}"""
+        }
+        rpc("app_delete_day_entry") { """{"ok":true}""" }
+        json("DELETE /storage/v1/object/media") { "[]" }
+        val r = repo()
+        fun deleted() = calls("DELETE /storage/v1/object/media").map { req ->
+            req.json["prefixes"]!!.jsonArray.map { it.jsonPrimitive.content }
+        }
+        val a = MediaItem("c/c-1/a.jpg", MediaItem.PHOTO)
+
+        // 編輯時拿掉 b 和 memo：b 刪掉，備忘錄還在用的留著
+        r.saveDayEntry("d1", today, "改過", listOf(a))
+        assertEquals(listOf(listOf("c/c-1/b.jpg")), deleted())
+        // 沒拿掉東西：不刪
+        r.saveDayEntry("d1", today, "又改", listOf(a))
+        assertEquals(1, deleted().size)
+        // 刪掉整則：它的照片也刪掉
+        r.deleteDayEntry("d1")
+        assertEquals(listOf("c/c-1/a.jpg"), deleted().last())
+        // 上傳了沒存：共用的、自己的刪掉；還在用的、別人資料夾的不刪
+        r.discardMedia(listOf("c/c-1/new.jpg", "u/u-1/mine.m4a", "u/u-2/theirs.jpg", "c/c-1/memo.jpg").map { MediaItem(it, MediaItem.PHOTO) })
+        assertEquals(listOf("c/c-1/new.jpg", "u/u-1/mine.m4a"), deleted().last())
+        // 刪不掉也沒關係
+        json("DELETE /storage/v1/object/media", 400) { """{"statusCode":"403","error":"Unauthorized","message":"row-level security"}""" }
+        r.discardMedia(listOf(MediaItem("c/c-1/x.jpg", MediaItem.PHOTO)))
+        assertEquals(4, deleted().size)
+    }
+
     @Test fun dayWindowsFollowTodayAndTheLatestMonth() {
         val d = RemoteRepository.defaultDayRange(LocalDate.of(2026, 10, 16))
         assertEquals(LocalDate.of(2026, 8, 15) to LocalDate.of(2026, 11, 16), d)

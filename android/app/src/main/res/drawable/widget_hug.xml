@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 一格高的 🤗 按鈕：看起來是 38dp 的圓，可以按的範圍比較大 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:width="38dp" android:height="38dp" android:gravity="center" android:drawable="@drawable/widget_chip" />
+</layer-list>

@@ -272,7 +272,12 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
     var sheet by remember { mutableStateOf<SheetSpec?>(null) }
     var calendarDate by remember { mutableStateOf<LocalDate?>(null) }
     val tabIds = TABS.map { it.first }
-    val open: (String) -> Unit = { r ->
+    val open: (String) -> Unit = { target ->
+        // 生活紀錄的通知：「calendar/2026-10-15」直接打開那一天
+        val r = if (target.startsWith("calendar/")) {
+            runCatching { LocalDate.parse(target.substringAfter('/')) }.getOrNull()?.let { calendarDate = it }
+            "calendar"
+        } else target
         if (r in tabIds) nav.navigate(r) {
             popUpTo(nav.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true

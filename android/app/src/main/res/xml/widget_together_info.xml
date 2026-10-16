@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 預設 2×1（一格高）；可以拉寬、拉高，拉到兩格高以上會換成大版面 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_together_desc"
     android:initialLayout="@layout/widget_together"
     android:minWidth="110dp"
-    android:minHeight="110dp"
+    android:minHeight="40dp"
     android:minResizeWidth="110dp"
-    android:minResizeHeight="110dp"
+    android:minResizeHeight="40dp"
     android:previewLayout="@layout/widget_together"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="2"
-    android:targetCellHeight="2"
+    android:targetCellHeight="1"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen" />

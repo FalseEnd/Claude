@@ -13,6 +13,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import kotlinx.serialization.json.JsonObject
 import tw.xiaoliangkou.app.MainActivity
 import tw.xiaoliangkou.app.R
 import tw.xiaoliangkou.app.data.Avatars
@@ -61,7 +62,7 @@ class Notifier(private val context: Context) {
         return PendingIntent.getActivity(context, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    fun show(id: Long, title: String, body: String, kind: String) {
+    fun show(id: Long, title: String, body: String, kind: String, data: JsonObject? = null) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
@@ -73,7 +74,7 @@ class Notifier(private val context: Context) {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
             .setPriority(if (channelFor(kind) == CH_LOVE) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(openApp(RemoteRepository.routeFor(kind), id.toInt()))
+            .setContentIntent(openApp(RemoteRepository.routeFor(kind, data), id.toInt()))
             .build()
         runCatching { NotificationManagerCompat.from(context).notify(id.toInt() + 100, n) }
     }

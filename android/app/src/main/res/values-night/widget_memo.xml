@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面小工具「備忘錄」（深色模式） -->
+<resources>
+    <color name="widget_memo_pink">#FF4A2A37</color>
+    <color name="widget_memo_yellow">#FF463C22</color>
+    <color name="widget_memo_mint">#FF1E443B</color>
+    <color name="widget_memo_sky">#FF233752</color>
+    <color name="widget_memo_lavender">#FF35295A</color>
+    <color name="widget_memo_peach">#FF4B3024</color>
+    <color name="widget_memo_body">#FFE2CFD7</color>
+    <color name="widget_memo_hint">#FF35242D</color>
+    <color name="widget_memo_hint_stroke">#FF5E4250</color>
+</resources>
