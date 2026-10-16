@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
@@ -52,15 +53,18 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.Errors
 import tw.xiaoliangkou.app.data.Limits
 import tw.xiaoliangkou.app.data.MediaItem
 import tw.xiaoliangkou.app.data.Memo
@@ -126,6 +130,8 @@ fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
                 CuteButton("新增備忘錄", icon = Icons.Rounded.Add, small = true) { sheet(SheetSpec.MemoEdit(null)) }
             }
         }
+        // 資料庫還沒更新：先說清楚，不要等按了儲存才跳錯誤
+        if (s.schemaOutdated) item(span = full) { Note(Errors.SCHEMA_OUTDATED, "🛠️", Cute.colors.butter.copy(alpha = 0.3f)) }
         if (s.memos.isEmpty()) item(span = full) {
             CuteCard {
                 EmptyState("還沒有備忘錄\n採買清單、想去的地方、${if (s.paired) "給 ${s.partnerName} 的小紙條" else "給自己的小提醒"}\n都可以記在這裡", "📝")
@@ -145,7 +151,7 @@ fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
         item(span = full) {
             Note(
                 (if (s.paired) "共用的備忘錄 ${s.partnerName} 也看得到、也能一起改。" else "配對後就可以和另一半共用備忘錄。") +
-                    "打開「放在桌面」，就會出現在桌面的「備忘錄」小工具上。",
+                    "\n打開「放在桌面」，就會出現在桌面的小工具上。",
                 "📌",
             )
         }
@@ -160,14 +166,16 @@ private fun MemoCard(m: Memo, s: AppState, vm: AppViewModel, onClick: () -> Unit
     val voices = m.media.filter { it.isVoice }
     val mine = m.userId == s.myId
     val shadow = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-    Box {
-        Column(
-            Modifier.fillMaxWidth()
-                .shadow(6.dp, shape, ambientColor = shadow, spotColor = shadow)
-                .clip(shape)
-                .background(noteColor(m.color))
-                .bouncyClick(onClick = onClick),
-        ) {
+    // 整張一起縮放（底色、陰影、圖釘也是），圖釘併進卡片裡唸：「已放在桌面」
+    Box(
+        Modifier.fillMaxWidth()
+            .bouncyClick(onClick = onClick)
+            .semantics { if (m.pinned) stateDescription = "已放在桌面" }
+            .shadow(6.dp, shape, ambientColor = shadow, spotColor = shadow)
+            .clip(shape)
+            .background(noteColor(m.color)),
+    ) {
+        Column(Modifier.fillMaxWidth()) {
             photos.firstOrNull()?.let { p ->
                 Box {
                     MemoPhoto(p, vm, Modifier.fillMaxWidth().aspectRatio(4f / 3f))
@@ -215,7 +223,12 @@ private fun MemoCard(m: Memo, s: AppState, vm: AppViewModel, onClick: () -> Unit
                 }
             }
         }
-        if (m.pinned) Text("📌", style = MaterialTheme.typography.titleSmall, modifier = Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 10.dp))
+        if (m.pinned) {
+            Text(
+                "📌", style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 10.dp).clearAndSetSemantics {},
+            )
+        }
     }
 }
 
@@ -284,9 +297,9 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
 
         // 寫在便利貼上：顏色跟著換
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(noteColor(color)).padding(vertical = 4.dp)) {
-            NoteField(title, { title = it.take(Limits.MEMO_TITLE) }, "標題", MaterialTheme.typography.titleMedium, singleLine = true)
+            NoteField(title, { title = it.take(Limits.MEMO_TITLE) }, "標題", "標題", MaterialTheme.typography.titleMedium, singleLine = true)
             Box(Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)))
-            NoteField(body, { body = it.take(Limits.MEMO_BODY) }, "寫點什麼…\n例如：要買的東西、想去的地方", MaterialTheme.typography.bodyLarge, minLines = 5)
+            NoteField(body, { body = it.take(Limits.MEMO_BODY) }, "內容", "寫點什麼…\n例如：要買的東西、想去的地方", MaterialTheme.typography.bodyLarge, minLines = 5)
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -346,14 +359,14 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
     }
 }
 
-/** 便利貼上的輸入框：沒有框線，直接寫在紙上 */
+/** 便利貼上的輸入框：沒有框線，直接寫在紙上。[label] 給讀螢幕用（打了字之後提示字就不見了） */
 @Composable
-private fun NoteField(value: String, onChange: (String) -> Unit, placeholder: String, style: TextStyle, singleLine: Boolean = false, minLines: Int = 1) {
+private fun NoteField(value: String, onChange: (String) -> Unit, label: String, placeholder: String, style: TextStyle, singleLine: Boolean = false, minLines: Int = 1) {
     val clear = Color.Transparent
     TextField(
         value = value,
         onValueChange = onChange,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
         textStyle = style,
         placeholder = { Text(placeholder, style = style, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) },
         singleLine = singleLine,
@@ -368,15 +381,15 @@ private fun NoteField(value: String, onChange: (String) -> Unit, placeholder: St
 
 @Composable
 private fun MemoColorPicker(selected: String, onPick: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.SpaceBetween) {
         MEMO_COLORS.forEach { c ->
             val on = c.key == selected
             Box(
-                Modifier.size(44.dp).clip(CircleShape)
+                Modifier.size(48.dp).clip(CircleShape)
                     .border(2.5.dp, if (on) c.dot else Color.Transparent, CircleShape)
                     .bouncyClick(role = Role.RadioButton) { onPick(c.key) }
                     .semantics { contentDescription = c.label; this.selected = on }
-                    .padding(5.dp).clip(CircleShape).background(c.dot),
+                    .padding(6.dp).clip(CircleShape).background(c.dot),
                 contentAlignment = Alignment.Center,
             ) {
                 if (on) Icon(Icons.Rounded.Check, null, tint = Color.White, modifier = Modifier.size(20.dp))

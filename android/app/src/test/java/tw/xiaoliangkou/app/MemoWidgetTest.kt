@@ -1,6 +1,7 @@
 package tw.xiaoliangkou.app
 
 import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.SizeF
@@ -43,6 +44,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import tw.xiaoliangkou.app.data.AppState
@@ -53,6 +55,7 @@ import tw.xiaoliangkou.app.ui.theme.XlkTheme
 import tw.xiaoliangkou.app.widget.MemoWidget
 import tw.xiaoliangkou.app.widget.MemoWidgetSnapshot
 import java.io.File
+import kotlin.math.min
 
 /**
  * 桌面小工具「備忘錄」：放在桌面的備忘錄依小工具大小排版（3×2、2×1、拉大），照片縮圖、沒有釘選時的提示。
@@ -101,11 +104,56 @@ class MemoWidgetTest {
     private fun View.shown(id: Int) = findViewById<View>(id)?.visibility == View.VISIBLE
     private fun View.text(id: Int) = findViewById<TextView>(id).let { if (it.visibility == View.VISIBLE) it.text.toString() else null }
 
-    /** 小工具裡的便利貼（略過中間的空隙） */
-    private fun View.notes(): List<View> {
-        val list = findViewById<ViewGroup>(R.id.memo_list)
-        if (list.visibility != View.VISIBLE) return emptyList()
-        return (0 until list.childCount).map { list.getChildAt(it) }.filter { it.findViewById<View>(R.id.memo_title) != null }
+    /** 小工具裡的便利貼（由上往下或並排，略過中間的空隙） */
+    private fun View.notes(): List<View> = listOf(R.id.memo_list, R.id.memo_row).flatMap { id ->
+        val list = findViewById<ViewGroup>(id)
+        if (list.visibility != View.VISIBLE) emptyList()
+        else (0 until list.childCount).map { list.getChildAt(it) }.filter { it.findViewById<View>(R.id.memo_title) != null }
+    }
+
+    /** [this] 在 [root] 裡的位置（y） */
+    private fun View.topIn(root: View): Int {
+        var y = 0
+        var v: View = this
+        while (v !== root) { y += v.top; v = v.parent as View }
+        return y
+    }
+
+    /**
+     * 每一段字都完整顯示，沒有被切掉半行：TextView 的高度放得下它要顯示的每一行，而且整段都在小工具裡面。
+     * [noEllipsis] 為 true 時也檢查沒有被 TextView 加…（內容只在兩項中間換行）。
+     */
+    private fun assertFits(root: View, label: String, noEllipsis: Boolean = false) {
+        val texts = root.notes().flatMap { n -> listOf(R.id.memo_title, R.id.memo_body, R.id.memo_meta).map { n.findViewById<TextView>(it) } } +
+            listOf(R.id.memo_header_title, R.id.memo_header_more, R.id.memo_empty_text).map { root.findViewById<TextView>(it) }
+        val shown = texts.filter { tv -> generateSequence<View>(tv) { it.parent as? View }.takeWhile { it !== root.parent }.all { it.visibility == View.VISIBLE } }
+        assertTrue("$label 有字", shown.isNotEmpty())
+        for (tv in shown) {
+            val layout = tv.layout
+            assertNotNull("$label「${tv.text}」", layout)
+            val lines = min(layout.lineCount, tv.maxLines)
+            val need = layout.getLineTop(lines) + tv.compoundPaddingTop + tv.compoundPaddingBottom
+            assertTrue("$label「${tv.text}」被切掉：高 ${tv.height}，要 $need", tv.height >= need)
+            assertTrue("$label「${tv.text}」超出小工具", tv.topIn(root) + tv.height <= root.height)
+            if (noEllipsis && tv.id == R.id.memo_body) {
+                (0 until lines).forEach { assertEquals("$label「${tv.text}」第 ${it + 1} 行被加了…", 0, layout.getEllipsisCount(it)) }
+            }
+        }
+    }
+
+    /** 常用的大小：3×2（直的、橫的）、2×1、最小、4×1、拉大、矮的 3×2 */
+    private val sizes = listOf(250 to 180, 340 to 120, 160 to 72, 110 to 48, 330 to 72, 330 to 280, 250 to 110, 250 to 230)
+
+    /** 三則、一則、沒有放在桌面、還沒登入：每種大小都放得下 */
+    private fun assertAllSizesFit(noEllipsis: Boolean, pinned: Pair<MemoWidgetSnapshot, Map<String, Bitmap>> = threePinned()) {
+        val (three, thumbs) = pinned
+        val one = three.copy(memos = three.memos.take(1), total = 1)
+        val none = MemoWidgetSnapshot.of(s.copy(memos = emptyList()))
+        for ((w, h) in sizes) {
+            for ((name, snap) in listOf("三則" to three, "一則" to one, "沒有放" to none, "沒登入" to MemoWidgetSnapshot.of(null))) {
+                assertFits(render(snap, w, h, thumbs), "${w}×$h $name", noEllipsis)
+            }
+        }
     }
 
     private fun render(snap: MemoWidgetSnapshot, w: Int, h: Int, thumbs: Map<String, Bitmap> = emptyMap()) =
@@ -169,7 +217,40 @@ class MemoWidgetTest {
         // 每一張都在小工具裡面，沒有被切掉
         val bottom = three.findViewById<View>(R.id.memo_list).let { it.top + it.height }
         notes.forEach { n -> assertTrue(n.bottom <= bottom) }
+        // 採買清單擠成一行：停在完整的項目，不會切在「衛…」
+        val shopping = notes.first { it.text(R.id.memo_title) == "週末採買清單 🛒" }.text(R.id.memo_body)!!
+        assertTrue(shopping, shopping.endsWith("　…") && "衛" !in shopping)
+        assertFits(three, "3×2", noEllipsis = true)
     }
+
+    /** 並排的時候每張的標題都對齊（從上面開始寫） */
+    @Test fun sideBySideTitlesLineUp() {
+        val (three, thumbs) = threePinned()
+        for ((w, h) in listOf(340 to 120, 330 to 72)) {
+            val v = render(three, w, h, thumbs)
+            val tops = v.notes().map { it.findViewById<View>(R.id.memo_title).topIn(v) }
+            assertEquals("${w}×$h", 3, tops.size)
+            assertEquals("${w}×$h 標題對齊：$tops", 1, tops.distinct().size)
+        }
+    }
+
+    /** 標準字型：每種大小都不會切到字，內容只在兩項中間換行 */
+    @Test fun everySizeFits() = assertAllSizesFit(noEllipsis = true)
+
+    /** 系統字型調大（1.3 倍，「最大」）：一樣不會切到字 */
+    @Config(fontScale = 1.3f)
+    @Test fun everySizeFitsWithLargeFont() {
+        val (three, thumbs) = threePinned()
+        assertAllSizesFit(noEllipsis = false, three to thumbs)
+        // 3×2 放了三則：放不下三則就放兩則，標題列寫還有幾則
+        val v = render(three, 250, 180, thumbs)
+        assertEquals(2, v.notes().size)
+        assertEquals("還有 1 則", v.text(R.id.memo_header_more))
+    }
+
+    /** Android 14 以上可以調到 2 倍（非線性放大）：小的大小只放標題也不能切到 */
+    @Config(fontScale = 2.0f)
+    @Test fun everySizeFitsWithHugeFont() = assertAllSizesFit(noEllipsis = false)
 
     /** 盡量三則都放得下：由上往下排、又寬又矮就並排、標題列只在不會少放一則時才放 */
     @Test fun layoutFollowsTheWidgetSize() {
@@ -185,6 +266,14 @@ class MemoWidgetTest {
         with(p(330, 400)) { assertEquals(3, count); assertTrue(header); assertFalse(side) }
         // 每張便利貼至少放得下標題和一行內容
         listOf(p(250, 180), p(340, 120), p(330, 72), p(250, 110), p(330, 280)).forEach { assertTrue(it.toString(), it.noteH >= 49f && it.noteW >= 100f) }
+
+        // 系統字型調大（1.3 倍）：一樣的大小少放一則，每張還是放得下標題和一行內容
+        val big = MemoWidget.Companion.Fonts { it * 1.3f }
+        fun b(w: Int, h: Int, n: Int = 3) = MemoWidget.plan(w.toFloat(), h.toFloat(), n, big)
+        with(b(250, 180)) { assertEquals(2, count); assertFalse(side) }
+        with(b(340, 120)) { assertEquals(2, count); assertTrue(side) }
+        assertEquals(1, b(160, 72).count)
+        listOf(b(250, 180), b(340, 120), b(330, 280)).forEach { assertTrue(it.toString(), it.noteH >= 12f + big.height(14f) + 1f + big.height(12f)) }
     }
 
     /** 內容排進幾行：只在兩項中間換行，不會把一項拆成兩行 */
@@ -192,9 +281,15 @@ class MemoWidgetTest {
         val trip = listOf("京都賞楓 🍁", "墾丁看海 🌊", "九份吃芋圓")
         assertEquals("京都賞楓 🍁\n墾丁看海 🌊\n九份吃芋圓", MemoWidget.pack(trip, 3, 200f, 12f))
         assertEquals("京都賞楓 🍁　墾丁看海 🌊\n九份吃芋圓", MemoWidget.pack(trip, 2, 200f, 12f))
-        assertEquals("京都賞楓 🍁　墾丁看海 🌊　九份吃芋圓", MemoWidget.pack(trip, 1, 200f, 12f))
+        // 最後一行放不下：停在最後一個完整的項目，接「…」
+        assertEquals("京都賞楓 🍁　墾丁看海 🌊　…", MemoWidget.pack(trip, 1, 200f, 12f))
+        assertEquals("京都賞楓 🍁　墾丁看海 🌊　九份吃芋圓", MemoWidget.pack(trip, 1, 260f, 12f))
         val shopping = listOf("🥚 雞蛋", "🥛 鮮奶", "🍓 草莓", "🧻 衛生紙", "🐱 貓砂")
-        assertEquals("🥚 雞蛋　🥛 鮮奶\n🍓 草莓　🧻 衛生紙　🐱 貓砂", MemoWidget.pack(shopping, 2, 120f, 12f))
+        assertEquals("🥚 雞蛋　🥛 鮮奶\n🍓 草莓　…", MemoWidget.pack(shopping, 2, 120f, 12f))
+        assertEquals("🥚 雞蛋　🥛 鮮奶　🍓 草莓　🧻 衛生紙\n🐱 貓砂", MemoWidget.pack(shopping, 2, 300f, 12f))
+        // 一項就太長：照樣放（TextView 會加…）
+        assertEquals("🥚 雞蛋", MemoWidget.pack(shopping, 1, 40f, 12f))
+        assertEquals("京都賞楓 🍁…", MemoWidget.pack(trip, 1, 86f, 12f))
         assertEquals("", MemoWidget.pack(shopping, 0, 120f, 12f))
     }
 
@@ -245,17 +340,48 @@ class MemoWidgetTest {
         assertNotNull(RemoteViews(context.packageName, R.layout.widget_memo_preview).apply(context, FrameLayout(context)))
     }
 
-    /** App 的資料變了：存一份資料、照片縮圖存在手機裡；取消釘選或登出就刪掉縮圖 */
+    private fun waitUntil(what: String, cond: () -> Boolean) {
+        val end = System.currentTimeMillis() + 10_000
+        while (!cond()) {
+            assertTrue(what, System.currentTimeMillis() < end)
+            Thread.sleep(50)
+        }
+    }
+
+    /**
+     * App 的資料變了：存一份資料；桌面上有這個小工具才抓照片縮圖（剛加到桌面時補抓），
+     * 抓不到的之後再試；取消釘選或登出就刪掉縮圖。
+     */
     @Test fun publishSavesSnapshotAndThumbnails() {
         primeCache()
         val snap = MemoWidgetSnapshot.of(pinThree())
-        runBlocking { MemoWidget.publish(context, snap, media) }
-        assertEquals(snap, MemoWidget.load(context))
         val dir = File(context.filesDir, "widget_memo")
-        assertEquals(1, dir.listFiles()!!.size)
-        runBlocking { MemoWidget.publish(context, MemoWidgetSnapshot.of(null), media) }
+        fun thumbs() = dir.listFiles()?.size ?: 0
+
+        // 桌面上還沒有這個小工具：只存資料，不抓縮圖
+        assertTrue(runBlocking { MemoWidget.publish(context, snap, media) })
+        assertEquals(snap, MemoWidget.load(context))
+        assertEquals(0, thumbs())
+
+        // 加到桌面：onUpdate 補抓縮圖
+        val manager = AppWidgetManager.getInstance(context)
+        shadowOf(manager).bindAppWidgetId(7, ComponentName(context, MemoWidget::class.java))
+        MemoWidget().onUpdate(context, manager, intArrayOf(7))
+        waitUntil("加到桌面後補抓縮圖") { thumbs() == 1 }
+
+        // 照片還抓不到（沒網路、對方還沒上傳好）：回傳 false，之後 refresh 再抓
+        val ghost = "c/demo/memo/ghost.jpg"
+        val missing = snap.copy(memos = snap.memos.map { if (it.photo != null) it.copy(photo = ghost) else it })
+        assertFalse(runBlocking { MemoWidget.publish(context, missing, media) })
+        assertEquals("舊的縮圖用不到了", 0, thumbs())
+        runBlocking { media.put(ghost, DemoMedia.sample(DemoMedia.TRIP.path)!!) }
+        assertTrue(runBlocking { MemoWidget.refresh(context, media) })
+        assertEquals(1, thumbs())
+
+        // 登出：縮圖刪掉
+        assertTrue(runBlocking { MemoWidget.publish(context, MemoWidgetSnapshot.of(null), media) })
         assertFalse(MemoWidget.load(context).signedIn)
-        assertEquals(0, dir.listFiles()?.size ?: 0)
+        assertEquals(0, thumbs())
     }
 
     // ------------------------------------------------------------ 截圖
@@ -326,6 +452,32 @@ class MemoWidgetTest {
             Triple("3×2", three, 250 to 180),
             Triple("2×1", three, 160 to 72),
             Triple("還沒放", none, 250 to 180),
+        ), thumbs = thumbs)
+    }
+
+    /** 系統字型「最大」（1.3 倍） */
+    @Config(fontScale = 1.3f)
+    @Test fun shotLargeFont() {
+        val (three, thumbs) = threePinned()
+        val none = MemoWidgetSnapshot.of(s.copy(memos = emptyList()))
+        wallpaper("54f_widget_memo_font130", items = listOf(
+            Triple("3×2（字型最大）", three, 250 to 180),
+            Triple("2×1", three, 160 to 72),
+            Triple("3×2（橫的桌面）", three, 340 to 120),
+            Triple("2×1：還沒放", none, 160 to 72),
+        ), thumbs = thumbs)
+    }
+
+    /** Android 14 以上的 2 倍字型 */
+    @Config(fontScale = 2.0f)
+    @Test fun shotHugeFont() {
+        val (three, thumbs) = threePinned()
+        val none = MemoWidgetSnapshot.of(s.copy(memos = emptyList()))
+        wallpaper("54g_widget_memo_font200", items = listOf(
+            Triple("3×2（2 倍字型）", three, 250 to 180),
+            Triple("2×1", three, 160 to 72),
+            Triple("3×2（橫的桌面）", three, 340 to 120),
+            Triple("2×1（最小）：還沒放", none, 110 to 48),
         ), thumbs = thumbs)
     }
 

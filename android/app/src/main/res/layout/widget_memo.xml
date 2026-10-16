@@ -75,6 +75,7 @@
             android:id="@+id/memo_empty_emoji"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="2dp"
             android:text="📌"
             android:textColor="@color/widget_text"
             android:textSize="20sp" />
@@ -83,7 +84,6 @@
             android:id="@+id/memo_empty_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
             android:ellipsize="end"
             android:fontFamily="@font/huninn"
             android:gravity="center"

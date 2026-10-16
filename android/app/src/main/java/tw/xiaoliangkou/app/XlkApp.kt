@@ -146,9 +146,17 @@ class AppContainer(private val app: Application) {
                 .distinctUntilChanged()
                 .collectLatest { snap ->
                     delay(800)
-                    withContext(Dispatchers.IO) { MemoWidget.publish(app, snap, media) }
+                    // 有縮圖沒抓到（網路不穩、對方的照片還沒上傳好）：等一下再試一次
+                    if (!withContext(Dispatchers.IO) { MemoWidget.publish(app, snap, media) }) {
+                        delay(60_000)
+                        withContext(Dispatchers.IO) { MemoWidget.refresh(app, media) }
+                    }
                 }
         }
+        // 回到 App：補抓還沒抓到的縮圖；系統字型大小改了也重新排版
+        ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_START) scope.launch(Dispatchers.IO) { MemoWidget.refresh(app, media) }
+        })
         // 回到前景：即時連線斷了的話馬上重連，也先用 RPC 補抓通知
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_START && supabase != null) {

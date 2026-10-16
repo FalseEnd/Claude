@@ -12,10 +12,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -43,6 +50,7 @@ import org.robolectric.annotation.GraphicsMode
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.DemoMedia
 import tw.xiaoliangkou.app.data.DemoRepository
+import tw.xiaoliangkou.app.data.Errors
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.SheetSpec
 import tw.xiaoliangkou.app.ui.screens.MemoSheet
@@ -138,6 +146,12 @@ class MemoScreensTest {
         compose.onNodeWithText("新增第一則備忘錄").assertExists()
     }
 
+    /** 資料庫還沒跑 upgrade-v2.sql：列表上直接說，不要等按了儲存才跳錯誤 */
+    @Test fun schemaOutdated() {
+        shot("51b_memos_schema") { MemosScreen(s.copy(memos = emptyList(), schemaOutdated = true), vm, {}) {} }
+        compose.onNodeWithText(Errors.SCHEMA_OUTDATED).assertExists()
+    }
+
     @Config(qualifiers = "w400dp-h1300dp-xhdpi")
     @Test fun newSheet() {
         sheet("52_sheet_memo_new") { MemoSheet(s, vm, null) {} }
@@ -186,6 +200,29 @@ class MemoScreensTest {
         runBlocking { demo.saveMemo(trip.id, trip.title, trip.body, trip.media, trip.shared, true, trip.color) }
         shot("54_widgets_memo_card") { Column(Modifier.padding(16.dp)) { MemoWidgetCard(s, vm) } }
         compose.onNodeWithText("加到桌面").assertExists()
+    }
+
+    // ------------------------------------------------------------ 讀螢幕
+
+    /** 放在桌面的卡片唸「已放在桌面」，圖釘併在卡片裡、不會單獨唸一次 */
+    @Test fun pinnedCardReadsAsOne() {
+        show { MemosScreen(s, vm, {}) {} }
+        val card = compose.onNode(hasText("週末採買清單 🛒") and hasClickAction())
+        card.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "已放在桌面"))
+        val texts = card.fetchSemanticsNode().config[SemanticsProperties.Text].map { it.text }
+        assertFalse(texts.toString(), "📌" in texts)
+        val other = compose.onNode(hasText("想一起去的地方 ✈️") and hasClickAction()).fetchSemanticsNode().config
+        assertFalse(SemanticsProperties.StateDescription in other)
+    }
+
+    /** 輸入框打了字之後還是有名字（標題、內容）；選顏色的圓點夠大、是一組 */
+    @Config(qualifiers = "w400dp-h1300dp-xhdpi")
+    @Test fun sheetFieldsHaveNames() {
+        show { Column { MemoSheet(s, vm, "m1") {} } }
+        compose.onNodeWithContentDescription("標題").assertExists()
+        compose.onNodeWithContentDescription("內容").assertExists()
+        compose.onNodeWithContentDescription("鵝黃").assertWidthIsAtLeast(48.dp)
+        compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.SelectableGroup)).assertCountEquals(1)
     }
 
     // ------------------------------------------------------------ 操作
