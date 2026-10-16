@@ -163,6 +163,7 @@ class WidgetRowScreensTest {
             listOf(together(snap, 130, 96, "直向 2×1 · 130×96"), together(snap, 110, 40, "最小 110×40")),
             listOf(partner(snap, 240, 56, "3×1 · 240×56")),
             listOf(partner(snap, 320, 96, "直向 4×1 · 320×96")),
+            listOf(partner(snap, 276, 102, "直向 4×1 · 276×102")),
             listOf(together(snap, 320, 56, "拉寬 4×1 · 320×56")),
         )
     }
@@ -177,6 +178,19 @@ class WidgetRowScreensTest {
             listOf(partner(snap, 320, 140, "4×2 · 320×140")),
             listOf(together(snap, 150, 120, "2×1 拉高 · 150×120"), together(snap, 160, 160, "2×2 · 160×160")),
             listOf(together(snap, 320, 100, "直向 4×1 · 320×100")),
+        )
+    }
+
+    /** 系統字體調到最大（2 倍）：放不下的字改用不跟著放大的大小，不會被切掉 */
+    @Test @Config(fontScale = 2.0f) fun hugeFont() {
+        photoAvatar()
+        val snap = WidgetSnapshot.of(s)
+        board(
+            "60_widgets_row_huge_font", false,
+            listOf(together(snap, 150, 56, "特大字 2×1 · 150×56"), together(snap, 110, 40, "110×40")),
+            listOf(partner(snap, 320, 56, "4×1 · 320×56")),
+            listOf(partner(snap, 276, 102, "276×102")),
+            listOf(partner(snap, 196, 220, "196×220")),
         )
     }
 
@@ -195,6 +209,7 @@ class WidgetRowScreensTest {
     @Test fun states() {
         val paused = WidgetSnapshot.of(sharing(pausedUntil = Instant.now().plusSeconds(3600).toString()))
         val nothing = WidgetSnapshot.of(sharing(location = false, device = false, mood = false))
+        val pausedOnly = WidgetSnapshot.of(sharing(mood = false, pausedUntil = Instant.now().plusSeconds(3600).toString()))
         val out = WidgetSnapshot.of(null)
         val unpaired = WidgetSnapshot.of(s.copy(partner = null, couple = null))
         val real = WidgetSnapshot.of(s).copy(demo = false)
@@ -207,12 +222,14 @@ class WidgetRowScreensTest {
             listOf(partner(unpaired, 240, 56, "還沒配對 · 240×56")),
             listOf(partner(paused, 320, 56, "暫停分享")),
             listOf(partner(nothing, 320, 56, "沒有分享")),
+            listOf(partner(pausedOnly, 240, 56, "暫停分享、沒分享心情 · 240×56")),
             listOf(preview(R.layout.widget_together, 150, 56, "挑小工具時的預覽 · 2×1")),
             listOf(preview(R.layout.widget_partner, 320, 56, "挑小工具時的預覽 · 4×1")),
         )
     }
 
-    @Test fun widgetsScreen() {
+    /** 360dp 寬的手機：卡片裡放不下 320dp，預覽照卡片的寬度畫 */
+    @Test @Config(qualifiers = "w360dp-h900dp-xhdpi") fun widgetsScreen() {
         photoAvatar()
         shot("64_widgets_screen") { WidgetsScreen(s, vm) {} }
     }

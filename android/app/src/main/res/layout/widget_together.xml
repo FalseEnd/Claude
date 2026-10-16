@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 桌面小工具「在一起」（一格高）：我的頭像 💗 對方頭像｜在一起 N 天＋一行小字。拉高時整列置中，頭像跟著變大 -->
+<!-- 桌面小工具「在一起」（一格高）：我的頭像 ♥ 對方頭像｜在一起 N 天＋一行小字。拉高時整列置中，頭像跟著變大 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -28,16 +28,18 @@
             android:scaleType="fitCenter"
             android:src="@drawable/widget_avatar_me" />
 
-        <!-- 疊在兩個頭像中間 -->
-        <TextView
+        <!-- 疊在兩個頭像中間：白色小圓底、實心愛心 -->
+        <ImageView
             android:id="@+id/heart"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="-6dp"
-            android:layout_marginEnd="-6dp"
-            android:includeFontPadding="false"
-            android:text="💗"
-            android:textSize="12sp"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:layout_marginStart="-5dp"
+            android:layout_marginEnd="-5dp"
+            android:background="@drawable/widget_heart_bg"
+            android:contentDescription="@null"
+            android:padding="2dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/widget_heart"
             android:translationZ="2dp" />
 
         <ImageView

@@ -165,12 +165,25 @@ class StatusWidgetTest {
         val together = views(Widgets.together(context, snap, today))
         assertEquals("%,d".format(days), together.text(R.id.together_days))
         assertEquals("天", together.text(R.id.together_unit))
-        assertNotNull(together.text(R.id.together_sub))
-        assertNotNull(together.text(R.id.heart))
-        // 拉寬就放得下「在一起」三個字（示範模式還有「（示範）」）
+        assertEquals(View.VISIBLE, together.findViewById<View>(R.id.heart).visibility)
+        // 2×1 放不下「在一起（示範）」：小字要寫「示範」
+        assertNull(together.text(R.id.together_label))
+        assertTrue(together.text(R.id.together_sub)!!.startsWith("示範"))
+        for ((w, h) in listOf(196 to 56, 130 to 96, 150 to 120, 160 to 160)) {
+            val v = views(Widgets.together(context, snap, today, size = SizeF(w.toFloat(), h.toFloat())))
+            assertTrue("${w}×$h 要看得出是示範", v.text(R.id.together_label) == "在一起（示範）" || v.text(R.id.together_sub)!!.startsWith("示範"))
+        }
+        // 拉寬就放得下「在一起」三個字（示範模式還有「（示範）」），小字就不用再寫
         val wide = views(Widgets.together(context, snap, today, size = SizeF(320f, 56f)))
         assertEquals("在一起（示範）", wide.text(R.id.together_label))
-        assertEquals("在一起", views(Widgets.together(context, snap.copy(demo = false), today, size = SizeF(200f, 56f))).text(R.id.together_label))
+        assertEquals("第 520 天還有 6 天 🎉", wide.text(R.id.together_sub))
+        val real = snap.copy(demo = false)
+        assertEquals("在一起", views(Widgets.together(context, real, today, size = SizeF(200f, 56f))).text(R.id.together_label))
+        assertEquals("520 倒數 6 天", views(Widgets.together(context, real, today)).text(R.id.together_sub))
+        // 一個月內沒有里程碑：小字寫兩個人的名字
+        val noMilestone = real.copy(togetherSince = today.minusDays(40).toString())
+        assertEquals("阿哲♥小雨", views(Widgets.together(context, noMilestone, today)).text(R.id.together_sub))
+        assertEquals("阿哲 ♥ 小雨", views(Widgets.together(context, noMilestone, today, size = SizeF(320f, 56f))).text(R.id.together_sub))
 
         // 一格高的 4×1：名字、一行狀態（整項整項放，不會切在一半）、🤗
         assertEquals(listOf("📍 小雨公司", "🔋 34%", "😩 好累", "🔕 勿擾中"), Widgets.statusParts(snap).take(4))
@@ -179,12 +192,17 @@ class StatusWidgetTest {
         assertTrue(partner.text(R.id.status)!!.startsWith("📍 小雨公司 · 🔋 34% · 😩 好累"))
         assertTrue(partner.text(R.id.updated)!!.endsWith("更新"))
         assertEquals("🤗", partner.text(R.id.hug_button))
+        // 🤗 可以按的範圍至少 48dp 寬
+        val hug = laidOut(Widgets.partner(context, snap), 320, 56).findViewById<View>(R.id.hug_button)
+        assertTrue(hug.width >= (48 * context.resources.displayMetrics.density).roundToInt())
         // 窄一點：狀態少放幾項；名字太長就不寫更新時間
         val narrow = views(Widgets.partner(context, snap.copy(demo = false), size = SizeF(240f, 56f)))
         assertEquals("📍 小雨公司 · 🔋 34%", narrow.text(R.id.status))
         assertTrue(narrow.text(R.id.updated)!!.endsWith("更新"))
         assertNull(views(Widgets.partner(context, snap.copy(partnerName = "全世界最可愛的小雨"), size = SizeF(240f, 56f))).text(R.id.updated))
 
+        // 直向手機上比較高的一格：還是一行，字和頭像大一點
+        assertNotNull(views(Widgets.partner(context, snap, size = SizeF(276f, 102f))).text(R.id.status))
         // 拉到兩格高：換成大版面，每項分行
         val tall = views(Widgets.partner(context, snap, size = SizeF(320f, 140f)))
         assertTrue(tall.text(R.id.place)!!.startsWith("📍 在 小雨公司"))
@@ -193,8 +211,11 @@ class StatusWidgetTest {
         assertEquals("🤗 抱抱", tall.text(R.id.hug_button))
         val big = views(Widgets.together(context, snap, today, size = SizeF(160f, 160f)))
         assertEquals("%,d".format(days), big.text(R.id.together_days))
-        // 示範資料在一起第 514 天：一個月內有第 520 天
-        assertEquals("第 520 天還有 6 天 🎉", big.text(R.id.together_sub))
+        // 示範資料在一起第 514 天：一個月內有第 520 天（示範模式放不下「在一起（示範）」，小字寫「示範」）
+        assertEquals("示範 · 520 倒數 6 天", big.text(R.id.together_sub))
+        val bigReal = views(Widgets.together(context, snap.copy(demo = false), today, size = SizeF(160f, 160f)))
+        assertEquals("在一起", bigReal.text(R.id.together_label))
+        assertEquals("第 520 天還有 6 天 🎉", bigReal.text(R.id.together_sub))
     }
 
     @Test fun pausedOrNothingSharedShowsWhy() {
@@ -203,6 +224,13 @@ class StatusWidgetTest {
         val nothing = WidgetSnapshot.of(sharing(location = false, device = false, mood = false))
         assertEquals(listOf("目前沒有分享位置和手機狀態"), Widgets.statusParts(nothing))
         assertEquals("目前沒有分享位置和手機狀態", views(Widgets.partner(context, nothing)).text(R.id.status))
+        // 只有一句說明又放不下：留逗號前面那段，不要切在一半
+        val pausedOnly = WidgetSnapshot.of(sharing(mood = false, pausedUntil = Instant.now().plusSeconds(3600).toString()))
+        assertTrue(Widgets.statusParts(pausedOnly).single().contains("，時間到會自動恢復"))
+        val status = views(Widgets.partner(context, pausedOnly, size = SizeF(240f, 56f))).text(R.id.status)!!
+        assertTrue(status, status.matches(Regex("暫停分享到 \\d{1,2}:\\d{2}")))
+        val waiting = WidgetSnapshot.of(s).copy(place = null, items = emptyList(), note = "還沒收到 小雨 的狀態，等對方打開小倆口 📡")
+        assertEquals("還沒收到 小雨 的狀態", views(Widgets.partner(context, waiting, size = SizeF(240f, 56f))).text(R.id.status))
     }
 
     @Test fun widgetsBeforeSignInOrPairing() {
@@ -225,7 +253,7 @@ class StatusWidgetTest {
         assertEquals("配對後開始數在一起的天數", views(Widgets.together(context, unpaired, size = SizeF(320f, 56f))).text(R.id.together_sub))
     }
 
-    private val sizes = listOf(110, 130, 150, 170, 196, 250, 320, 400).flatMap { w -> listOf(40, 48, 56, 72, 96, 120, 160, 220).map { w to it } }
+    private val sizes = listOf(110, 130, 150, 170, 196, 250, 276, 320, 400).flatMap { w -> listOf(40, 48, 56, 72, 96, 102, 120, 140, 160, 220).map { w to it } }
 
     private fun assertWidgetsFit(label: String) {
         val snaps = listOf(
@@ -251,6 +279,9 @@ class StatusWidgetTest {
     @Test fun widgetsFitEverySize() = assertWidgetsFit("")
 
     @Test @Config(fontScale = 1.3f) fun widgetsFitWithLargeFont() = assertWidgetsFit("大字")
+
+    /** Android 14 以上字體最大可以調到 2 倍 */
+    @Test @Config(fontScale = 2.0f) fun widgetsFitWithHugeFont() = assertWidgetsFit("特大字")
 
     /** 真的放到桌面：照桌面給的大小畫（Android 12 以上一份 RemoteViews 帶著直向、橫向兩種大小） */
     @Test fun widgetsFollowTheirSizeOnTheHomeScreen() {

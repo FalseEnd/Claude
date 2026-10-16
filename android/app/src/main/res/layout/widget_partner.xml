@@ -9,7 +9,7 @@
     android:orientation="horizontal"
     android:paddingStart="10dp"
     android:paddingTop="5dp"
-    android:paddingEnd="8dp"
+    android:paddingEnd="3dp"
     android:paddingBottom="5dp">
 
     <!-- 頭像的高度跟著小工具的高度，最大 maxWidth -->
@@ -78,12 +78,13 @@
             android:textSize="12sp" />
     </LinearLayout>
 
+    <!-- 看起來是 38dp 的圓，可以按的範圍是 48dp 寬、整個高度 -->
     <TextView
         android:id="@+id/hug_button"
-        android:layout_width="38dp"
-        android:layout_height="38dp"
-        android:layout_marginStart="8dp"
-        android:background="@drawable/widget_chip"
+        android:layout_width="48dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="3dp"
+        android:background="@drawable/widget_hug"
         android:contentDescription="抱抱"
         android:gravity="center"
         android:includeFontPadding="false"
