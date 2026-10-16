@@ -15,7 +15,11 @@ import java.time.ZoneId
     val avatarUrl: String? = null,
     val birthday: String? = null,
     val email: String? = null,
-)
+    /** 身高、血型、喜歡的…（key 見 [ProfileInfo]），兩個人都看得到 */
+    val info: JsonObject = JsonObject(emptyMap()),
+) {
+    val birthDate: LocalDate? get() = birthday?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+}
 
 @Serializable data class Couple(val id: String, val togetherSince: String? = null, val createdAt: String? = null)
 
@@ -183,6 +187,70 @@ import java.time.ZoneId
     val createdAt: String,
 ) {
     val time: Instant get() = createdAt.toInstantOrNull() ?: Instant.EPOCH
+}
+
+/** 照片或語音：檔案在 Storage 的 media bucket，[path] 是 c/<配對>/… 或 u/<我>/… */
+@Serializable data class MediaItem(
+    val path: String,
+    /** "photo" | "voice" */
+    val kind: String,
+    val mime: String? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val durationMs: Long? = null,
+) {
+    val isPhoto get() = kind == PHOTO
+    val isVoice get() = kind == VOICE
+
+    companion object {
+        const val PHOTO = "photo"
+        const val VOICE = "voice"
+    }
+}
+
+/** 只有自己看得到的備註（寫給對方的小抄） */
+@Serializable data class Note(
+    val id: String,
+    val aboutUser: String? = null,
+    val body: String,
+    val createdAt: String,
+    val updatedAt: String? = null,
+) {
+    val time: Instant get() = (updatedAt ?: createdAt).toInstantOrNull() ?: Instant.EPOCH
+}
+
+/** 日曆上記錄那天的生活：文字、照片、語音 */
+@Serializable data class DayEntry(
+    val id: String,
+    val userId: String,
+    val day: String,
+    val body: String = "",
+    val media: List<MediaItem> = emptyList(),
+    val createdAt: String,
+    val updatedAt: String? = null,
+) {
+    val date: LocalDate? get() = runCatching { LocalDate.parse(day) }.getOrNull()
+    val time: Instant get() = createdAt.toInstantOrNull() ?: Instant.EPOCH
+}
+
+/** 備忘錄：[shared] 兩個人都看得到、都能編輯；[pinned] 放在桌面小工具 */
+@Serializable data class Memo(
+    val id: String,
+    val userId: String,
+    val title: String = "",
+    val body: String = "",
+    val media: List<MediaItem> = emptyList(),
+    val shared: Boolean = true,
+    val pinned: Boolean = false,
+    val color: String = "pink",
+    val createdAt: String,
+    val updatedAt: String? = null,
+) {
+    val time: Instant get() = (updatedAt ?: createdAt).toInstantOrNull() ?: Instant.EPOCH
+
+    companion object {
+        val COLORS = listOf("pink", "yellow", "mint", "sky", "lavender", "peach")
+    }
 }
 
 /** app_pending_notifications 回傳的通知 */

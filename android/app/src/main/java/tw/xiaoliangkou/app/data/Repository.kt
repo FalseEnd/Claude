@@ -34,11 +34,24 @@ data class AppState(
     val history: List<Activity> = emptyList(),
     val historyEnd: Boolean = false,
     val notifPrefs: Map<String, Boolean> = emptyMap(),
+    /** 只有自己看得到的備註 */
+    val notes: List<Note> = emptyList(),
+    /** 目前載入的區間（預設今天前 62 天～後 31 天，換月時用 [CoupleRepository.loadDayEntries] 補） */
+    val dayEntries: List<DayEntry> = emptyList(),
+    /** 自己的備忘錄＋對方共用的；釘選的在前 */
+    val memos: List<Memo> = emptyList(),
+    /** 遠端資料庫還沒跑 upgrade-v2.sql */
+    val schemaOutdated: Boolean = false,
 ) {
     val paired get() = couple != null && partner != null
     val myId get() = me?.id
     val partnerName get() = partner?.displayName ?: "對方"
     val togetherSince: LocalDate? get() = couple?.togetherSince?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+
+    /** 那天兩個人的生活紀錄（先寫的在前） */
+    fun dayEntriesOn(date: LocalDate): List<DayEntry> = date.toString().let { d -> dayEntries.filter { it.day == d } }
+    /** 放在桌面小工具的備忘錄 */
+    val pinnedMemos: List<Memo> get() = memos.filter { it.pinned }
 
     /** 對方目前在哪些標點裡（只看偵測對方或兩人的標點） */
     val partnerInside: List<Place>
@@ -115,6 +128,28 @@ interface CoupleRepository {
     // 歷史與通知設定
     suspend fun loadMoreHistory()
     suspend fun setNotifPref(kind: String, enabled: Boolean)
+
+    // 個人資料與只有自己看得到的備註
+    /** 暱稱、生日（null 是清掉）、個人資料（見 [ProfileInfo.build]） */
+    suspend fun updateProfileInfo(displayName: String, birthday: String?, info: JsonObject)
+    suspend fun saveNote(id: String?, body: String)
+    suspend fun deleteNote(id: String)
+
+    // 日曆：記錄那天的生活
+    /** 換月時呼叫，合併進 state.dayEntries */
+    suspend fun loadDayEntries(from: LocalDate, to: LocalDate)
+    suspend fun saveDayEntry(id: String?, day: LocalDate, body: String, media: List<MediaItem>)
+    suspend fun deleteDayEntry(id: String)
+
+    // 備忘錄
+    suspend fun saveMemo(id: String?, title: String, body: String, media: List<MediaItem>, shared: Boolean, pinned: Boolean, color: String)
+    suspend fun deleteMemo(id: String)
+
+    // 照片與語音
+    /** 上傳照片或語音，回傳要存進 media 的 MediaItem（path 依 shared 放在 c/<couple>/ 或 u/<我>/） */
+    suspend fun uploadMedia(bytes: ByteArray, mime: String, kind: String, shared: Boolean, width: Int? = null, height: Int? = null, durationMs: Long? = null): MediaItem
+    /** 下載（給 MediaCache 用） */
+    suspend fun downloadMedia(path: String): ByteArray
 
     // 背景服務回報（示範模式不做事）
     suspend fun reportDevice(body: JsonObject) {}

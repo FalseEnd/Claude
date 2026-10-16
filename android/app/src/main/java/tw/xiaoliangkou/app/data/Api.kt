@@ -1,6 +1,7 @@
 package tw.xiaoliangkou.app.data
 
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -11,18 +12,23 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.serializer
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 import java.io.IOException
 
 /**
  * App 用到的所有資料操作。每一個都是 Supabase 資料庫裡的 app_* 函式（PostgREST RPC），
  * 參數整包放在 JSON body；原本網址裡的 id、日期也放進 body。回傳的欄位是 camelCase。
+ * 照片、語音放在 Storage 的 media bucket（[storage]）。
  */
-class Api(private val rest: RestService) {
+class Api(private val rest: RestService, private val storage: StorageService? = null) {
     suspend fun health(): JsonObject = call("app_health")
 
     suspend fun me(): MeResponse = call("app_me")
     suspend fun updateProfile(body: JsonObject): Profile = call("app_update_profile", body)
+    /** 回傳原始 JSON：舊的資料庫不認得 info，回傳裡就不會有 info */
+    suspend fun updateProfileRaw(body: JsonObject): JsonObject = call("app_update_profile", body)
     suspend fun updateCouple(body: JsonObject): Couple = call("app_update_couple", body)
     suspend fun invite(): Invite = call("app_create_invite")
     suspend fun accept(body: JsonObject): JsonObject = call("app_accept_invite", body)
@@ -85,6 +91,39 @@ class Api(private val rest: RestService) {
     suspend fun notificationPrefs(): Map<String, Boolean> = call("app_notification_prefs")
     suspend fun setNotificationPrefs(body: JsonObject): JsonObject = call("app_set_notification_prefs", body)
 
+    // 只有自己看得到的備註
+    suspend fun notes(): List<Note> = call("app_notes")
+    suspend fun saveNote(body: JsonObject): Note = call("app_save_note", body)
+    suspend fun deleteNote(id: String): JsonObject = call("app_delete_note", idBody(id))
+
+    // 日曆的生活紀錄（日期 YYYY-MM-DD；沒給就是今天往前 62 天到往後 31 天）
+    suspend fun dayEntries(from: String? = null, to: String? = null): List<DayEntry> = call("app_day_entries", range(from, to))
+    suspend fun saveDayEntry(body: JsonObject): DayEntry = call("app_save_day_entry", body)
+    suspend fun deleteDayEntry(id: String): JsonObject = call("app_delete_day_entry", idBody(id))
+
+    // 備忘錄
+    suspend fun memos(): List<Memo> = call("app_memos")
+    suspend fun saveMemo(body: JsonObject): Memo = call("app_save_memo", body)
+    suspend fun deleteMemo(id: String): JsonObject = call("app_delete_memo", idBody(id))
+
+    /** 上傳到 media bucket（檔名都是新的 uuid，不覆寫） */
+    suspend fun uploadMedia(path: String, mime: String, bytes: ByteArray) {
+        val s = storage ?: throw AppException("這個連線不能上傳檔案", "no_storage")
+        storageCall { s.upload(MediaPaths.BUCKET, MediaPaths.checked(path), bytes.toRequestBody(mime.toMediaTypeOrNull())).close() }
+    }
+
+    suspend fun downloadMedia(path: String): ByteArray {
+        val s = storage ?: throw AppException("這個連線不能下載檔案", "no_storage")
+        return storageCall { s.download(MediaPaths.BUCKET, MediaPaths.checked(path)).use { it.bytes() } }
+    }
+
+    /** Storage 的錯誤格式跟 PostgREST 不一樣，自己轉成中文 */
+    private suspend fun <T> storageCall(block: suspend () -> T): T = try {
+        block()
+    } catch (e: HttpException) {
+        throw Errors.storage(e.code(), e.response()?.errorBody()?.string())
+    }
+
     /** 還沒送到這支手機的通知（最近 3 天） */
     suspend fun pendingNotifications(): List<PendingNotification> = call("app_pending_notifications")
     suspend fun ackNotifications(ids: List<Long>): JsonObject =
@@ -108,6 +147,8 @@ class Api(private val rest: RestService) {
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false; coerceInputValues = true; encodeDefaults = true }
         val EMPTY = JsonObject(emptyMap())
 
+        fun mediaJson(media: List<MediaItem>): JsonElement = json.encodeToJsonElement(ListSerializer(MediaItem.serializer()), media)
+
         private fun JsonObject.with(key: String, value: String) = JsonObject(this + (key to JsonPrimitive(value)))
         private fun idBody(id: String) = buildJsonObject { put("id", id) }
         private fun range(from: String?, to: String?) = buildJsonObject {
@@ -129,6 +170,16 @@ object Errors {
     const val NOT_SETUP = "資料庫還沒設定好：請在 Supabase 的 SQL Editor 執行 setup.sql（說明文件第 2 步）"
     const val BAD_KEY = "Supabase 金鑰不正確，請重新貼一次 Publishable key（或 anon key）"
     const val RELOGIN = "請重新登入"
+    const val SCHEMA_OUTDATED = "資料庫需要更新：請到 Supabase 的 SQL Editor 執行 upgrade-v2.sql（說明在「我的 › Supabase 與帳號」）"
+    const val SCHEMA_OUTDATED_CODE = "schema_outdated"
+
+    /** 2026-10 新增的函式：找不到代表還沒執行 upgrade-v2.sql，不是整個 setup.sql 沒跑 */
+    val V2_FUNCTIONS = setOf(
+        "app_notes", "app_save_note", "app_delete_note",
+        "app_day_entries", "app_save_day_entry", "app_delete_day_entry",
+        "app_memos", "app_save_memo", "app_delete_memo",
+    )
+    private val FUNCTION_NAME = Regex("""public\.(\w+)""")
 
     // 資料庫函式丟出的錯誤代碼（raise exception '<code>'）
     val DB_MESSAGES = mapOf(
@@ -147,6 +198,7 @@ object Errors {
         "invalid_kind" to "種類不正確",
         "invalid_status" to "狀態不正確",
         "invalid_range" to "日期格式不正確",
+        "invalid_media" to "照片或語音的檔案不正確，請重新加入一次",
     )
 
     private val INVALID_INPUT = setOf("23502", "23514", "22P02", "22007", "22008", "22003", "22023", "2201B")
@@ -172,6 +224,9 @@ object Errors {
             code == "23505" -> AppException("資料重複了", "conflict", status)
             code == "23503" -> AppException("關聯的資料不存在", "invalid_reference", status)
             code in INVALID_INPUT -> AppException("輸入的資料格式不正確", "invalid_input", status)
+            // 找不到新功能的函式：還沒執行 upgrade-v2.sql
+            code == "PGRST202" && FUNCTION_NAME.find(message.orEmpty())?.groupValues?.get(1) in V2_FUNCTIONS ->
+                AppException(SCHEMA_OUTDATED, SCHEMA_OUTDATED_CODE, status)
             // 找不到函式：setup.sql 還沒執行
             code == "PGRST202" || code == "PGRST205" || code == "42883" -> AppException(NOT_SETUP, "not_setup", status)
             code == "PGRST301" || code == "PGRST302" || code == "PGRST303" || status == 401 -> AppException(RELOGIN, "not_authenticated", status)
@@ -201,6 +256,32 @@ object Errors {
             else -> "auth_error" to (msg ?: "登入時發生錯誤（$status）")
         }
         return AppException(text, c, status)
+    }
+
+    /**
+     * Supabase Storage 的錯誤：{"statusCode":"404","error":"not_found","message":"Object not found"}。
+     * 舊版的 HTTP 狀態一律是 400，真正的狀態在 statusCode 裡。
+     */
+    fun storage(status: Int, body: String?): AppException {
+        val obj = runCatching { Api.json.parseToJsonElement(body ?: "").jsonObject }.getOrNull()
+        fun str(k: String) = runCatching { (obj?.get(k) as? JsonPrimitive)?.contentOrNull }.getOrNull()
+        val code = str("statusCode")?.toIntOrNull() ?: status
+        val text = listOfNotNull(str("code"), str("error"), str("message")).joinToString(" ").lowercase()
+        return when {
+            "bucket not found" in text || "nosuchbucket" in text -> AppException(SCHEMA_OUTDATED, SCHEMA_OUTDATED_CODE, status)
+            "api key" in text -> AppException(BAD_KEY, "bad_key", status)
+            "jwt" in text || "invalidjwt" in text -> AppException("登入狀態過期了，請再試一次", "jwt_expired", status)
+            code == 413 || "too large" in text || "maximum allowed size" in text || "entitytoolarge" in text ->
+                AppException("檔案太大了（最多 10 MB）", "too_large", status)
+            code == 415 || "mime" in text -> AppException("不支援這種檔案格式", "invalid_media", status)
+            code == 409 || "already exists" in text || "duplicate" in text -> AppException("檔案已經存在", "conflict", status)
+            code == 404 || "not found" in text || "nosuchkey" in text -> AppException("找不到檔案，可能已經被刪除了", "not_found", status)
+            code == 403 || "row-level security" in text || "unauthorized" in text || "accessdenied" in text ->
+                AppException("沒有權限存取這個檔案", "forbidden", status)
+            code == 401 -> AppException(RELOGIN, "not_authenticated", status)
+            code >= 500 -> AppException("Supabase 暫時有點狀況，等一下再試", "server_error", status)
+            else -> AppException(str("message") ?: "檔案傳送失敗（$code）", "storage_error", status)
+        }
     }
 
     /** 換新 token 失敗時，是不是 refresh token 已經不能用了（要重新登入），而不是暫時的問題 */

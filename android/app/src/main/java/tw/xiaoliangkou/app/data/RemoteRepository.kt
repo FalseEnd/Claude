@@ -16,10 +16,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import tw.xiaoliangkou.app.core.PaymentParser
 import java.time.Instant
+import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 /**
@@ -40,6 +42,9 @@ class RemoteRepository(
     private val jobs = mutableListOf<Job>()
     private val pendingTables = mutableSetOf<String>()
     private var flushJob: Job? = null
+
+    /** 日曆紀錄已經載入的區間（預設今天前 62 天～後 31 天，換月時往外擴） */
+    @Volatile private var dayRange: Pair<LocalDate, LocalDate> = defaultDayRange()
 
     init {
         jobs += scope.launch {
@@ -86,6 +91,8 @@ class RemoteRepository(
         "events" -> listOf(::loadEvents)
         "cycle_settings", "cycle_periods" -> listOf(::loadCycle)
         "activity_log" -> listOf(::loadHistory)
+        "day_entries" -> listOf(::loadCurrentDays)
+        "memos" -> listOf(::loadMemos)
         else -> emptyList()
     }
 
@@ -121,6 +128,35 @@ class RemoteRepository(
         _state.update { it.copy(history = h, historyEnd = h.size < 60) }
     }
     private suspend fun loadPrefs() { val p = apiCall { api.notificationPrefs() }; _state.update { it.copy(notifPrefs = p) } }
+    private suspend fun loadNotes() { val n = v2 { api.notes() }; _state.update { it.copy(notes = n) } }
+    private suspend fun loadMemos() { val m = v2 { api.memos() }; _state.update { it.copy(memos = m) } }
+    private suspend fun loadCurrentDays() { val (from, to) = dayRange; loadDays(from, to) }
+
+    /** 載入 [from]～[to] 的生活紀錄，取代 state 裡這段期間的舊資料 */
+    private suspend fun loadDays(from: LocalDate, to: LocalDate) {
+        val rows = v2 { api.dayEntries(from.toString(), to.toString()) }
+        val a = from.toString()
+        val b = to.toString()
+        _state.update { st ->
+            val kept = st.dayEntries.filterNot { it.day in a..b }
+            st.copy(dayEntries = (kept + rows).sortedWith(compareBy({ it.day }, { it.time })))
+        }
+    }
+
+    /** 資料庫有沒有跑過 upgrade-v2.sql：app_health 的 schema 要 >= 2 */
+    private suspend fun checkSchema() {
+        val h = apiCall { api.health() }
+        val schema = (h["schema"] as? JsonPrimitive)?.intOrNull ?: 0
+        _state.update { it.copy(schemaOutdated = schema < SCHEMA) }
+    }
+
+    /** 新功能的 RPC、Storage：資料庫還沒更新的話標記起來，畫面上提醒使用者 */
+    private suspend fun <T> v2(block: suspend () -> T): T = try {
+        apiCall { block() }
+    } catch (e: AppException) {
+        if (e.code == Errors.SCHEMA_OUTDATED_CODE) _state.update { it.copy(schemaOutdated = true) }
+        throw e
+    }
 
     override suspend fun refreshAll() {
         // 即時連線沒在運作的話，通知也順便用 RPC 補抓
@@ -128,7 +164,8 @@ class RemoteRepository(
         loadMe()
         coroutineScope {
             listOf(::loadPartnerStatus, ::loadPlaces, ::loadExpenses, ::loadMoods, ::loadComforts, ::loadAnniversaries,
-                ::loadEvents, ::loadCycle, ::loadHistory, ::loadPrefs).map { async { runCatching { it() } } }.awaitAll()
+                ::loadEvents, ::loadCycle, ::loadHistory, ::loadPrefs, ::checkSchema, ::loadNotes, ::loadCurrentDays, ::loadMemos)
+                .map { async { runCatching { it() } } }.awaitAll()
         }
     }
 
@@ -226,6 +263,77 @@ class RemoteRepository(
         loadPrefs()
     }
 
+    // ---------------------------------------------------------------- 個人資料、備註
+    override suspend fun updateProfileInfo(displayName: String, birthday: String?, info: JsonObject) {
+        val row = apiCall {
+            api.updateProfileRaw(buildJsonObject { put("displayName", displayName); put("birthday", birthday); put("info", info) })
+        }
+        loadMe()
+        // 舊的資料庫不認得 info：暱稱、生日存好了，個人資料沒存到
+        if ("info" !in row) {
+            _state.update { it.copy(schemaOutdated = true) }
+            throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
+        }
+    }
+
+    override suspend fun saveNote(id: String?, body: String) {
+        v2 { api.saveNote(buildJsonObject { if (id != null) put("id", id); put("body", body) }) }
+        loadNotes()
+    }
+    override suspend fun deleteNote(id: String) { v2 { api.deleteNote(id) }; loadNotes() }
+
+    // ---------------------------------------------------------------- 日曆的生活紀錄
+    override suspend fun loadDayEntries(from: LocalDate, to: LocalDate) {
+        if (to.isBefore(from)) return
+        val (a, b) = dayRange
+        dayRange = minOf(a, from) to maxOf(b, to)
+        loadDays(from, to)
+    }
+
+    override suspend fun saveDayEntry(id: String?, day: LocalDate, body: String, media: List<MediaItem>) {
+        val row = v2 {
+            api.saveDayEntry(buildJsonObject {
+                if (id != null) put("id", id)
+                put("day", day.toString()); put("body", body); put("media", Api.mediaJson(media))
+            })
+        }
+        _state.update { st ->
+            st.copy(dayEntries = (st.dayEntries.filterNot { it.id == row.id } + row).sortedWith(compareBy({ it.day }, { it.time })))
+        }
+    }
+
+    override suspend fun deleteDayEntry(id: String) {
+        v2 { api.deleteDayEntry(id) }
+        _state.update { st -> st.copy(dayEntries = st.dayEntries.filterNot { it.id == id }) }
+    }
+
+    // ---------------------------------------------------------------- 備忘錄
+    override suspend fun saveMemo(id: String?, title: String, body: String, media: List<MediaItem>, shared: Boolean, pinned: Boolean, color: String) {
+        v2 {
+            api.saveMemo(buildJsonObject {
+                if (id != null) put("id", id)
+                put("title", title); put("body", body); put("media", Api.mediaJson(media))
+                put("shared", shared); put("pinned", pinned); put("color", color)
+            })
+        }
+        loadMemos()
+    }
+    override suspend fun deleteMemo(id: String) { v2 { api.deleteMemo(id) }; loadMemos() }
+
+    // ---------------------------------------------------------------- 照片、語音
+    override suspend fun uploadMedia(bytes: ByteArray, mime: String, kind: String, shared: Boolean, width: Int?, height: Int?, durationMs: Long?): MediaItem {
+        val st = _state.value
+        val path = if (shared) {
+            MediaPaths.forCouple(st.couple?.id ?: throw AppException(Errors.DB_MESSAGES.getValue("not_paired"), "not_paired"), mime)
+        } else {
+            MediaPaths.forUser(st.myId ?: throw AppException(Errors.RELOGIN, "not_authenticated"), mime)
+        }
+        v2 { api.uploadMedia(path, mime, bytes) }
+        return MediaItem(path, kind, mime, width, height, durationMs)
+    }
+
+    override suspend fun downloadMedia(path: String): ByteArray = v2 { api.downloadMedia(path) }
+
     // ---------------------------------------------------------------- 背景服務
     override suspend fun reportDevice(body: JsonObject) { apiCall { api.putDevice(body) } }
     override suspend fun reportLocation(lat: Double, lng: Double, accuracy: Float?, speed: Float?) {
@@ -255,10 +363,16 @@ class RemoteRepository(
     fun setMyLocation(lat: Double, lng: Double) = _state.update { it.copy(myLocation = LatLng(lat, lng)) }
 
     companion object {
+        /** 這版 App 需要的資料庫版本（app_health 的 schema） */
+        const val SCHEMA = 2
+
+        fun defaultDayRange(today: LocalDate = LocalDate.now()) = today.minusDays(62) to today.plusDays(31)
+
         fun routeFor(kind: String) = when (kind) {
             "place" -> "map"
             "guess" -> "money"
-            "event", "anniversary" -> "calendar"
+            "event", "anniversary", "diary" -> "calendar"
+            "memo" -> "memos"
             "cycle_care" -> "cycle"
             "mood", "comfort", "battery_low" -> "home"
             "sharing_changed", "pairing" -> "privacy"
