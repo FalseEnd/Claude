@@ -33,6 +33,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DayEntry
 import tw.xiaoliangkou.app.data.Limits
 import tw.xiaoliangkou.app.data.RemoteRepository
@@ -73,9 +74,13 @@ fun journalRange(month: YearMonth): Pair<LocalDate, LocalDate> = month.atDay(1).
 @Composable
 internal fun LoadJournal(s: AppState, vm: AppViewModel, month: YearMonth) {
     val repo by vm.repo.collectAsState()
+    LoadJournal(repo, month, ready = s.paired && !s.schemaOutdated, onError = vm::toast)
+}
+
+@Composable
+internal fun LoadJournal(repo: CoupleRepository?, month: YearMonth, ready: Boolean, onError: (String) -> Unit) {
     val loaded = remember(repo) { mutableListOf(RemoteRepository.defaultDayRange()) }
     var warned by remember(repo) { mutableStateOf(false) }
-    val ready = s.paired && !s.schemaOutdated
     LaunchedEffect(repo, month, ready) {
         val r = repo ?: return@LaunchedEffect
         if (!ready) return@LaunchedEffect
@@ -91,7 +96,7 @@ internal fun LoadJournal(s: AppState, vm: AppViewModel, month: YearMonth) {
         } catch (e: Exception) {
             if (!warned) {
                 warned = true
-                vm.toast((e as? AppException)?.message ?: "這個月的紀錄載入失敗，等一下再試試看")
+                onError((e as? AppException)?.message ?: "這個月的紀錄載入失敗，等一下再試試看")
             }
         }
     }
@@ -181,6 +186,10 @@ fun DayEntrySheet(s: AppState, vm: AppViewModel, id: String?, date: LocalDate, c
             placeholder = "吃了什麼、去了哪裡、想跟 ${s.partnerName} 說的話…", singleLine = false,
             supporting = if (body.length > Limits.DAY_BODY - 200) "${body.length} / ${Limits.DAY_BODY}" else null,
         )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("照片、語音", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+            if (media.isNotEmpty()) Text("${media.size} / ${Limits.MEDIA}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (media.isNotEmpty()) MediaThumbs(media, vm, onRemove = { m -> media = media - m })
         MediaPickerRow(vm, shared = true, onAdded = { media = media + it }, remaining = Limits.MEDIA - media.size)
         CuteButton("儲存", Modifier.fillMaxWidth(), enabled = (body.isNotBlank() || media.isNotEmpty()) && !vm.busy) {

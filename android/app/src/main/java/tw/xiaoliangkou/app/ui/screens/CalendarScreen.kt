@@ -194,7 +194,7 @@ private fun DayCell(
 }
 
 /** 格子裡的小 📷：行高跟字一樣高，才不會撐開格子 */
-private val MarkEmoji = TextStyle(fontSize = 8.sp, lineHeight = 9.sp)
+private val MarkEmoji = TextStyle(fontSize = 9.sp, lineHeight = 10.sp)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
