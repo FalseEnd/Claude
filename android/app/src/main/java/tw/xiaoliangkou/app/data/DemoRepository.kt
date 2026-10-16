@@ -1,6 +1,14 @@
 package tw.xiaoliangkou.app.data
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Shader
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -10,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -25,13 +34,21 @@ import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Geo
 import tw.xiaoliangkou.app.core.Guess
 import tw.xiaoliangkou.app.core.PaymentParser
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.PI
+import kotlin.math.exp
 import kotlin.math.hypot
+import kotlin.math.min
+import kotlin.math.sin
 import kotlin.random.Random
 
 /**
@@ -69,6 +86,8 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
 
     /** 對方開放猜的開銷，真正的金額先藏在這裡（跟資料庫一樣，猜之前拿不到） */
     private val hiddenAmounts = mutableMapOf<String, Double>()
+    /** 上傳的照片、語音（path → 檔案內容），示範照片第一次下載時才畫 */
+    private val files = ConcurrentHashMap<String, ByteArray>()
     private var nextId = 1000L
     private fun id() = nextId++
     private fun now() = Instant.now()
@@ -128,6 +147,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
     private fun seed(): AppState {
         val since = today.minusDays(513)
         val myBirthday = LocalDate.of(1998, today.plusDays(160).monthValue, today.plusDays(160).dayOfMonth.coerceAtMost(28))
+        val herBirthday = LocalDate.of(1999, today.plusDays(37).monthValue, today.plusDays(37).dayOfMonth.coerceAtMost(28))
         fun ex(who: String, t: Instant, merchant: String, amount: Double, source: String, category: String? = null,
                visibility: String = "shared", revealOn: String? = null, guessable: Boolean = false,
                theirGuess: Double? = null, theirPoints: Int? = null, myGuess: Double? = null, myPoints: Int? = null) = Expense(
@@ -192,8 +212,18 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
 
         return AppState(
             loaded = true, demo = true, connected = true,
-            me = Profile(ME, "阿哲", email = "azhe@example.com"),
-            partner = Profile(PARTNER, "小雨", avatarUrl = Avatars.emoji("🐰")),
+            me = Profile(ME, "阿哲", email = "azhe@example.com", birthday = myBirthday.toString(), info = ProfileInfo.build(mapOf(
+                ProfileInfo.HEIGHT to "176", ProfileInfo.WEIGHT to "68", ProfileInfo.PHONE to "0987-654-321", ProfileInfo.BLOOD_TYPE to "A",
+                ProfileInfo.MBTI to "ISTJ", ProfileInfo.JOB to "軟體工程師", ProfileInfo.HOBBIES to "打籃球、手沖咖啡、露營",
+                ProfileInfo.LIKES to "豚骨拉麵、黑咖啡、小雨的笑容", ProfileInfo.DISLIKES to "排隊、下雨天塞車", ProfileInfo.CLOTHES_SIZE to "L",
+                ProfileInfo.SHOE_SIZE to "27", ProfileInfo.INTRO to "會煮咖啡的工程師 ☕ 假日最喜歡跟小雨去爬山",
+            ))),
+            partner = Profile(PARTNER, "小雨", avatarUrl = Avatars.emoji("🐰"), birthday = herBirthday.toString(), info = ProfileInfo.build(mapOf(
+                ProfileInfo.HEIGHT to "160", ProfileInfo.WEIGHT to "48", ProfileInfo.PHONE to "0912-345-678", ProfileInfo.BLOOD_TYPE to "O",
+                ProfileInfo.MBTI to "ENFP", ProfileInfo.JOB to "UI 設計師", ProfileInfo.HOBBIES to "追劇、拍照、瑜珈",
+                ProfileInfo.LIKES to "珍珠奶茶（半糖少冰）、草莓蛋糕、貓咪", ProfileInfo.DISLIKES to "香菜、蟑螂", ProfileInfo.ALLERGIES to "芒果",
+                ProfileInfo.CLOTHES_SIZE to "S", ProfileInfo.SHOE_SIZE to "23.5", ProfileInfo.INTRO to "愛笑的小雨，喜歡把日常拍成照片 📷",
+            ))),
             couple = Couple("demo-couple", since.toString()),
             mySharing = Sharing(ME, shareLocation = true, shareDevice = true, shareExpenses = true, shareMood = true, shareCycle = false),
             partnerSharing = Sharing(PARTNER, shareLocation = true, shareDevice = true, shareExpenses = true, shareMood = true, shareCycle = true),
@@ -213,7 +243,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
             ),
             anniversaries = listOf(
                 Anniversary("a1", title = "在一起紀念日", date = since.toString(), kind = "together"),
-                Anniversary("a2", title = "小雨生日", date = LocalDate.of(1999, today.plusDays(37).monthValue, today.plusDays(37).dayOfMonth.coerceAtMost(28)).toString(), kind = "birthday"),
+                Anniversary("a2", title = "小雨生日", date = herBirthday.toString(), kind = "birthday"),
                 Anniversary("a3", title = "阿哲生日", date = myBirthday.toString(), kind = "birthday"),
                 Anniversary("a4", title = "第一次約會", date = since.minusDays(24).toString(), kind = "first_date", remindDays = listOf(0, 1)),
             ),
@@ -229,7 +259,28 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
             ),
             history = history,
             historyEnd = true,
-            notifPrefs = listOf("pairing", "place", "mood", "comfort", "battery_low", "guess", "event", "anniversary", "cycle_care", "sharing_changed").associateWith { true },
+            notifPrefs = listOf("pairing", "place", "mood", "comfort", "battery_low", "guess", "event", "anniversary", "cycle_care", "sharing_changed", "diary", "memo")
+                .associateWith { true },
+            notes = listOf(
+                Note("n1", PARTNER, "她喜歡半糖少冰 🧋 珍奶要加波霸，不要椰果", iso(at(3, 21, 30))),
+                Note("n2", PARTNER, "生日想要的耳環款式：微風南山 2 樓那間的珍珠小耳環（她偷看了三次 👀）", iso(at(12, 22, 10))),
+            ),
+            dayEntries = listOf(
+                DayEntry("d1", ME, today.minusDays(6).toString(), "大安森林公園野餐 🧺 小雨做的三明治超好吃，還遇到好多狗狗！",
+                    listOf(DemoMedia.PICNIC), iso(at(6, 17, 40))),
+                DayEntry("d2", PARTNER, today.minusDays(6).toString(), "謝謝你陪我野餐 💕 下次換我帶甜點", createdAt = iso(at(6, 21, 5))),
+                DayEntry("d3", PARTNER, today.minusDays(1).toString(), "中午吃鼎泰豐 🥟 小籠包好好吃，下次一起來！",
+                    listOf(DemoMedia.DINNER, DemoMedia.VOICE), iso(at(1, 13, 10))),
+                DayEntry("d4", ME, today.toString(), "下班買了雞蛋糕，等等拿給小雨 🥰", createdAt = iso(ago(40))),
+            ).sortedWith(DayEntry.ORDER),
+            memos = listOf(
+                Memo("m1", ME, "週末採買清單 🛒", "🥚 雞蛋\n🥛 鮮奶\n🍓 草莓\n🧻 衛生紙\n🐱 貓砂", shared = true, pinned = true, color = "yellow",
+                    createdAt = iso(at(2, 20, 0)), updatedAt = iso(ago(90))),
+                Memo("m2", ME, "小雨生日驚喜 🤫", "1. 訂她最愛的義大利麵餐廳\n2. 珍珠小耳環\n3. 寫一張手寫卡片", shared = false, color = "lavender",
+                    createdAt = iso(at(10, 23, 0))),
+                Memo("m3", PARTNER, "想一起去的地方 ✈️", "京都賞楓 🍁\n墾丁看海 🌊\n九份吃芋圓", listOf(DemoMedia.TRIP), shared = true, color = "mint",
+                    createdAt = iso(at(4, 22, 0)), updatedAt = iso(at(1, 22, 30))),
+            ).sortedWith(Memo.ORDER),
         )
     }
 
@@ -371,6 +422,18 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
                 "guess" -> {
                     val e = _state.value.myExpenses.lastOrNull { it.visibility == "shared" && it.theirGuess == null } ?: return@launch
                     partnerGuesses(e.copy(guessable = true), 600)
+                }
+                "diary" -> {
+                    val e = DayEntry(UUID.randomUUID().toString(), PARTNER, today.toString(),
+                        listOf("下班看到超美的夕陽 🌇", "午餐吃了好吃的拉麵 🍜", "跟同事去喝了手搖 🧋").random(), listOf(DemoMedia.SUNSET), iso())
+                    _state.update { it.copy(dayEntries = (it.dayEntries + e).sortedWith(DayEntry.ORDER)) }
+                    banner("小雨 記錄了 ${today.monthValue}/${today.dayOfMonth} 的生活", e.body.take(40), "diary")
+                }
+                "memo" -> {
+                    val m = Memo(UUID.randomUUID().toString(), PARTNER, "晚餐想吃什麼 🍽️", "火鍋、咖哩、義大利麵，你選一個！", color = "peach",
+                        createdAt = iso(), updatedAt = iso())
+                    _state.update { it.copy(memos = (it.memos + m).sortedWith(Memo.ORDER)) }
+                    banner("小雨 新增了共同備忘錄", m.title, "memo")
                 }
                 "go" -> {
                     val place = _state.value.places.firstOrNull { it.id == placeId } ?: return@launch
@@ -605,5 +668,145 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
     override suspend fun loadMoreHistory() = Unit
     override suspend fun setNotifPref(kind: String, enabled: Boolean) = _state.update { it.copy(notifPrefs = it.notifPrefs + (kind to enabled)) }
 
+    // ---------------------------------------------------------------- 個人資料、備註
+    private fun notFound() = AppException(Errors.DB_MESSAGES.getValue("not_found"), "not_found")
+
+    override suspend fun updateProfileInfo(displayName: String, birthday: String?, info: JsonObject) {
+        val name = displayName.trim()
+        Limits.profile(name, birthday, info)
+        _state.update { it.copy(me = it.me?.copy(displayName = name, birthday = birthday, info = info)) }
+    }
+
+    override suspend fun saveNote(id: String?, body: String) {
+        Limits.note(body)
+        if (id != null && _state.value.notes.none { it.id == id }) throw notFound()
+        _state.update { st ->
+            if (id == null) st.copy(notes = listOf(Note(UUID.randomUUID().toString(), PARTNER, body, iso(), iso())) + st.notes)
+            else st.copy(notes = st.notes.map { if (it.id == id) it.copy(body = body, updatedAt = iso()) else it })
+        }
+    }
+
+    override suspend fun deleteNote(id: String) = _state.update { it.copy(notes = it.notes.filterNot { n -> n.id == id }) }
+
+    // ---------------------------------------------------------------- 日曆的生活紀錄（示範資料都在記憶體裡，不用分段載入）
+    override suspend fun loadDayEntries(from: LocalDate, to: LocalDate) = Unit
+
+    override suspend fun saveDayEntry(id: String?, day: LocalDate, body: String, media: List<MediaItem>) {
+        Limits.dayEntry(body, media)
+        val old = id?.let { i -> _state.value.dayEntries.firstOrNull { it.id == i } ?: throw notFound() }
+        if (old != null && old.userId != ME) throw AppException("只能改自己寫的紀錄", "forbidden")
+        val e = old?.copy(day = day.toString(), body = body, media = media, updatedAt = iso())
+            ?: DayEntry(UUID.randomUUID().toString(), ME, day.toString(), body, media, iso(), iso())
+        _state.update { st -> st.copy(dayEntries = (st.dayEntries.filterNot { it.id == e.id } + e).sortedWith(DayEntry.ORDER)) }
+    }
+
+    override suspend fun deleteDayEntry(id: String) {
+        val e = _state.value.dayEntries.firstOrNull { it.id == id } ?: return
+        if (e.userId != ME) throw AppException("只能刪除自己寫的紀錄", "forbidden")
+        _state.update { st -> st.copy(dayEntries = st.dayEntries.filterNot { it.id == id }) }
+    }
+
+    // ---------------------------------------------------------------- 備忘錄
+    override suspend fun saveMemo(id: String?, title: String, body: String, media: List<MediaItem>, shared: Boolean, pinned: Boolean, color: String) {
+        Limits.memo(title, body, media, color)
+        val st = _state.value
+        val old = st.memo(id)
+        if (id != null && old == null) throw notFound()
+        val now = iso()
+        val m = when {
+            old == null -> Memo(UUID.randomUUID().toString(), ME, title, body, media, shared && st.paired, pinned, color, now, now)
+            old.userId == ME -> old.copy(title = title, body = body, media = media, shared = shared && st.paired, pinned = pinned, color = color, updatedAt = now)
+            // 對方共用的：可以改內容，不能改共用設定
+            else -> old.copy(title = title, body = body, media = media, pinned = pinned, color = color, updatedAt = now)
+        }
+        _state.update { s -> s.copy(memos = (s.memos.filterNot { it.id == m.id } + m).sortedWith(Memo.ORDER)) }
+    }
+
+    override suspend fun deleteMemo(id: String) {
+        val m = _state.value.memo(id) ?: return
+        if (m.userId != ME) throw AppException("這是小雨的備忘錄，只有小雨可以刪除", "forbidden")
+        _state.update { s -> s.copy(memos = s.memos.filterNot { it.id == id }) }
+    }
+
+    // ---------------------------------------------------------------- 照片、語音（存在記憶體）
+    override suspend fun uploadMedia(bytes: ByteArray, mime: String, kind: String, shared: Boolean, width: Int?, height: Int?, durationMs: Long?): MediaItem {
+        Limits.file(bytes)
+        val path = MediaPaths.under("demo/", mime)
+        files[path] = bytes
+        return MediaItem(path, kind, mime, width, height, durationMs)
+    }
+
+    override suspend fun downloadMedia(path: String): ByteArray =
+        files[path] ?: withContext(Dispatchers.Default) { DemoMedia.sample(path) }?.also { files[path] = it } ?: throw notFound()
+
     fun buildPlaceBody(name: String, lat: Double, lng: Double) = buildJsonObject { put("name", name); put("lat", lat); put("lng", lng) }
+}
+
+/** 示範模式的照片、語音：用程式畫出來，不用網路也不用放圖檔 */
+internal object DemoMedia {
+    val PICNIC = MediaItem("demo/sample-picnic.png", MediaItem.PHOTO, "image/png", 640, 480)
+    val DINNER = MediaItem("demo/sample-dinner.png", MediaItem.PHOTO, "image/png", 480, 640)
+    val TRIP = MediaItem("demo/sample-trip.png", MediaItem.PHOTO, "image/png", 640, 480)
+    val SUNSET = MediaItem("demo/sample-sunset.png", MediaItem.PHOTO, "image/png", 640, 480)
+    val VOICE = MediaItem("demo/sample-voice.wav", MediaItem.VOICE, "audio/wav", durationMs = 3200)
+
+    // 每張照片的漸層顏色
+    private val palettes = mapOf(
+        PICNIC to (0xFFFFB3C7 to 0xFFFFE3A3),
+        DINNER to (0xFFFFC9A8 to 0xFFFF8FB1),
+        TRIP to (0xFFB8E0FF to 0xFFD9C2FF),
+        SUNSET to (0xFFFFB38A to 0xFFC9A7FF),
+    )
+
+    fun sample(path: String): ByteArray? {
+        if (path == VOICE.path) return chime(VOICE.durationMs!!)
+        val (item, colors) = palettes.entries.firstOrNull { it.key.path == path }?.toPair() ?: return null
+        return photo(item.width!!, item.height!!, colors.first.toInt(), colors.second.toInt(), path.hashCode())
+    }
+
+    /** 粉粉的漸層，加上幾顆泡泡和一顆愛心（PNG） */
+    fun photo(width: Int, height: Int, from: Int, to: Int, seed: Int): ByteArray {
+        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        p.shader = LinearGradient(0f, 0f, width.toFloat(), height.toFloat(), from, to, Shader.TileMode.CLAMP)
+        c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), p)
+        p.shader = null
+        val rnd = Random(seed)
+        val side = min(width, height).toFloat()
+        repeat(14) {
+            p.color = Color.argb(rnd.nextInt(40, 110), 255, 255, 255)
+            c.drawCircle(rnd.nextFloat() * width, rnd.nextFloat() * height, side * (0.02f + rnd.nextFloat() * 0.1f), p)
+        }
+        p.color = Color.argb(235, 255, 255, 255)
+        c.drawPath(heart(width / 2f, height / 2f, side * 0.2f), p)
+        return ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+    }
+
+    private fun heart(cx: Float, cy: Float, r: Float) = Path().apply {
+        moveTo(cx, cy + r * 0.9f)
+        cubicTo(cx - r * 1.6f, cy - r * 0.1f, cx - r * 0.7f, cy - r * 1.3f, cx, cy - r * 0.45f)
+        cubicTo(cx + r * 0.7f, cy - r * 1.3f, cx + r * 1.6f, cy - r * 0.1f, cx, cy + r * 0.9f)
+        close()
+    }
+
+    /** 叮叮咚咚的小旋律（WAV，16 kHz 單聲道） */
+    fun chime(durationMs: Long): ByteArray {
+        val rate = 16_000
+        val n = (rate * durationMs / 1000).toInt()
+        val notes = doubleArrayOf(1046.5, 1318.5, 1568.0, 2093.0)
+        val each = n / notes.size
+        val data = ByteBuffer.allocate(n * 2).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until n) {
+            val k = (i / each).coerceAtMost(notes.size - 1)
+            val t = (i - k * each).toDouble() / rate
+            data.putShort((sin(2 * PI * notes[k] * i / rate) * exp(-t * 4) * 0.35 * Short.MAX_VALUE).toInt().toShort())
+        }
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN).apply {
+            put("RIFF".toByteArray()); putInt(36 + n * 2); put("WAVE".toByteArray())
+            put("fmt ".toByteArray()); putInt(16); putShort(1); putShort(1); putInt(rate); putInt(rate * 2); putShort(2); putShort(16)
+            put("data".toByteArray()); putInt(n * 2)
+        }
+        return header.array() + data.array()
+    }
 }

@@ -1,5 +1,5 @@
 'use strict';
-// 端對端測試：兩個帳號透過 Supabase Auth、RPC 與 Realtime 走完主要流程（跟 App 的呼叫方式相同）。
+// 端對端測試：兩個帳號透過 Supabase Auth、RPC、Realtime 與 Storage 走完主要流程（跟 App 的呼叫方式相同）。
 // 需要一個剛 reset 過的 Supabase（supabase/scripts/test.sh 會用 Supabase CLI 啟動本機的）：
 //   SUPABASE_URL          http://127.0.0.1:54321
 //   SUPABASE_KEY          anon 或 publishable key（App 用的那把）
@@ -9,6 +9,7 @@
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const core = require(path.join(__dirname, '..', '..', 'prototype', 'core.js'));
 
@@ -23,8 +24,12 @@ const tag = Math.random().toString(36).slice(2, 8);
 const A = { email: `azhe+${tag}@example.com`, password: 'secret1' }; // 阿哲
 const B = { email: `xiaoyu+${tag}@example.com`, password: 'secret2' }; // 小雨
 
+const files = {}; // 測試之間共用的檔案路徑
+const uploaded = []; // 測試結束時用 service_role 刪掉
+
 after(async () => {
   for (const u of [A, B]) if (u.sock) u.sock.close();
+  if (uploaded.length) await http('DELETE', '/storage/v1/object/media', { key: SERVICE, token: SERVICE, body: { prefixes: uploaded } });
   // 刪掉測試帳號，讓資料庫回到空的狀態（App 的整合測試還要註冊兩個人）
   for (const u of [A, B]) {
     if (u.id) await http('DELETE', `/auth/v1/admin/users/${u.id}`, { key: SERVICE, token: SERVICE });
@@ -71,6 +76,43 @@ function session(u, data) {
   u.refresh = data.refresh_token;
   u.id = data.user.id;
 }
+
+// ------------------------------------------------------------------ Storage（照片、語音；和 App 一樣用登入者的 token）
+
+const jpeg = () => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), crypto.randomBytes(2048)]);
+
+async function upload(user, p, bytes, type = 'image/jpeg', { upsert = false } = {}) {
+  const res = await fetch(`${BASE}/storage/v1/object/media/${p}`, {
+    method: 'POST',
+    headers: { apikey: KEY, authorization: `Bearer ${user.token}`, 'content-type': type, ...(upsert ? { 'x-upsert': 'true' } : {}) },
+    body: bytes
+  });
+  const text = await res.text();
+  if (res.ok) uploaded.push(p);
+  return { status: res.status, text };
+}
+
+async function download(user, p) {
+  const res = await fetch(`${BASE}/storage/v1/object/authenticated/media/${p}`, {
+    headers: { apikey: KEY, authorization: `Bearer ${user.token}` }
+  });
+  return { status: res.status, bytes: Buffer.from(await res.arrayBuffer()) };
+}
+
+async function removeFile(user, p) {
+  const res = await fetch(`${BASE}/storage/v1/object/media/${p}`, {
+    method: 'DELETE',
+    headers: { apikey: KEY, authorization: `Bearer ${user.token}` }
+  });
+  return { status: res.status, text: await res.text() };
+}
+
+// Storage 的錯誤是 HTTP 400，真正的狀態寫在內容裡；讀不到和不存在的回應一樣，猜不出檔案在不在
+const uploadDenied = (r) => assert.match(r.text, /row-level security/, `應該被 Storage 的權限擋下：${r.status} ${r.text}`);
+const notFound = (r) => {
+  assert.equal(r.status, 400);
+  assert.match(r.bytes.toString(), /Object not found/);
+};
 
 function localToday() {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -156,7 +198,10 @@ function connectOnce(user) {
         try {
           for (const n of await ok(user, 'app_pending_notifications')) notification(n);
         } catch (e) { reject(e); return; }
-        resolve({ ws, next, notified: (kind) => next((x) => x.type === 'notification' && x.kind === kind), close: () => ws.close() });
+        resolve({
+          ws, next, notified: (kind) => next((x) => x.type === 'notification' && x.kind === kind),
+          queued: () => [...msgs], close: () => ws.close()
+        });
       } else if (m.event === 'postgres_changes') {
         const { table, record } = m.payload.data;
         if (table === 'notification_outbox') notification(record);
@@ -174,6 +219,7 @@ test('健康檢查：還沒登入也能確認網址和金鑰', { skip }, async (
   const r = await ok(null, 'app_health');
   assert.equal(r.ok, true);
   assert.match(r.time, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?\+00:00$/);
+  assert.equal(r.schema, 2, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql');
   // 金鑰錯誤的 401 由雲端的 API gateway 檢查；本機的 Supabase CLI 不檢查 apikey，這裡測不到
 });
 
@@ -414,6 +460,155 @@ test('紀念日與每日提醒', { skip }, async () => {
   assert.match((await B.sock.notified('anniversary')).title, /小雨的生日/);
 });
 
+test('個人資料：身高、血型這些資料對方看得到', { skip }, async () => {
+  const info = { heightCm: 160, weightKg: 48.5, bloodType: 'O', mbti: 'INFP', likes: '珍奶半糖去冰' };
+  const p = await ok(B, 'app_update_profile', { birthday: '1999-03-20', info });
+  assert.deepEqual(Object.keys(p).sort(), ['avatarUrl', 'birthday', 'displayName', 'id', 'info']);
+  assert.deepEqual(p.info, info, 'info 裡的 key 原封不動');
+  await A.sock.next((m) => m.type === 'changed' && m.table === 'profiles');
+  const me = await ok(A, 'app_me');
+  assert.deepEqual(me.partner.info, info);
+  assert.deepEqual(me.user.info, {});
+  assert.equal((await rpc(B, 'app_update_profile', { info: ['O'] })).data.code, '23514');
+});
+
+test('只有自己看得到的備註：對方從 RPC、資料表、通知、Realtime 都看不到', { skip }, async () => {
+  const outbox = async () => (await rest(B, 'GET', 'notification_outbox?select=id')).data.length;
+  const before = await outbox();
+  const n1 = await ok(A, 'app_save_note', { body: '她喜歡半糖少冰' });
+  assert.deepEqual(Object.keys(n1).sort(), ['aboutUser', 'body', 'createdAt', 'id', 'updatedAt']);
+  assert.equal(n1.aboutUser, B.id);
+  assert.equal((await ok(A, 'app_save_note', { id: n1.id, body: '她喜歡半糖去冰' })).body, '她喜歡半糖去冰');
+  const n2 = await ok(A, 'app_save_note', { body: '生日想要的耳環款式' });
+  assert.deepEqual((await ok(A, 'app_notes')).map((n) => n.id).sort(), [n1.id, n2.id].sort());
+
+  assert.deepEqual(await ok(B, 'app_notes'), []);
+  const direct = await rest(B, 'GET', 'partner_notes?select=id');
+  assert.equal(direct.status, 200);
+  assert.deepEqual(direct.data, []);
+  assert.equal((await rpc(B, 'app_save_note', { id: n1.id, body: '偷改' })).data.message, 'not_found');
+  assert.equal((await rpc(B, 'app_delete_note', { id: n1.id })).data.message, 'not_found');
+  denied(await rest(B, 'POST', 'partner_notes', { owner_id: A.id, body: '假的' }));
+  assert.deepEqual((await rest(B, 'GET', 'realtime_events?select=id&table_name=eq.partner_notes')).data, []);
+  assert.equal(await outbox(), before, '寫備註不會產生任何通知');
+  // Realtime 依序送達：等「現在在哪」送到時，之前寫的備註如果有通知或 changed 也早就到了
+  await ok(A, 'app_locate_partner');
+  await B.sock.next((m) => m.type === 'locate');
+  const leaked = B.sock.queued().filter((m) => m.table === 'partner_notes' || /半糖|耳環/.test(`${m.title} ${m.body}`));
+  assert.deepEqual(leaked, []);
+  assert.deepEqual(await ok(A, 'app_delete_note', { id: n2.id }), { ok: true });
+});
+
+test('日曆紀錄：兩個人都看得到，照片和語音放在 Storage 的兩人資料夾', { skip }, async () => {
+  const couple = (await ok(A, 'app_me')).couple.id;
+  const day = localToday();
+  const photo = `c/${couple}/${crypto.randomUUID()}.jpg`;
+  const bytes = jpeg();
+  const up = await upload(A, photo, bytes);
+  assert.equal(up.status, 200, up.text);
+  files.diaryPhoto = photo;
+  const media = [{ path: photo, kind: 'photo', mime: 'image/jpeg', width: 1600, height: 1200 }];
+  const e = await ok(A, 'app_save_day_entry', { day, body: '一起去淡水看夕陽', media });
+  assert.deepEqual(Object.keys(e).sort(), ['body', 'createdAt', 'day', 'id', 'media', 'updatedAt', 'userId']);
+  assert.deepEqual(e.media, media, 'media 裡的 key 原封不動');
+  const n = await B.sock.notified('diary');
+  assert.equal(n.title, `阿哲 記錄了 ${Number(day.slice(5, 7))}/${Number(day.slice(8))} 的生活`);
+  assert.equal(n.body, '一起去淡水看夕陽');
+  assert.equal(n.data.day, day);
+  await B.sock.next((m) => m.type === 'changed' && m.table === 'day_entries');
+
+  const list = await ok(B, 'app_day_entries', { from: day, to: day });
+  assert.deepEqual(list.map((x) => x.id), [e.id]);
+  assert.ok((await ok(B, 'app_day_entries')).some((x) => x.id === e.id), '預設區間包含今天');
+  const got = await download(B, list[0].media[0].path);
+  assert.equal(got.status, 200);
+  assert.ok(got.bytes.equals(bytes), '對方下載到同一張照片');
+
+  assert.equal((await rpc(B, 'app_save_day_entry', { id: e.id, day, body: '偷改' })).data.message, 'not_found');
+  assert.equal((await rpc(B, 'app_delete_day_entry', { id: e.id })).data.message, 'not_found');
+  // 路徑不能指到別的情侶、私人資料夾，也不能用 .. 跳出去
+  for (const path of [`c/${crypto.randomUUID()}/x.jpg`, `u/${B.id}/x.jpg`, `u/${A.id}/x.jpg`, `c/${couple}/../../u/${A.id}/x.jpg`]) {
+    const bad = await rpc(B, 'app_save_day_entry', { day, body: '看看', media: [{ path, kind: 'photo' }] });
+    assert.equal(bad.status, 400, path);
+    assert.equal(bad.data.message, 'invalid_media', path);
+  }
+  const video = await rpc(B, 'app_save_day_entry', { day, body: 'x', media: [{ path: photo, kind: 'video' }] });
+  assert.equal(video.data.message, 'invalid_media', '只收照片和語音');
+
+  const voice = `c/${couple}/${crypto.randomUUID()}.m4a`;
+  assert.equal((await upload(B, voice, crypto.randomBytes(1024), 'audio/mp4')).status, 200);
+  const v = await ok(B, 'app_save_day_entry', { day, media: [{ path: voice, kind: 'voice', durationMs: 12000 }] });
+  assert.equal((await A.sock.notified('diary')).body, '🎙️ 錄了一段語音');
+  assert.equal((await ok(A, 'app_day_entries', { from: day, to: day })).length, 2);
+  assert.equal((await download(A, voice)).status, 200);
+  assert.deepEqual(await ok(B, 'app_delete_day_entry', { id: v.id }), { ok: true });
+});
+
+test('備忘錄：共用的兩個人都能編輯，私人的連照片對方都看不到', { skip }, async () => {
+  const couple = (await ok(A, 'app_me')).couple.id;
+  const bMemoEvents = async () => (await rest(B, 'GET', 'realtime_events?select=id&table_name=eq.memos')).data.length;
+  const shared = await ok(A, 'app_save_memo', { title: '週末採買清單', body: '牛奶、雞蛋', pinned: true, color: 'yellow' });
+  assert.deepEqual(Object.keys(shared).sort(),
+    ['body', 'color', 'createdAt', 'id', 'media', 'pinned', 'shared', 'title', 'updatedAt', 'userId']);
+  assert.equal(shared.shared, true);
+  const n = await B.sock.notified('memo');
+  assert.equal(n.title, '阿哲 新增了共同備忘錄');
+  assert.equal(n.body, '週末採買清單');
+  assert.equal(n.data.id, shared.id);
+  await B.sock.next((m) => m.type === 'changed' && m.table === 'memos');
+
+  // 私人備忘錄：照片放在 u/<自己>/，對方收不到通知、changed，也讀不到檔案
+  const events = await bMemoEvents();
+  const secretPhoto = `u/${A.id}/${crypto.randomUUID()}.jpg`;
+  assert.equal((await upload(A, secretPhoto, jpeg())).status, 200);
+  const secret = await ok(A, 'app_save_memo', { title: '生日驚喜計畫', body: '偷偷訂餐廳', shared: false, color: 'lavender',
+    media: [{ path: secretPhoto, kind: 'photo' }] });
+  assert.equal(secret.shared, false);
+  await ok(A, 'app_save_memo', { id: secret.id, body: '偷偷訂餐廳，記得蛋糕' });
+  assert.equal(await bMemoEvents(), events, '私人備忘錄的變動不會讓對方收到 changed');
+  assert.deepEqual((await ok(B, 'app_memos')).map((m) => m.id), [shared.id]);
+  assert.deepEqual((await rest(B, 'GET', 'memos?select=id')).data, [{ id: shared.id }]);
+  assert.equal((await rpc(B, 'app_save_memo', { id: secret.id, title: '偷看' })).data.message, 'not_found');
+  notFound(await download(B, secretPhoto)); // 對方讀不到私人照片
+  assert.equal((await download(A, secretPhoto)).status, 200);
+  assert.ok(!B.sock.queued().some((m) => /生日驚喜/.test(`${m.title} ${m.body}`)));
+  // 對方不能上傳到我的私人資料夾或別的情侶的資料夾；bucket 只收照片和語音
+  uploadDenied(await upload(B, `u/${A.id}/${crypto.randomUUID()}.jpg`, jpeg()));
+  uploadDenied(await upload(B, `c/${crypto.randomUUID()}/${crypto.randomUUID()}.jpg`, jpeg()));
+  uploadDenied(await upload(B, `c/${couple}/sub/${crypto.randomUUID()}.jpg`, jpeg()));
+  assert.match((await upload(A, `c/${couple}/${crypto.randomUUID()}.txt`, Buffer.from('hi'), 'text/plain')).text, /mime type/);
+  // 照片路徑由資料庫檢查
+  assert.equal((await rpc(A, 'app_save_memo', { title: 'x', shared: false, media: [{ path: `c/${couple}/x.jpg`, kind: 'photo' }] })).data.message,
+    'invalid_media', '私人備忘錄的照片要在自己的資料夾');
+  assert.equal((await rpc(B, 'app_save_memo', { id: shared.id, media: [{ path: secretPhoto, kind: 'photo' }] })).data.message,
+    'invalid_media', '共用備忘錄不能指到私人照片');
+
+  // 對方可以改共用的內容，但不能改成私人、不能刪
+  const edited = await ok(B, 'app_save_memo', { id: shared.id, body: '牛奶、雞蛋、吐司', shared: false, pinned: false });
+  assert.equal(edited.body, '牛奶、雞蛋、吐司');
+  assert.equal(edited.shared, true);
+  assert.equal(edited.pinned, false);
+  assert.equal(edited.userId, A.id);
+  await A.sock.next((m) => m.type === 'changed' && m.table === 'memos' && m.by === B.id);
+  denied(await rest(B, 'PATCH', `memos?id=eq.${shared.id}`, { shared: false }));
+  assert.equal((await rpc(B, 'app_delete_memo', { id: shared.id })).data.message, 'not_found');
+  await rest(B, 'DELETE', `memos?id=eq.${shared.id}`);
+  const mine = await ok(A, 'app_memos');
+  assert.deepEqual(mine.map((m) => m.id).sort(), [shared.id, secret.id].sort());
+
+  // 只有上傳的人能刪檔案；不能覆寫（檔名都是新的 uuid）
+  const before = await download(A, files.diaryPhoto);
+  assert.notEqual((await removeFile(B, files.diaryPhoto)).status, 200);
+  assert.notEqual((await upload(B, files.diaryPhoto, jpeg(), 'image/jpeg', { upsert: true })).status, 200);
+  assert.notEqual((await upload(A, files.diaryPhoto, jpeg())).status, 200);
+  const after = await download(A, files.diaryPhoto);
+  assert.equal(after.status, 200, '對方刪不掉我上傳的照片');
+  assert.ok(after.bytes.equals(before.bytes), '也不能覆寫');
+  assert.equal((await removeFile(A, secretPhoto)).status, 200);
+  notFound(await download(A, secretPhoto));
+  assert.deepEqual(await ok(A, 'app_delete_memo', { id: secret.id }), { ok: true });
+});
+
 test('歷史紀錄與通知設定', { skip }, async () => {
   const h = await ok(A, 'app_history', { limit: 100 });
   const kinds = new Set(h.map((x) => x.kind));
@@ -429,7 +624,9 @@ test('歷史紀錄與通知設定', { skip }, async () => {
   const prefs = await ok(A, 'app_notification_prefs');
   assert.equal(prefs.comfort, false);
   assert.equal(prefs.mood, true);
-  assert.equal(Object.keys(prefs).length, 10);
+  assert.equal(Object.keys(prefs).length, 12);
+  assert.equal(prefs.diary, true);
+  assert.equal(prefs.memo, true);
   await ok(B, 'app_send_comfort', { kind: 'kiss' });
   await assert.rejects(A.sock.notified('comfort'), /等不到/);
 });
@@ -446,6 +643,19 @@ test('解除配對後立即看不到對方', { skip }, async () => {
   const r = await rpc(A, 'app_locate_partner');
   assert.equal(r.status, 400);
   assert.equal(r.data.message, 'not_paired');
+  // 日曆、共用備忘錄、兩人資料夾裡的照片都看不到了（沒配對的人讀不到任何一對情侶的檔案）
+  assert.deepEqual(await ok(A, 'app_day_entries', { from: '2000-01-01', to: '2200-01-01' }), []);
+  assert.ok((await ok(B, 'app_memos')).every((m) => m.userId === B.id), '看不到對方的共用備忘錄');
+  notFound(await download(A, files.diaryPhoto));
+  notFound(await download(B, files.diaryPhoto));
+  uploadDenied(await upload(A, files.diaryPhoto.replace(/[^/]+$/, `${crypto.randomUUID()}.jpg`), jpeg())); // 原本的共用資料夾
+  assert.equal((await rpc(A, 'app_save_day_entry', { day: localToday(), body: '一個人' })).data.message, 'not_paired');
+  // 自己的私人資料夾照常可以用
+  const mine = `u/${A.id}/${crypto.randomUUID()}.jpg`;
+  assert.equal((await upload(A, mine, jpeg())).status, 200);
+  assert.equal((await download(A, mine)).status, 200);
+  assert.equal((await ok(A, 'app_save_memo', { title: '一個人的清單', shared: true, media: [{ path: mine, kind: 'photo' }] })).shared, false,
+    '沒配對時備忘錄只能是私人的');
 });
 
 test('改密碼：先用舊密碼登入確認，再更新', { skip }, async () => {

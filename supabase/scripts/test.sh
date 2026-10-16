@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # 在本機的 Supabase（Supabase CLI + Docker）上執行資料庫與 API 測試：
-#   1. 檢查 supabase/setup.sql 和 migrations 一致
-#   2. supabase db reset：重建資料庫並套用 migrations
-#   3. 資料庫冒煙測試（supabase/tests/rls_smoke.sql，在交易裡執行，最後 rollback）
-#   4. Node 測試（supabase/tests/*.test.js）：Auth、RPC、Realtime 端對端，以及經期預測和 App 一致
+#   1. 檢查 supabase/setup.sql、upgrade-v2.sql 和 migrations 一致
+#   2. 舊版使用者：只套用 v1 的 migrations，再執行 upgrade-v2.sql 兩次（只跑一次就好，但多跑也不能壞）；
+#      先放一個自己建的公開 media 空間，更新後要變成不公開
+#   3. 新專案：空的資料庫直接執行 setup.sql
+#   4. supabase db reset：重建資料庫並套用 migrations
+#   2–4 每次都跑資料庫冒煙測試（supabase/tests/rls_smoke.sql，在交易裡執行，最後 rollback）
+#   5. Node 測試（supabase/tests/*.test.js）：Auth、RPC、Realtime、Storage 端對端，以及經期預測和 App 一致
 # 需要：Docker、Supabase CLI（SUPABASE_BIN，或用 npx supabase）、psql、Node.js 22+。
 # 測試完 Supabase 會繼續執行（App 的整合測試可以接著用），要停掉請執行 supabase stop。
 set -euo pipefail
@@ -16,12 +19,14 @@ command -v docker >/dev/null || { echo "需要 Docker" >&2; exit 1; }
 command -v psql >/dev/null || { echo "需要 psql（PostgreSQL client）" >&2; exit 1; }
 command -v node >/dev/null || { echo "需要 Node.js 22+" >&2; exit 1; }
 
-echo "== setup.sql"
+echo "== setup.sql、upgrade-v2.sql"
 bash supabase/scripts/build-setup.sh --check
 
 echo "== 啟動本機 Supabase"
-"${sb[@]}" start -x studio,imgproxy,edge-runtime,logflare,vector,storage-api,mailpit,supavisor,postgres-meta >/dev/null
-"${sb[@]}" db reset >/dev/null
+"${sb[@]}" start -x studio,imgproxy,edge-runtime,logflare,vector,mailpit,supavisor,postgres-meta >/dev/null
+project="$(sed -n 's/^project_id = "\(.*\)"$/\1/p' supabase/config.toml)"
+docker ps --format '{{.Names}}' | grep -qx "supabase_storage_$project" \
+  || { echo "Storage 沒有啟動（之前用別的參數啟動過）：請先執行 supabase stop 再測試" >&2; exit 1; }
 
 env_out="$("${sb[@]}" status -o env 2>/dev/null)"
 val() { sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p" <<<"$env_out" | head -1; }
@@ -33,10 +38,39 @@ export DATABASE_URL="$(val DB_URL)"
 [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_KEY" ] && [ -n "$SUPABASE_SERVICE_KEY" ] && [ -n "$DATABASE_URL" ] \
   || { echo "讀不到 supabase status 的網址或金鑰" >&2; exit 1; }
 
-echo "== 資料庫冒煙測試"
-psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -f supabase/tests/rls_smoke.sql 2>&1 | sed 's/^psql:[^ ]* NOTICE:  //'
+# 成功時不顯示輸出，失敗時才印出來
+quiet() { local out; out="$("$@" 2>&1)" || { echo "$out" >&2; return 1; }; }
+run_sql() { quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -f "$1"; }
+smoke() { psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -f supabase/tests/rls_smoke.sql 2>&1 | sed 's/^psql:[^ ]* NOTICE:  //'; }
+schema_is_2() {
+  [ "$(psql "$DATABASE_URL" -X -tAc "select public.app_health()->>'schema'")" = 2 ] || { echo "app_health 沒有回傳 schema 2" >&2; exit 1; }
+}
 
-echo "== Auth、RPC 與 Realtime 測試"
+echo "== 舊版資料庫執行 upgrade-v2.sql（兩次）"
+quiet "${sb[@]}" db reset --version 20261015000004
+quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -c "insert into storage.buckets (id, name, public) values ('media', 'media', true)"
+run_sql supabase/upgrade-v2.sql
+run_sql supabase/upgrade-v2.sql
+schema_is_2
+quiet smoke
+
+echo "== 新專案執行 setup.sql"
+empty="$(mktemp -d)"
+trap 'rm -rf "$empty"' EXIT
+mkdir -p "$empty/supabase/migrations"
+cp supabase/config.toml "$empty/supabase/"
+quiet "${sb[@]}" db reset --workdir "$empty"
+run_sql supabase/setup.sql
+schema_is_2
+quiet smoke
+
+echo "== 套用 migrations"
+quiet "${sb[@]}" db reset
+
+echo "== 資料庫冒煙測試"
+smoke
+
+echo "== Auth、RPC、Realtime 與 Storage 測試"
 node --test supabase/tests/*.test.js
 
 echo "全部通過。本機 Supabase 還在執行：$SUPABASE_URL（停止：supabase stop）"

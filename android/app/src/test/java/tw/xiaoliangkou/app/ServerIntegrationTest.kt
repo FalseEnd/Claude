@@ -14,7 +14,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -24,6 +26,8 @@ import org.junit.Test
 import tw.xiaoliangkou.app.core.PaymentParser
 import tw.xiaoliangkou.app.data.Api
 import tw.xiaoliangkou.app.data.AppException
+import tw.xiaoliangkou.app.data.MediaItem
+import tw.xiaoliangkou.app.data.ProfileInfo
 import tw.xiaoliangkou.app.data.RealtimeClient
 import tw.xiaoliangkou.app.data.RemoteRepository
 import tw.xiaoliangkou.app.data.SessionManager
@@ -84,6 +88,171 @@ class ServerIntegrationTest {
         val repo = RemoteRepository(c.api, rt, scope) { notes += it }
         rt.start(url!!, key!!, s.userId, { sm.freshToken() }, c.api)
         return Client(email(name), sm, c, c.api, repo, rt, notes)
+    }
+
+    /** 有沒有丟出錯誤就好（錯誤代碼交給資料庫決定） */
+    private suspend fun fails(what: String, block: suspend () -> Unit) {
+        try { apiCall { block() } } catch (e: AppException) { return }
+        throw AssertionError("應該要失敗：$what")
+    }
+
+    /** 上傳的檔案：之後解除配對時再檢查一次權限 */
+    private class V2Files(val shared: MediaItem, val sharedBytes: ByteArray, val secret: MediaItem, val secretBytes: ByteArray)
+
+    /** 個人資料、只有自己看得到的備註、日曆紀錄、備忘錄、照片與語音 */
+    private suspend fun v2Features(zhe: Client, yu: Client): V2Files {
+        val health = apiCall { anon().api.health() }
+        assertEquals(RemoteRepository.SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
+        zhe.repo.refreshAll()
+        assertFalse(zhe.repo.state.value.schemaOutdated)
+        val couple = zhe.repo.state.value.couple!!.id
+
+        // 個人資料：對方看得到（app_me 的 partner.info），生日一起存
+        val info = ProfileInfo.build(mapOf(ProfileInfo.HEIGHT to "176", ProfileInfo.BLOOD_TYPE to "a", ProfileInfo.LIKES to "拉麵", ProfileInfo.PHONE to ""))
+        zhe.repo.updateProfileInfo("阿哲", "1998-03-21", info)
+        assertEquals(176.0, ProfileInfo.number(zhe.repo.state.value.me!!.info, ProfileInfo.HEIGHT)!!, 0.0)
+        assertEquals("1998-03-21", zhe.repo.state.value.me!!.birthday)
+        assertNull(ProfileInfo.text(zhe.repo.state.value.me!!.info, ProfileInfo.PHONE))
+        eventually("對方看到個人資料") { yu.repo.state.value.partner?.info?.let { ProfileInfo.text(it, ProfileInfo.BLOOD_TYPE) } == "A" }
+        assertEquals("拉麵", ProfileInfo.text(yu.repo.state.value.partner!!.info, ProfileInfo.LIKES))
+        assertEquals("1998-03-21", yu.repo.state.value.partner!!.birthday)
+        failsWith("invalid_input") { apiCall { zhe.api.updateProfile(buildJsonObject { put("info", JsonPrimitive("不是物件")) }) } }
+
+        // 只有自己看得到的備註：對方完全查不到，也改不了、刪不掉
+        zhe.repo.saveNote(null, "她喜歡半糖少冰")
+        val note = zhe.repo.state.value.notes.single()
+        assertEquals(yu.userId, note.aboutUser)
+        zhe.repo.saveNote(note.id, "她喜歡半糖少冰、不要珍珠")
+        assertEquals("她喜歡半糖少冰、不要珍珠", zhe.repo.state.value.notes.single().body)
+        yu.repo.refreshAll()
+        assertTrue(yu.repo.state.value.notes.isEmpty())
+        failsWith("not_found") { yu.api.saveNote(buildJsonObject { put("id", note.id); put("body", "偷改") }) }
+        runCatching { apiCall { yu.api.deleteNote(note.id) } }
+        zhe.repo.refreshAll()
+        assertEquals("她喜歡半糖少冰、不要珍珠", zhe.repo.state.value.notes.single().body)
+        zhe.repo.saveNote(null, "生日想要珍珠耳環")
+        assertEquals("生日想要珍珠耳環", zhe.repo.state.value.notes.first().body) // 新的在前
+        zhe.repo.deleteNote(note.id)
+        assertEquals(1, zhe.repo.state.value.notes.size)
+
+        // 照片、語音：c/<配對>/… 兩個人都讀得到；u/<我>/… 只有自己
+        val photoBytes = ByteArray(2048) { (it * 31).toByte() }
+        val photo = zhe.repo.uploadMedia(photoBytes, "image/jpeg", MediaItem.PHOTO, shared = true, width = 4, height = 3)
+        assertTrue(photo.path, photo.path.startsWith("c/$couple/"))
+        assertArrayEquals(photoBytes, zhe.repo.downloadMedia(photo.path))
+        assertArrayEquals(photoBytes, yu.repo.downloadMedia(photo.path))
+        val voice = yu.repo.uploadMedia(byteArrayOf(0, 0, 0, 24, 102, 116, 121, 112), "audio/mp4", MediaItem.VOICE, shared = true, durationMs = 1200)
+        assertTrue(voice.path.endsWith(".m4a"))
+        val secretBytes = byteArrayOf(7, 7, 7)
+        val secret = zhe.repo.uploadMedia(secretBytes, "image/png", MediaItem.PHOTO, shared = false)
+        assertTrue(secret.path, secret.path.startsWith("u/${zhe.userId}/"))
+        assertArrayEquals(secretBytes, zhe.repo.downloadMedia(secret.path))
+        fails("對方讀我的私人檔案") { yu.repo.downloadMedia(secret.path) }
+        fails("上傳到對方的私人資料夾") { yu.api.uploadMedia("u/${zhe.userId}/${UUID.randomUUID()}.jpg", "image/jpeg", photoBytes) }
+        fails("上傳到別的配對") { zhe.api.uploadMedia("c/${UUID.randomUUID()}/${UUID.randomUUID()}.jpg", "image/jpeg", photoBytes) }
+        failsWith("invalid_media") { zhe.api.uploadMedia("c/$couple/${UUID.randomUUID()}.txt", "text/plain", photoBytes) }
+
+        // 日曆：記錄那天的生活，兩個人都看得到，對方會收到通知
+        val today = LocalDate.now()
+        zhe.repo.saveDayEntry(null, today, "一起吃了火鍋 🍲", listOf(photo))
+        val entry = zhe.repo.state.value.dayEntriesOn(today).single()
+        assertEquals(listOf(photo), entry.media)
+        assertEquals(zhe.userId, entry.userId)
+        eventually("對方看到日曆紀錄") { yu.repo.state.value.dayEntriesOn(today).any { it.id == entry.id } }
+        eventually("日曆紀錄通知") { yu.notes.any { it.kind == "diary" } }
+        yu.repo.saveDayEntry(null, today, "", listOf(voice))
+        eventually("自己看到對方的語音") { zhe.repo.state.value.dayEntriesOn(today).size == 2 }
+        assertEquals(listOf(voice), zhe.repo.state.value.dayEntriesOn(today).first { it.userId == yu.userId }.media)
+        // media 不能指到別的配對或私人資料夾（資料庫擋；直接呼叫 RPC，不經過 App 搬檔案）；不能改、刪對方的
+        suspend fun saveRaw(media: List<MediaItem>) = zhe.api.saveDayEntry(buildJsonObject {
+            put("day", today.toString()); put("body", "偷看"); put("media", Api.mediaJson(media))
+        })
+        failsWith("invalid_media") { saveRaw(listOf(MediaItem("c/${UUID.randomUUID()}/x.jpg", MediaItem.PHOTO))) }
+        failsWith("invalid_media") { saveRaw(listOf(secret)) }
+        // 從 App 存：私人檔案先複製到共用的地方，對方讀得到；別的配對的檔案讀不到，直接拿掉
+        zhe.repo.saveDayEntry(null, today, "私人的", listOf(secret, MediaItem("c/${UUID.randomUUID()}/x.jpg", MediaItem.PHOTO)))
+        val copied = zhe.repo.state.value.dayEntriesOn(today).single { it.body == "私人的" }
+        assertTrue(copied.media.single().path, copied.media.single().path.startsWith("c/$couple/"))
+        assertArrayEquals(secretBytes, yu.repo.downloadMedia(copied.media.single().path))
+        zhe.repo.deleteDayEntry(copied.id)
+        eventually("刪掉複製的紀錄") { zhe.repo.state.value.dayEntriesOn(today).size == 2 && yu.repo.state.value.dayEntries.none { it.id == copied.id } }
+        fails("改對方的紀錄") { yu.repo.saveDayEntry(entry.id, today, "改掉", emptyList()) }
+        runCatching { apiCall { yu.api.deleteDayEntry(entry.id) } }
+        zhe.repo.loadDayEntries(today.minusDays(1), today.plusDays(1))
+        assertEquals("一起吃了火鍋 🍲", zhe.repo.state.value.dayEntries.single { it.id == entry.id }.body)
+        // 換到很久以前的月份：那段期間沒有紀錄，目前的紀錄還在
+        zhe.repo.loadDayEntries(today.minusMonths(8).withDayOfMonth(1), today.minusMonths(7))
+        assertEquals(2, zhe.repo.state.value.dayEntriesOn(today).size)
+        zhe.repo.saveDayEntry(entry.id, today.minusDays(1), "其實是昨天", listOf(photo))
+        eventually("對方看到改過的日期") { yu.repo.state.value.dayEntries.any { it.id == entry.id && it.day == today.minusDays(1).toString() } }
+        zhe.repo.deleteDayEntry(entry.id)
+        eventually("對方看到刪除") { yu.repo.state.value.dayEntries.none { it.id == entry.id } }
+
+        // 備忘錄：共用的兩個人都能改，只有建立的人能刪、能改共用設定
+        zhe.repo.saveMemo(null, "週末採買清單", "雞蛋、牛奶", listOf(photo), shared = true, pinned = true, color = "yellow")
+        val memo = zhe.repo.state.value.memos.single()
+        assertEquals(listOf(photo), memo.media)
+        eventually("對方看到共用備忘錄") { yu.repo.state.value.memos.any { it.id == memo.id } }
+        eventually("備忘錄通知") { yu.notes.any { it.kind == "memo" } }
+        yu.repo.saveMemo(memo.id, memo.title, "雞蛋、牛奶、草莓", memo.media + voice, shared = true, pinned = true, color = "pink")
+        eventually("自己看到對方改的內容") { zhe.repo.state.value.memo(memo.id)?.body == "雞蛋、牛奶、草莓" }
+        assertEquals("pink", zhe.repo.state.value.memo(memo.id)!!.color)
+        assertEquals(zhe.userId, zhe.repo.state.value.memo(memo.id)!!.userId)
+        runCatching { yu.repo.saveMemo(memo.id, memo.title, "改成私人", memo.media, shared = false, pinned = true, color = "pink") }
+        runCatching { apiCall { yu.api.saveMemo(buildJsonObject { put("id", memo.id); put("shared", false) }) } }
+        runCatching { apiCall { yu.api.deleteMemo(memo.id) } }
+        zhe.repo.refreshAll()
+        yu.repo.refreshAll()
+        assertTrue("對方不能改成私人", zhe.repo.state.value.memo(memo.id)!!.shared)
+        assertTrue("對方不能刪", yu.repo.state.value.memo(memo.id) != null)
+
+        // 私人備忘錄：對方看不到；照片要放在 u/<我>/
+        zhe.repo.saveMemo(null, "生日驚喜", "珍珠耳環", listOf(secret), shared = false, pinned = false, color = "lavender")
+        val surprise = zhe.repo.state.value.memos.first { it.title == "生日驚喜" }
+        assertFalse(surprise.shared)
+        yu.repo.refreshAll()
+        assertTrue(yu.repo.state.value.memos.none { it.id == surprise.id })
+        failsWith("invalid_media") { zhe.api.saveMemo(buildJsonObject {
+            put("title", "x"); put("shared", false); put("media", Api.mediaJson(listOf(photo)))
+        }) }
+        failsWith("invalid_media") { zhe.api.saveMemo(buildJsonObject {
+            put("title", "x"); put("shared", true); put("media", Api.mediaJson(listOf(secret)))
+        }) }
+        // 改成共用：照片自動搬到共用的地方，對方就看得到、讀得到
+        zhe.repo.saveMemo(surprise.id, surprise.title, surprise.body, surprise.media, shared = true, pinned = false, color = "lavender")
+        val moved = zhe.repo.state.value.memo(surprise.id)!!
+        assertTrue(moved.shared)
+        assertTrue(moved.media.single().path.startsWith("c/$couple/"))
+        eventually("對方看到改成共用的備忘錄") { yu.repo.state.value.memo(surprise.id) != null }
+        assertArrayEquals(secretBytes, yu.repo.downloadMedia(moved.media.single().path))
+        zhe.repo.deleteMemo(surprise.id)
+        eventually("對方看到刪除的備忘錄") { yu.repo.state.value.memo(surprise.id) == null }
+        // 改成只有自己：照片搬到 u/<我>/，共用資料夾裡的原始檔刪掉，對方就讀不到了
+        val draft = zhe.repo.uploadMedia(photoBytes, "image/jpeg", MediaItem.PHOTO, shared = true)
+        assertArrayEquals(photoBytes, yu.repo.downloadMedia(draft.path))
+        zhe.repo.saveMemo(null, "偷偷準備", "驚喜派對", listOf(draft), shared = false, pinned = false, color = "peach")
+        val hidden = zhe.repo.state.value.memos.first { it.title == "偷偷準備" }
+        assertFalse(hidden.shared)
+        assertTrue(hidden.media.single().path, hidden.media.single().path.startsWith("u/${zhe.userId}/"))
+        assertArrayEquals(photoBytes, zhe.repo.downloadMedia(hidden.media.single().path))
+        fails("對方讀改成私人前的照片") { yu.repo.downloadMedia(draft.path) }
+        zhe.repo.deleteMemo(hidden.id)
+        assertTrue(zhe.repo.state.value.memo(memo.id)!!.pinned)
+        return V2Files(photo, photoBytes, secret, secretBytes)
+    }
+
+    /** 解除配對後：原本共用的檔案對方讀不到了，自己的私人檔案還在；沒配對不能寫日曆，備忘錄只能私人 */
+    private suspend fun afterUnpair(zhe: Client, yu: Client, files: V2Files) {
+        fails("解除後讀原本共用的檔案") { yu.repo.downloadMedia(files.shared.path) }
+        assertArrayEquals(files.secretBytes, zhe.repo.downloadMedia(files.secret.path))
+        failsWith("not_paired") { yu.repo.uploadMedia(byteArrayOf(1), "image/jpeg", MediaItem.PHOTO, shared = true) }
+        failsWith("not_paired") { apiCall { yu.api.saveDayEntry(buildJsonObject { put("day", LocalDate.now().toString()); put("body", "一個人") }) } }
+        assertTrue(yu.repo.state.value.dayEntries.isEmpty())
+        yu.repo.saveMemo(null, "自己的", "一個人的備忘錄", emptyList(), shared = true, pinned = false, color = "pink")
+        assertFalse(yu.repo.state.value.memos.first { it.title == "自己的" }.shared)
+        assertTrue("解除後看不到對方的備忘錄", yu.repo.state.value.memos.all { it.userId == yu.userId })
+        zhe.repo.refreshAll()
+        assertTrue(zhe.repo.state.value.memos.all { it.userId == zhe.userId })
     }
 
     @Test fun fullFlowAgainstSupabase() = runBlocking {
@@ -251,10 +420,14 @@ class ServerIntegrationTest {
             failsWith("invalid_login") { anon().signIn(yu.email, "secret1") }
             assertEquals(yu.userId, apiCall { anon().signIn(yu.email, "secret2") }.userId)
 
+            // 2026-10 新功能（upgrade-v2.sql）
+            val v2 = v2Features(zhe, yu)
+
             // 解除配對
             yu.repo.unpair()
             eventually("解除後看不到對方") { !zhe.repo.state.value.paired && zhe.repo.state.value.partnerStatus.device == null }
             assertNotNull(zhe.repo.state.value.me)
+            afterUnpair(zhe, yu, v2)
             zhe.realtime.stop(); yu.realtime.stop()
             // 登出後 refresh token 失效：換新失敗就要請使用者重新登入
             apiCall { zhe.supabase.signOut(zhe.session.current!!.accessToken) }

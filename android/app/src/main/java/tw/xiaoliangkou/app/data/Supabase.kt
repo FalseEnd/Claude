@@ -26,6 +26,8 @@ import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -214,6 +216,19 @@ interface RestService {
     @POST("rest/v1/rpc/{name}") suspend fun rpc(@Path("name") name: String, @Body body: RequestBody): ResponseBody
 }
 
+/** Storage：照片、語音（[path] 是 c/<配對>/<uuid>.jpg 這種，斜線不編碼） */
+interface StorageService {
+    @POST("storage/v1/object/{bucket}/{path}")
+    suspend fun upload(@Path("bucket") bucket: String, @Path("path", encoded = true) path: String, @Body body: RequestBody): ResponseBody
+
+    @GET("storage/v1/object/authenticated/{bucket}/{path}")
+    suspend fun download(@Path("bucket") bucket: String, @Path("path", encoded = true) path: String): ResponseBody
+
+    /** 一次刪好幾個檔案：body 是 {"prefixes":[path, …]}，刪不掉的（不是自己上傳的）會被略過 */
+    @HTTP(method = "DELETE", path = "storage/v1/object/{bucket}", hasBody = true)
+    suspend fun remove(@Path("bucket") bucket: String, @Body body: RequestBody): ResponseBody
+}
+
 private val JSON_TYPE = "application/json".toMediaType()
 internal fun JsonObject.toBody(): RequestBody = toString().toRequestBody(JSON_TYPE)
 
@@ -333,10 +348,13 @@ class SupabaseClient(val url: String, val key: String, val session: SessionManag
         })
         .build()
 
+    // 上傳照片、語音比較久：用同一組連線，只是等久一點
+    private val media = authed.newBuilder().writeTimeout(60, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+
     private fun retrofit(client: OkHttpClient) = Retrofit.Builder().baseUrl("$url/").client(client).build()
 
     private val auth: GoTrueService = retrofit(keyOnly).create(GoTrueService::class.java)
-    val api = Api(retrofit(authed).create(RestService::class.java))
+    val api = Api(retrofit(authed).create(RestService::class.java), retrofit(media).create(StorageService::class.java))
 
     private fun parseSession(body: ResponseBody, email: String): Session =
         Api.json.decodeFromString(GoTrueSession.serializer(), body.string()).toSession(email)
