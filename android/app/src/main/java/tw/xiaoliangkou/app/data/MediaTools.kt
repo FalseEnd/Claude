@@ -83,7 +83,7 @@ fun compressPhoto(context: Context, uri: Uri): Pair<ByteArray, IntSize>? =
 /**
  * 錄音：AAC（.m4a）、44.1 kHz、單聲道、64 kbps，最長 3 分鐘。
  * 錄到上限時會自己停下來，並呼叫 [onLimit]（畫面再呼叫 [stop] 拿檔案）。
- * [start]、[stop]、[cancel] 會碰到檔案，請在背景執行緒呼叫；不用了一定要 [cancel]，麥克風才會放開。
+ * [start]、[stop]、[cancel] 會碰到檔案，請在背景執行緒呼叫；離開畫面時一定要 [release]，麥克風才會放開。
  */
 class VoiceRecorder(private val context: Context) {
     companion object {
@@ -94,6 +94,8 @@ class VoiceRecorder(private val context: Context) {
 
     @Volatile private var recorder: MediaRecorder? = null
     private var file: File? = null
+    /** 已經不用了：之後的 [start] 都不會開麥克風（還在開的那一次開好也會馬上關掉） */
+    @Volatile private var released = false
     @Volatile private var startedAt = 0L
     @Volatile var onLimit: () -> Unit = {}
 
@@ -103,6 +105,7 @@ class VoiceRecorder(private val context: Context) {
 
     @Synchronized
     fun start(): File {
+        if (released) throw AppException("錄音已經結束了", "recorder")
         cancel()
         val dir = File(context.cacheDir, "voice").apply { mkdirs() }
         val f = File(dir, "${UUID.randomUUID()}.m4a")
@@ -128,6 +131,7 @@ class VoiceRecorder(private val context: Context) {
         recorder = r
         file = f
         startedAt = SystemClock.elapsedRealtime()
+        if (released) { cancel(); throw AppException("錄音已經結束了", "recorder") }
         return f
     }
 
@@ -149,14 +153,22 @@ class VoiceRecorder(private val context: Context) {
         return f to duration
     }
 
+    /** 丟掉錄音；有給 [only] 的話只丟那一段（之後又開始的新錄音不受影響） */
     @Synchronized
-    fun cancel() {
+    fun cancel(only: File? = null) {
         val r = recorder ?: return
+        if (only != null && only != file) return
         recorder = null
         runCatching { r.stop() }
         r.release()
         file?.delete()
         file = null
+    }
+
+    /** 不用了：丟掉錄音、放開麥克風，之後也不能再錄 */
+    fun release() {
+        released = true
+        cancel()
     }
 }
 
@@ -200,6 +212,10 @@ class VoicePlayer {
 
     @Synchronized
     private fun stopIf(p: MediaPlayer) { if (player === p) stop() }
+
+    /** 正在播的是 [file] 才停 */
+    @Synchronized
+    fun stop(file: File) { if (_playing.value == file) stop() }
 
     @Synchronized
     fun stop() {

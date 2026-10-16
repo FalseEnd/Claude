@@ -672,8 +672,9 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
     private fun notFound() = AppException(Errors.DB_MESSAGES.getValue("not_found"), "not_found")
 
     override suspend fun updateProfileInfo(displayName: String, birthday: String?, info: JsonObject) {
-        Limits.profile(displayName, birthday, info)
-        _state.update { it.copy(me = it.me?.copy(displayName = displayName.trim(), birthday = birthday, info = info)) }
+        val name = displayName.trim()
+        Limits.profile(name, birthday, info)
+        _state.update { it.copy(me = it.me?.copy(displayName = name, birthday = birthday, info = info)) }
     }
 
     override suspend fun saveNote(id: String?, body: String) {

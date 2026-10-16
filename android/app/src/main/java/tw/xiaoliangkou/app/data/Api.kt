@@ -117,6 +117,14 @@ class Api(private val rest: RestService, private val storage: StorageService? = 
         return storageCall { s.download(MediaPaths.BUCKET, MediaPaths.checked(path)).use { it.bytes() } }
     }
 
+    /** 刪掉檔案（只有上傳的人刪得掉，其他的 Storage 會直接略過） */
+    suspend fun deleteMedia(paths: List<String>) {
+        if (paths.isEmpty()) return
+        val s = storage ?: throw AppException("這個連線不能刪除檔案", "no_storage")
+        val body = buildJsonObject { putJsonArray("prefixes") { paths.forEach { add(JsonPrimitive(MediaPaths.checked(it))) } } }
+        storageCall { s.remove(MediaPaths.BUCKET, body.toBody()).close() }
+    }
+
     /** Storage 的錯誤格式跟 PostgREST 不一樣，自己轉成中文 */
     private suspend fun <T> storageCall(block: suspend () -> T): T = try {
         block()
@@ -280,7 +288,7 @@ object Errors {
                 AppException("沒有權限存取這個檔案", "forbidden", status)
             code == 401 -> AppException(RELOGIN, "not_authenticated", status)
             code >= 500 -> AppException("Supabase 暫時有點狀況，等一下再試", "server_error", status)
-            else -> AppException(str("message") ?: "檔案傳送失敗（$code）", "storage_error", status)
+            else -> AppException("檔案傳送失敗，等一下再試試看（$code）", "storage_error", status)
         }
     }
 

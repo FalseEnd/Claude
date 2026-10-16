@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
@@ -79,6 +80,7 @@ import tw.xiaoliangkou.app.data.VoiceRecorder
 import tw.xiaoliangkou.app.data.compressPhoto
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.theme.Cute
+import java.io.File
 
 /** 語音長度：0:12、1:05 */
 fun formatDuration(ms: Long): String {
@@ -126,25 +128,28 @@ fun MediaThumbs(media: List<MediaItem>, vm: AppViewModel, size: Dp = 86.dp, onRe
 fun VoiceChip(item: MediaItem, vm: AppViewModel) {
     val scope = rememberCoroutineScope()
     val player = vm.container.voice
-    var playing by remember { mutableStateOf(false) }
+    // 有沒有在播看共用的播放器：播完、被別段語音打斷都會跟著變
+    var file by remember(item.path) { mutableStateOf<File?>(null) }
+    val current by player.playing.collectAsState()
+    val playing = file != null && current == file
     var loading by remember { mutableStateOf(false) }
     var position by remember { mutableLongStateOf(0L) }
     // 離開畫面就停掉
-    DisposableEffect(item.path) { onDispose { if (playing) player.stop() } }
+    DisposableEffect(item.path) { onDispose { file?.let(player::stop) } }
     LaunchedEffect(playing) {
         while (playing) { position = player.positionMs; delay(200) }
         position = 0
     }
 
     fun toggle() {
-        if (playing) { player.stop(); return }
+        if (playing) { file?.let(player::stop); return }
         if (loading) return
         loading = true
         scope.launch {
             try {
-                val f = vm.container.media.file(item.path) ?: throw AppException("語音下載不了，等一下再試試看", "not_found")
-                withContext(Dispatchers.IO) { player.play(f) { scope.launch { playing = false } } }
-                playing = true
+                val f = vm.container.media.file(item.path) ?: throw AppException("語音載入失敗，等一下再試試看", "not_found")
+                file = f
+                withContext(Dispatchers.IO) { player.play(f) {} }
             } catch (e: AppException) {
                 vm.toast(e.message ?: "這段語音播不出來")
             } finally {
@@ -191,7 +196,7 @@ fun MediaPickerRow(vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Un
     val left by rememberUpdatedState(remaining)
     var status by remember { mutableStateOf<String?>(null) }
     val recorder = remember { VoiceRecorder(context.applicationContext) }
-    var recording by remember { mutableStateOf(false) }
+    var recording by remember { mutableStateOf<File?>(null) }
     var elapsed by remember { mutableLongStateOf(0L) }
 
     suspend fun upload(bytes: ByteArray, mime: String, kind: String, width: Int? = null, height: Int? = null, durationMs: Long? = null) {
@@ -210,12 +215,15 @@ fun MediaPickerRow(vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Un
             vm.uploading {
                 vm.reportErrors {
                     try {
+                        // 讀不到的照片先跳過，其他的照樣上傳
+                        var skipped = 0
                         list.forEachIndexed { i, uri ->
                             status = if (list.size > 1) "上傳中… ${i + 1}/${list.size}" else "上傳中…"
-                            val (bytes, size) = withContext(Dispatchers.IO) { compressPhoto(context, uri) }
-                                ?: throw AppException("讀不到這張照片，換一張試試看", "invalid_media")
-                            upload(bytes, PhotoTools.MIME, MediaItem.PHOTO, size.width, size.height)
+                            val photo = withContext(Dispatchers.IO) { compressPhoto(context, uri) }
+                            if (photo == null) { skipped++; return@forEachIndexed }
+                            upload(photo.first, PhotoTools.MIME, MediaItem.PHOTO, photo.second.width, photo.second.height)
                         }
+                        if (skipped > 0) vm.toast(if (list.size == 1) "讀不到這張照片，換一張試試看" else "有 $skipped 張照片讀不到，先略過")
                     } finally {
                         status = null
                     }
@@ -228,16 +236,16 @@ fun MediaPickerRow(vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Un
         scope.launch {
             vm.reportErrors {
                 vm.container.voice.stop()
-                withContext(Dispatchers.IO) { recorder.start() }
+                val f = withContext(Dispatchers.IO) { recorder.start() }
                 elapsed = 0
-                recording = true
+                recording = f
             }
         }
     }
 
     fun stopRecording() {
-        if (!recording) return
-        recording = false
+        if (recording == null) return
+        recording = null
         scope.launch {
             vm.uploading {
                 vm.reportErrors {
@@ -255,8 +263,10 @@ fun MediaPickerRow(vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Un
     }
 
     fun cancelRecording() {
-        recording = false
-        vm.container.scope.launch(Dispatchers.IO) { recorder.cancel() }
+        val f = recording ?: return
+        recording = null
+        // 只丟這一段：馬上又按錄音的話，新的那段不會被取消掉
+        vm.container.scope.launch(Dispatchers.IO) { recorder.cancel(f) }
     }
 
     val pickMany = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { addPhotos(it) }
@@ -266,19 +276,19 @@ fun MediaPickerRow(vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Un
     }
 
     LaunchedEffect(recording) {
-        while (recording) { elapsed = recorder.elapsedMs; delay(250) }
+        while (recording != null) { elapsed = recorder.elapsedMs; delay(250) }
     }
     DisposableEffect(recorder) {
         // 錄到 3 分鐘會自己停：直接上傳
         recorder.onLimit = { scope.launch { stopRecording() } }
-        // 離開畫面：沒停的錄音直接丟掉，麥克風放開
+        // 離開畫面：沒停的錄音直接丟掉，麥克風放開（還在開麥克風的也會馬上關掉）
         onDispose {
             recorder.onLimit = {}
-            vm.container.scope.launch(Dispatchers.IO) { recorder.cancel() }
+            vm.container.scope.launch(Dispatchers.IO) { recorder.release() }
         }
     }
 
-    val idle = enabled && !vm.busy && !recording
+    val idle = enabled && !vm.busy && recording == null
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             SoftButton("📷 照片", small = true, enabled = idle) {
@@ -289,7 +299,7 @@ fun MediaPickerRow(vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Un
                     else -> pickMany.launch(request)
                 }
             }
-            if (recording) {
+            if (recording != null) {
                 CuteButton("⏹ 停止 ${formatDuration(elapsed)}", small = true, color = Cute.colors.bad, contentColor = Color.White) { stopRecording() }
                 SoftButton("取消", small = true) { cancelRecording() }
             } else {
@@ -303,7 +313,7 @@ fun MediaPickerRow(vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Un
             }
         }
         when {
-            recording -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            recording != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 RecordingDot()
                 Text("錄音中… 再按一下停止（最長 3 分鐘）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

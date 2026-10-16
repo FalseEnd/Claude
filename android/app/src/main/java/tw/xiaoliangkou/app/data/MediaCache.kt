@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -40,7 +41,13 @@ class MediaCache(context: Context, private val repo: () -> CoupleRepository?) {
         lockOf(path).withLock {
             if (f.length() > 0) return@withLock f
             val r = repo() ?: return@withLock null
-            val bytes = runCatching { r.downloadMedia(path) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return@withLock null
+            val bytes = try {
+                r.downloadMedia(path)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }?.takeIf { it.isNotEmpty() } ?: return@withLock null
             write(f, bytes)
             f
         }

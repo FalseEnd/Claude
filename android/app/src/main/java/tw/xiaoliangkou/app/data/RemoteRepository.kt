@@ -43,8 +43,8 @@ class RemoteRepository(
     private val pendingTables = mutableSetOf<String>()
     private var flushJob: Job? = null
 
-    /** 日曆紀錄已經載入的區間（預設今天前 62 天～後 31 天，換月時往外擴） */
-    @Volatile private var dayRange: Pair<LocalDate, LocalDate> = defaultDayRange()
+    /** 最近一次換月載入的日曆區間：有變動時跟預設區間（跟著今天走）一起重新載入 */
+    @Volatile private var browsing: Pair<LocalDate, LocalDate>? = null
 
     init {
         jobs += scope.launch {
@@ -130,7 +130,7 @@ class RemoteRepository(
     private suspend fun loadPrefs() { val p = apiCall { api.notificationPrefs() }; _state.update { it.copy(notifPrefs = p) } }
     private suspend fun loadNotes() { val n = v2 { api.notes() }; _state.update { it.copy(notes = n) } }
     private suspend fun loadMemos() { val m = v2 { api.memos() }; _state.update { it.copy(memos = m) } }
-    private suspend fun loadCurrentDays() { val (from, to) = dayRange; loadDays(from, to) }
+    private suspend fun loadCurrentDays() { dayWindows(defaultDayRange(), browsing).forEach { (from, to) -> loadDays(from, to) } }
 
     /** 載入 [from]～[to] 的生活紀錄，取代 state 裡這段期間的舊資料（沒配對就沒有紀錄） */
     private suspend fun loadDays(from: LocalDate, to: LocalDate) {
@@ -273,9 +273,10 @@ class RemoteRepository(
 
     // ---------------------------------------------------------------- 個人資料、備註
     override suspend fun updateProfileInfo(displayName: String, birthday: String?, info: JsonObject) {
-        Limits.profile(displayName, birthday, info)
+        val name = displayName.trim()
+        Limits.profile(name, birthday, info)
         val row = apiCall {
-            api.updateProfileRaw(buildJsonObject { put("displayName", displayName); put("birthday", birthday); put("info", info) })
+            api.updateProfileRaw(buildJsonObject { put("displayName", name); put("birthday", birthday); put("info", info) })
         }
         loadMe()
         // 舊的資料庫不認得 info：暱稱、生日存好了，個人資料沒存到
@@ -295,8 +296,7 @@ class RemoteRepository(
     // ---------------------------------------------------------------- 日曆的生活紀錄
     override suspend fun loadDayEntries(from: LocalDate, to: LocalDate) {
         if (to.isBefore(from)) return
-        val (a, b) = dayRange
-        dayRange = minOf(a, from) to maxOf(b, to)
+        browsing = from to to
         loadDays(from, to)
     }
 
@@ -307,7 +307,7 @@ class RemoteRepository(
         val row = v2 {
             api.saveDayEntry(buildJsonObject {
                 if (id != null) put("id", id)
-                put("day", day.toString()); put("body", body); put("media", Api.mediaJson(moved))
+                put("day", day.toString()); put("body", body); put("media", Api.mediaJson(moved.media))
             })
         }
         _state.update { st ->
@@ -332,27 +332,56 @@ class RemoteRepository(
         v2 {
             api.saveMemo(buildJsonObject {
                 if (id != null) put("id", id)
-                put("title", title); put("body", body); put("media", Api.mediaJson(moved))
+                put("title", title); put("body", body); put("media", Api.mediaJson(moved.media))
                 if (!theirs) put("shared", nowShared)
                 put("pinned", pinned); put("color", color)
             })
         }
+        // 改成只有自己：共用資料夾裡的原始檔要刪掉，不然對方還是列得出來、讀得到
+        if (!nowShared) deleteUnused(moved.from, exceptMemo = id)
         loadMemos()
     }
 
-    /** 改成共用或私人時，照片、語音要搬到對的地方（c/<配對>/ 或 u/<我>/）：下載再重新上傳 */
-    private suspend fun relocate(media: List<MediaItem>, shared: Boolean): List<MediaItem> {
+    /** 搬好的 media，和搬走的原始檔 */
+    private class Relocated(val media: List<MediaItem>, val from: List<String>)
+
+    /**
+     * 改成共用或私人時，照片、語音要搬到對的地方（c/<配對>/ 或 u/<我>/）：下載再重新上傳。
+     * 以前的配對留下來的檔案已經讀不到了，直接拿掉（資料庫存的時候也會拿掉）。
+     */
+    private suspend fun relocate(media: List<MediaItem>, shared: Boolean): Relocated {
         val prefix = mediaPrefix(shared)
-        return media.map { m ->
-            if (m.path.startsWith(prefix)) m
-            else {
-                val mime = m.mime ?: MediaPaths.mimeOf(m.path)
-                val bytes = v2 { api.downloadMedia(m.path) }
-                val path = MediaPaths.under(prefix, mime)
-                v2 { api.uploadMedia(path, mime, bytes) }
-                m.copy(path = path, mime = mime)
+        val couple = "c/${_state.value.couple?.id}/"
+        val from = mutableListOf<String>()
+        val out = media.mapNotNull { m ->
+            when {
+                m.path.startsWith(prefix) -> m
+                m.path.startsWith("c/") && !m.path.startsWith(couple) -> null
+                else -> {
+                    val mime = m.mime ?: MediaPaths.mimeOf(m.path)
+                    val bytes = try {
+                        v2 { api.downloadMedia(m.path) }
+                    } catch (e: AppException) {
+                        if (e.code == "not_found" || e.code == "forbidden") return@mapNotNull null
+                        throw e
+                    }
+                    val path = MediaPaths.under(prefix, mime)
+                    v2 { api.uploadMedia(path, mime, bytes) }
+                    from += m.path
+                    m.copy(path = path, mime = mime)
+                }
             }
         }
+        return Relocated(out, from)
+    }
+
+    /** 刪掉共用資料夾裡已經沒有用到的檔案（盡量刪，失敗就算了；只有上傳的人刪得掉） */
+    private suspend fun deleteUnused(paths: List<String>, exceptMemo: String?) {
+        val st = _state.value
+        val used = (st.memos.filter { it.id != exceptMemo }.flatMap { it.media } + st.dayEntries.flatMap { it.media }).mapTo(HashSet()) { it.path }
+        val unused = paths.filter { it.startsWith("c/") && it !in used }
+        if (unused.isEmpty()) return
+        try { apiCall { api.deleteMedia(unused) } } catch (e: AppException) { }
     }
 
     private fun mediaPrefix(shared: Boolean): String {
@@ -406,6 +435,13 @@ class RemoteRepository(
         const val SCHEMA = 2
 
         fun defaultDayRange(today: LocalDate = LocalDate.now()) = today.minusDays(62) to today.plusDays(31)
+
+        /** 有變動時要重新載入的日曆區間：預設區間＋最近換到的區間，連在一起的話合成一段 */
+        fun dayWindows(default: Pair<LocalDate, LocalDate>, browsing: Pair<LocalDate, LocalDate>?): List<Pair<LocalDate, LocalDate>> {
+            val b = browsing ?: return listOf(default)
+            val apart = b.first.isAfter(default.second.plusDays(1)) || default.first.isAfter(b.second.plusDays(1))
+            return if (apart) listOf(default, b) else listOf(minOf(default.first, b.first) to maxOf(default.second, b.second))
+        }
 
         fun routeFor(kind: String) = when (kind) {
             "place" -> "map"
