@@ -315,13 +315,3 @@ private fun EntryGone(close: () -> Unit) {
         SoftButton("關閉", Modifier.fillMaxWidth()) { close() }
     }
 }
-
-/** 還沒做好的畫面 */
-@Composable
-internal fun Placeholder(title: String, back: () -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        ScreenHeader(title, onBack = back)
-        Note("做到一半，下一版就會出現 🛠️", "🐣")
-        Text("")
-    }
-}

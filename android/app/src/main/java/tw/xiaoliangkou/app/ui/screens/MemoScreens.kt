@@ -270,6 +270,7 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
     var pinned by remember(id) { mutableStateOf(original?.pinned ?: false) }
     var media by remember(id) { mutableStateOf(original?.media ?: emptyList()) }
     var confirmDelete by remember(id) { mutableStateOf(false) }
+    var recording by remember(id) { mutableStateOf(false) }
     // 實際上存成共用還是私人：沒配對只能私人，對方的一定是共用。新上傳的照片、語音也跟著放到對的地方
     val nowShared = if (mine) shared && canShare else true
     val partner = s.partnerName
@@ -309,7 +310,7 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("照片和語音", style = MaterialTheme.typography.labelLarge)
-            MediaPickerRow(vm, shared = nowShared, onAdded = { media = media + it }, remaining = Limits.MEDIA - media.size)
+            MediaPickerRow(vm, shared = nowShared, onAdded = { media = media + it }, remaining = Limits.MEDIA - media.size, onRecordingChange = { recording = it })
             MediaThumbs(media, vm, size = 76.dp, onRemove = { r -> media = media - r })
         }
 
@@ -339,7 +340,7 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
             emoji = "📌",
         ) { pinned = it }
 
-        CuteButton("儲存", Modifier.fillMaxWidth(), enabled = hasContent && !vm.busy) {
+        CuteButton(if (recording) "先停止錄音再儲存" else "儲存", Modifier.fillMaxWidth(), enabled = hasContent && !recording && !vm.busy) {
             vm.act(if (original == null) "已新增備忘錄 📝" else "已儲存 📝", hearts = original == null && nowShared, onDone = close) {
                 it.saveMemo(id, title.trim(), body.trim(), media, nowShared, pinned, color)
             }
