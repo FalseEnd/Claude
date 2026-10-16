@@ -177,11 +177,12 @@ begin
   if not media_valid(new.media, v_folder) then raise exception 'invalid_media'; end if;
   return new;
 end $$;
--- 只在 media、shared 有寫到時檢查（解除配對 30 天後清除配對時，couple_id 被設成 null 不會被擋住）
+-- 只在 media、shared、couple_id 有寫到時檢查（重新配對後把備忘錄搬到新的配對也一樣要檢查）；
+-- 解除配對 30 天後清除配對時，共用備忘錄的 couple_id 被設成 null，不檢查才不會被擋住
 create or replace trigger day_entry_media before insert or update of media on public.day_entries
   for each row execute function public.tg_media_valid();
-create or replace trigger memo_media before insert or update of media, shared on public.memos
-  for each row execute function public.tg_media_valid();
+create or replace trigger memo_media before insert or update of media, shared, couple_id on public.memos
+  for each row when (new.couple_id is not null or not new.shared) execute function public.tg_media_valid();
 
 
 -- -----------------------------------------------------------------------------
@@ -193,7 +194,7 @@ language plpgsql security definer set search_path = public as $$
 begin
   perform enqueue_notification(partner_of(new.user_id), 'diary',
     display_name_of(new.user_id) || ' 記錄了 ' || to_char(new.day, 'FMMM/FMDD') || ' 的生活',
-    coalesce(nullif(left(btrim(new.body), 40), ''), media_summary(new.media)),
+    coalesce(nullif(left(btrim(new.body), 40), ''), nullif(media_summary(new.media), ''), '打開看看吧'),
     jsonb_build_object('day', new.day));
   return new;
 end $$;
@@ -209,7 +210,7 @@ language plpgsql security definer set search_path = public as $$
 begin
   if new.shared and new.couple_id is not null then
     perform enqueue_notification(partner_of(new.user_id), 'memo', display_name_of(new.user_id) || ' 新增了共同備忘錄',
-      coalesce(nullif(new.title, ''), nullif(left(btrim(new.body), 40), ''), media_summary(new.media)),
+      coalesce(nullif(new.title, ''), nullif(left(btrim(new.body), 40), ''), nullif(media_summary(new.media), ''), '打開看看吧'),
       jsonb_build_object('id', new.id));
   end if;
   return new;
@@ -296,12 +297,14 @@ grant update (couple_id, title, body, media, shared, pinned, color, updated_at) 
 --   c/<couple_id>/<uuid>.<ext>  兩人共用（日曆、共用備忘錄）：這對情侶目前的成員可以讀、上傳
 --   u/<user_id>/<uuid>.<ext>    只有自己（私人備忘錄）
 -- 只有上傳的人能刪；不開放覆寫（檔名都是新的 uuid）
+-- 已經有叫 media 的空間（例如自己建過公開的）也改成不公開，不然任何人都能用網址讀到照片
 -- -----------------------------------------------------------------------------
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('media', 'media', false, 10485760,
         array['image/jpeg', 'image/png', 'image/webp', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/mpeg'])
-on conflict (id) do nothing;
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit,
+                               allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "xlk media: couple or own folder read" on storage.objects;
 drop policy if exists "xlk media: couple or own folder upload" on storage.objects;

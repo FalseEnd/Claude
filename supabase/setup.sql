@@ -1783,14 +1783,14 @@ begin
 end $$;
 create or replace trigger day_entry_media before insert or update of media on public.day_entries
   for each row execute function public.tg_media_valid();
-create or replace trigger memo_media before insert or update of media, shared on public.memos
-  for each row execute function public.tg_media_valid();
+create or replace trigger memo_media before insert or update of media, shared, couple_id on public.memos
+  for each row when (new.couple_id is not null or not new.shared) execute function public.tg_media_valid();
 create or replace function public.tg_day_entry_inserted() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   perform enqueue_notification(partner_of(new.user_id), 'diary',
     display_name_of(new.user_id) || ' 記錄了 ' || to_char(new.day, 'FMMM/FMDD') || ' 的生活',
-    coalesce(nullif(left(btrim(new.body), 40), ''), media_summary(new.media)),
+    coalesce(nullif(left(btrim(new.body), 40), ''), nullif(media_summary(new.media), ''), '打開看看吧'),
     jsonb_build_object('day', new.day));
   return new;
 end $$;
@@ -1803,7 +1803,7 @@ language plpgsql security definer set search_path = public as $$
 begin
   if new.shared and new.couple_id is not null then
     perform enqueue_notification(partner_of(new.user_id), 'memo', display_name_of(new.user_id) || ' 新增了共同備忘錄',
-      coalesce(nullif(new.title, ''), nullif(left(btrim(new.body), 40), ''), media_summary(new.media)),
+      coalesce(nullif(new.title, ''), nullif(left(btrim(new.body), 40), ''), nullif(media_summary(new.media), ''), '打開看看吧'),
       jsonb_build_object('id', new.id));
   end if;
   return new;
@@ -1871,7 +1871,8 @@ grant update (couple_id, title, body, media, shared, pinned, color, updated_at) 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('media', 'media', false, 10485760,
         array['image/jpeg', 'image/png', 'image/webp', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/mpeg'])
-on conflict (id) do nothing;
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit,
+                               allowed_mime_types = excluded.allowed_mime_types;
 drop policy if exists "xlk media: couple or own folder read" on storage.objects;
 drop policy if exists "xlk media: couple or own folder upload" on storage.objects;
 drop policy if exists "xlk media: uploader delete" on storage.objects;

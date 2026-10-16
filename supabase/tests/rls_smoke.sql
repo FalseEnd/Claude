@@ -716,6 +716,10 @@ select test.login(test.id('zhe'));
 select test.ok((select count(*) filter (where m->>'shared' = 'false') from jsonb_array_elements(public.app_memos()) m
                 where m->>'id' in ((:'shared_memo'::jsonb)->>'id', (:'japan_memo'::jsonb)->>'id')) = 2,
                'memos shared with a former partner show as private');
+-- 直接打 API 把它搬到新的配對：照片還在以前那對的資料夾，一樣擋下來
+select test.ok(test.error_of(format($$update public.memos set couple_id = %L where id = %L$$,
+                 '11111111-1111-1111-1111-111111111111', (:'shared_memo'::jsonb)->>'id')) like 'P0001: invalid_media%',
+               'moving a memo to the new couple directly checks its media too');
 select public.app_save_memo(jsonb_build_object('id', (:'japan_memo'::jsonb)->>'id', 'body', '一個人也要去')) as japan \gset
 select test.ok((:'japan'::jsonb)->>'shared' = 'false', 'editing one does not share it with the new partner');
 select public.app_save_memo(jsonb_build_object('id', (:'shared_memo'::jsonb)->>'id', 'body', '牛奶')) as old_list \gset
@@ -729,6 +733,12 @@ select public.app_save_memo(jsonb_build_object('id', (:'japan_memo'::jsonb)->>'i
 select test.login(test.id('mia'));
 select test.ok(public.app_memos()->0->>'title' = '一起存錢去日本' and jsonb_array_length(public.app_memos()) = 1,
                'until it is shared again on purpose');
+-- 什麼都沒寫的備忘錄、只有空白的日曆紀錄，通知也要有內容
+select test.login(test.id('zhe'));
+select public.app_save_memo('{}');
+select test.ok(test.outbox_body(test.id('mia'), '阿哲 新增了共同備忘錄') = '打開看看吧', 'an empty memo still has a notification body');
+select public.app_save_day_entry('{"day": "2026-10-20", "body": "  "}');
+select test.ok(test.outbox_body(test.id('mia'), '阿哲 記錄了 10/20 的生活') = '打開看看吧', 'so does a diary entry of only spaces');
 reset role;
 
 -- ---------------------------------------------------------------- 刪除帳號（Supabase 後台 › Authentication › Users）

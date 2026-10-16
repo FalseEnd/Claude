@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 在本機的 Supabase（Supabase CLI + Docker）上執行資料庫與 API 測試：
 #   1. 檢查 supabase/setup.sql、upgrade-v2.sql 和 migrations 一致
-#   2. 舊版使用者：只套用 v1 的 migrations，再執行 upgrade-v2.sql 兩次（只跑一次就好，但多跑也不能壞）
+#   2. 舊版使用者：只套用 v1 的 migrations，再執行 upgrade-v2.sql 兩次（只跑一次就好，但多跑也不能壞）；
+#      先放一個自己建的公開 media 空間，更新後要變成不公開
 #   3. 新專案：空的資料庫直接執行 setup.sql
 #   4. supabase db reset：重建資料庫並套用 migrations
 #   2–4 每次都跑資料庫冒煙測試（supabase/tests/rls_smoke.sql，在交易裡執行，最後 rollback）
@@ -47,6 +48,7 @@ schema_is_2() {
 
 echo "== 舊版資料庫執行 upgrade-v2.sql（兩次）"
 quiet "${sb[@]}" db reset --version 20261015000004
+quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -c "insert into storage.buckets (id, name, public) values ('media', 'media', true)"
 run_sql supabase/upgrade-v2.sql
 run_sql supabase/upgrade-v2.sql
 schema_is_2

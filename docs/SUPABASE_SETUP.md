@@ -76,7 +76,9 @@ App 0.2 加了個人資料（身高、血型、喜歡的東西…）、只有自
 > 只要執行一次，兩個人其中一個做就好。不小心多跑一次也沒關係，已經存的資料不會受影響。
 > 如果是在這次更新之後才建立的專案，第 2 步的 setup.sql 已經包含這些內容，不用再執行。
 
-照片和語音存在 Supabase 的 **Storage**（檔案儲存），更新檔會自動建立一個不公開的 `media` 空間：日曆和共用備忘錄的照片只有你們兩個看得到，私人備忘錄的照片只有自己看得到；解除配對後，原本共用的照片雙方都讀不到了。
+照片和語音存在 Supabase 的 **Storage**（檔案儲存），更新檔會自動建立一個不公開的 `media` 空間（之前自己建過叫 `media` 的空間也會改成不公開）：日曆和共用備忘錄的照片只有你們兩個看得到，私人備忘錄的照片只有自己看得到；解除配對後，原本共用的照片雙方都讀不到了。
+
+解除配對或刪除帳號時，照片和語音檔不會跟著刪除，還會留在 **Storage** › `media` 佔用免費額度；想清空的話，可以到那裡手動刪除。
 
 ## 免費方案夠用嗎？
 
@@ -98,7 +100,7 @@ App 0.2 加了個人資料（身高、血型、喜歡的東西…）、只有自
 | App 說「資料庫需要更新」 | 照上面「更新資料庫」那一節執行 upgrade-v2.sql |
 | setup.sql 已經執行過，App 還是說「資料庫還沒設定好」 | 到 **Project Settings › Data API**：**Overview** 裡的 **Enable Data API** 要開著，**Settings** 裡的 **Exposed schemas** 要有 `public` |
 | 註冊後要求收確認信 | 第 3 步的 Confirm email 沒有關掉 |
-| 註冊時說「已經有兩個人了」 | 這個專案已經有 2 個帳號。要換人的話，到 **Authentication › Users** 刪掉不用的帳號（會一併刪除他的資料）。如果那個帳號還在配對中，留下來的人會自動解除配對並收到通知，之後就能和新帳號重新配對 |
+| 註冊時說「已經有兩個人了」 | 這個專案已經有 2 個帳號。要換人的話，到 **Authentication › Users** 刪掉不用的帳號（會一併刪除他的資料，但照片和語音檔要到 **Storage** › `media` 手動刪除）。如果那個帳號還在配對中，留下來的人會自動解除配對並收到通知，之後就能和新帳號重新配對 |
 | 忘記 App 密碼 | 到 **SQL Editor** 執行下面這行（把 Email 和新密碼換掉，新密碼至少 6 個字）。下方出現你的 Email 就是改好了；顯示「No rows returned」代表 Email 打錯了。再用新密碼登入，然後到 App 裡改成自己的密碼：<br>`update auth.users set encrypted_password = extensions.crypt('新密碼', extensions.gen_salt('bf')) where lower(email) = lower('你的Email') returning email;` |
 | 專案被暫停了 | Supabase 後台會顯示「Project … is paused」，按「Resume project」，等幾分鐘就好 |
 | 想看資料 | Supabase 後台的 **Table Editor** 可以看到每張表，照片和語音在 **Storage** 的 `media` 裡 |
