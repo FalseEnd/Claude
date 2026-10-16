@@ -18,11 +18,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.LinkOff
@@ -31,6 +34,7 @@ import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.StickyNote2
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.Widgets
@@ -120,6 +124,14 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
         }
         item {
             CuteCard {
+                MenuRow(Icons.Rounded.Badge, c.me, c.meSoft, "我的資料", "暱稱、生日、身高、血型…${s.partnerName} 也看得到") { open("profile") }
+                MenuRow(Icons.Rounded.FavoriteBorder, c.partner, c.partnerSoft, "${s.partnerName} 的資料與備註", "對方的資料，和只有你看得到的備註 🔒") { open("partner") }
+                MenuRow(Icons.Rounded.StickyNote2, c.peach, c.peach.copy(alpha = 0.25f), "備忘錄", "文字、照片、語音，可以放在桌面") { open("memos") }
+                MenuRow(Icons.Rounded.AutoAwesome, c.lavender, c.fertileSoft, "星座運勢與御神籤", "今天的運勢、兩人速配、抽一支籤") { open("fortune") }
+            }
+        }
+        item {
+            CuteCard {
                 MenuRow(Icons.Rounded.EmojiEmotions, c.butter, c.butter.copy(alpha = 0.25f), "心情紀錄", "設定今天的心情，看看這週") { open("mood") }
                 MenuRow(Icons.Rounded.Favorite, c.partner, c.partnerSoft, "紀念日", "生日、週年、里程碑提醒") { open("anniv") }
                 MenuRow(Icons.Rounded.WaterDrop, c.period, c.periodSoft, "經期", if (s.cycleVisible) "預測、排卵日、易孕期" else "尚未開始") { open("cycle") }
@@ -142,6 +154,13 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
         item {
             if (s.demo) SoftButton("離開示範模式", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Logout) { scope.launch { vm.container.logout() } }
             else if (s.paired) SoftButton("解除配對", Modifier.fillMaxWidth(), icon = Icons.Rounded.LinkOff) { confirmUnpair = true }
+        }
+        item {
+            Text(
+                "小倆口 ${tw.xiaoliangkou.app.BuildConfig.VERSION_NAME}（${tw.xiaoliangkou.app.BuildConfig.VERSION_CODE}）",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
         }
     }
     if (confirmUnpair) AlertDialog(

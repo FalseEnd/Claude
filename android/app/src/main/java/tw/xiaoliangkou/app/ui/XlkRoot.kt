@@ -80,6 +80,13 @@ import tw.xiaoliangkou.app.ui.screens.AccountScreen
 import tw.xiaoliangkou.app.ui.screens.AnniversaryScreen
 import tw.xiaoliangkou.app.ui.screens.AnniversarySheet
 import tw.xiaoliangkou.app.ui.screens.AvatarSheet
+import tw.xiaoliangkou.app.ui.screens.DayEntrySheet
+import tw.xiaoliangkou.app.ui.screens.FortuneScreen
+import tw.xiaoliangkou.app.ui.screens.MemoSheet
+import tw.xiaoliangkou.app.ui.screens.MemosScreen
+import tw.xiaoliangkou.app.ui.screens.MyProfileScreen
+import tw.xiaoliangkou.app.ui.screens.NoteSheet
+import tw.xiaoliangkou.app.ui.screens.PartnerProfileScreen
 import tw.xiaoliangkou.app.ui.screens.CalendarScreen
 import tw.xiaoliangkou.app.ui.screens.ComfortSheet
 import tw.xiaoliangkou.app.ui.screens.ConsentScreen
@@ -125,6 +132,9 @@ sealed interface SheetSpec {
     data class EventEdit(val id: String?, val date: LocalDate) : SheetSpec
     data class AnniversaryEdit(val id: String?) : SheetSpec
     data class PeriodEdit(val forPartner: Boolean) : SheetSpec
+    data class NoteEdit(val id: String?) : SheetSpec
+    data class DayEntryEdit(val id: String?, val date: LocalDate) : SheetSpec
+    data class MemoEdit(val id: String?) : SheetSpec
 }
 
 private val TABS = listOf(
@@ -295,6 +305,10 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
             composable("privacy") { PrivacyScreen(s, vm, back) }
             composable("notif") { NotificationScreen(s, vm, back) }
             composable("widgets") { WidgetsScreen(s, vm, back) }
+            composable("profile") { MyProfileScreen(s, vm, back) }
+            composable("partner") { PartnerProfileScreen(s, vm, back, showSheet) }
+            composable("memos") { MemosScreen(s, vm, back, showSheet) }
+            composable("fortune") { FortuneScreen(s, vm, back) }
             composable("account") { AccountScreen(s, vm, back) }
             composable("permissions") { PermissionsScreen(vm, back, null) }
             composable("demo") { DemoConsole(s, vm, back) }
@@ -318,6 +332,9 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
                     is SheetSpec.EventEdit -> EventSheet(s, vm, current.id, current.date) { calendarDate = current.date; close() }
                     is SheetSpec.AnniversaryEdit -> AnniversarySheet(s, vm, current.id, close)
                     is SheetSpec.PeriodEdit -> PeriodSheet(vm, current.forPartner, close)
+                    is SheetSpec.NoteEdit -> NoteSheet(s, vm, current.id, close)
+                    is SheetSpec.DayEntryEdit -> DayEntrySheet(s, vm, current.id, current.date, close)
+                    is SheetSpec.MemoEdit -> MemoSheet(s, vm, current.id, close)
                 }
             }
         }
