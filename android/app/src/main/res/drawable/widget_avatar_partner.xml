@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小工具預覽用的頭像（實際顯示時換成兩人的頭像） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M24,0a24,24 0 1,0 0.01,0z" />
+    <path android:fillColor="#FFFF7FA8" android:pathData="M24,3a21,21 0 1,0 0.01,0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M17,20a2.6,2.6 0 1,0 0.01,0z M31,20a2.6,2.6 0 1,0 0.01,0z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M17.5,29.5 Q24,35 30.5,29.5" />
+</vector>

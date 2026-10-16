@@ -6,14 +6,23 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.osmdroid.config.Configuration
 import tw.xiaoliangkou.app.data.AppException
@@ -32,6 +41,8 @@ import tw.xiaoliangkou.app.data.SupabaseClient
 import tw.xiaoliangkou.app.data.apiCall
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.ShareService
+import tw.xiaoliangkou.app.widget.WidgetSnapshot
+import tw.xiaoliangkou.app.widget.Widgets
 
 class XlkApp : Application() {
     lateinit var container: AppContainer
@@ -50,6 +61,7 @@ class XlkApp : Application() {
 }
 
 /** 整個 App 共用的物件：設定、目前的資料來源（Supabase 或示範）、即時連線、通知 */
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppContainer(private val app: Application) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val settings = SettingsStore(app)
@@ -92,6 +104,18 @@ class AppContainer(private val app: Application) {
                 SettingsStore.Mode.NONE -> Unit
             }
             _prefs.value = p
+        }
+        // 桌面小工具：資料一變就重畫（登出後就不再顯示對方的資料）
+        scope.launch {
+            _prefs.first { it != null } // 設定載入前還不知道有沒有登入，先不要把小工具改成「請登入」
+            _repo.flatMapLatest { r -> r?.state ?: flowOf(null) }
+                .filter { it == null || it.loaded }
+                .map { WidgetSnapshot.of(it) }
+                .distinctUntilChanged()
+                .collectLatest { snap ->
+                    delay(800) // 一次來好幾個變動時，等一下再一起畫
+                    withContext(Dispatchers.IO) { Widgets.publish(app, snap) }
+                }
         }
         // 回到前景：即時連線斷了的話馬上重連，也先用 RPC 補抓通知
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
@@ -235,6 +259,8 @@ class AppContainer(private val app: Application) {
 
     suspend fun setOnboarded() { settings.setOnboarded(true); reloadPrefs() }
     suspend fun setAutoBookkeeping(v: Boolean) { settings.setAutoBookkeeping(v); reloadPrefs() }
+    suspend fun setStatusNotification(v: Boolean) { settings.setStatusNotification(v); reloadPrefs() }
+    suspend fun setStatusItems(items: Set<String>) { settings.setStatusItems(items); reloadPrefs() }
 
     private fun stopCurrent() {
         _repo.value?.close()

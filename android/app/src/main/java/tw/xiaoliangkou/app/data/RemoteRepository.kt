@@ -140,6 +140,7 @@ class RemoteRepository(
     }
     override suspend fun unpair() { apiCall { api.unpair() }; refreshAll() }
     override suspend fun updateProfile(displayName: String) { apiCall { api.updateProfile(buildJsonObject { put("displayName", displayName) }) }; loadMe() }
+    override suspend fun updateAvatar(avatar: String?) { apiCall { api.updateProfile(buildJsonObject { put("avatarUrl", avatar) }) }; loadMe() }
     override suspend fun setTogetherSince(date: String) { apiCall { api.updateCouple(buildJsonObject { put("togetherSince", date) }) }; loadMe() }
 
     override suspend fun updateSharing(patch: JsonObject) { apiCall { api.updateSharing(patch) }; loadMe() }

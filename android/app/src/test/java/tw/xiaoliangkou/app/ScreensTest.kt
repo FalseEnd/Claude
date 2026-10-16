@@ -1,5 +1,10 @@
 package tw.xiaoliangkou.app
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Shader
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.background
@@ -49,6 +54,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowLooper
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.Avatars
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.data.PlaceHit
@@ -58,6 +64,8 @@ import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.SheetSpec
 import tw.xiaoliangkou.app.ui.screens.AccountScreen
 import tw.xiaoliangkou.app.ui.screens.AnniversaryScreen
+import tw.xiaoliangkou.app.ui.screens.AvatarCropDialog
+import tw.xiaoliangkou.app.ui.screens.AvatarSheet
 import tw.xiaoliangkou.app.ui.screens.CalendarScreen
 import tw.xiaoliangkou.app.ui.screens.ComfortSheet
 import tw.xiaoliangkou.app.ui.screens.CycleScreen
@@ -73,6 +81,7 @@ import tw.xiaoliangkou.app.ui.screens.MapScreen
 import tw.xiaoliangkou.app.ui.screens.MoneyScreen
 import tw.xiaoliangkou.app.ui.screens.MoodScreen
 import tw.xiaoliangkou.app.ui.screens.MoreScreen
+import tw.xiaoliangkou.app.ui.screens.NotificationScreen
 import tw.xiaoliangkou.app.ui.screens.PairingScreen
 import tw.xiaoliangkou.app.ui.screens.PermissionsScreen
 import tw.xiaoliangkou.app.ui.screens.PlaceSheet
@@ -80,6 +89,7 @@ import tw.xiaoliangkou.app.ui.screens.PrivacyScreen
 import tw.xiaoliangkou.app.ui.screens.RegisterScreen
 import tw.xiaoliangkou.app.ui.screens.SupabaseSetupScreen
 import tw.xiaoliangkou.app.ui.screens.WelcomeScreen
+import tw.xiaoliangkou.app.ui.screens.WidgetsScreen
 import tw.xiaoliangkou.app.ui.theme.XlkTheme
 import java.time.LocalDate
 
@@ -261,6 +271,44 @@ class ScreensTest {
     @Test fun eventSheet() = sheet("20_sheet_event") { EventSheet(s, vm, null, LocalDate.now()) {} }
     @Test fun placeSheet() = sheet("21_sheet_place") { PlaceSheet(s, vm, null, 25.04, 121.56) {} }
     @Test fun cycleDark() = shot("22_cycle_dark", dark = true) { CycleScreen(s, vm, {}, {}) }
+
+    /** 測試用的「照片」：粉色漸層加一張笑臉 */
+    private fun testPhoto(): Bitmap {
+        val bmp = Bitmap.createBitmap(900, 1200, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        p.shader = LinearGradient(0f, 0f, 900f, 1200f, 0xFFFFC2D6.toInt(), 0xFF8EC5FF.toInt(), Shader.TileMode.CLAMP)
+        c.drawRect(0f, 0f, 900f, 1200f, p)
+        p.shader = null
+        p.color = 0xFFFFE0B2.toInt(); c.drawCircle(450f, 560f, 260f, p)
+        p.color = 0xFF5D4037.toInt(); c.drawCircle(360f, 500f, 30f, p); c.drawCircle(540f, 500f, 30f, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 22f; c.drawArc(330f, 520f, 570f, 700f, 20f, 140f, false, p)
+        return bmp
+    }
+
+    @Test fun avatarSheet() = sheet("30_sheet_avatar") { AvatarSheet(s, vm) {} }
+
+    @OptIn(ExperimentalRoborazziApi::class)
+    @Test fun avatarCrop() {
+        compose.setContent { XlkTheme { AvatarCropDialog(testPhoto(), {}) {} } }
+        compose.mainClock.advanceTimeBy(1500)
+        captureScreenRoboImage("build/screens/31_avatar_crop.png")
+    }
+
+    /** 換成照片頭像之後的「我的」 */
+    @Test fun morePhotoAvatar() {
+        runBlocking { demo.updateAvatar(Avatars.encodePhoto(Avatars.crop(testPhoto(), Avatars.cropOf(900, 1200, 600f, 1f, 0f, 0f)))) }
+        shot("32_more_avatar") { MoreScreen(s, vm) {} }
+    }
+
+    /** 桌面小工具：用真的小工具版面預覽（我是照片頭像、對方是表情頭像） */
+    @Test fun widgets() {
+        runBlocking { demo.updateAvatar(Avatars.encodePhoto(Avatars.crop(testPhoto(), Avatars.cropOf(900, 1200, 600f, 1.3f, 0f, 60f)))) }
+        shot("34_widgets") { WidgetsScreen(s, vm) {} }
+    }
+
+    /** 通知設定：常駐通知顯示對方狀態的開關、項目與預覽（對方是表情頭像） */
+    @Test fun notificationSettings() = shot("33_notification_settings") { NotificationScreen(s, vm) {} }
 
     /** 地圖搜尋：輸入地址按搜尋 → 選一個結果 → 地圖標出來，可以直接新增標點（名稱先填好） */
     @Test fun mapSearch() {

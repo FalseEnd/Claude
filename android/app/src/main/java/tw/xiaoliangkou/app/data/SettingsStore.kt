@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
+import tw.xiaoliangkou.app.ui.StatusText
 
 private val Context.dataStore by preferencesDataStore("xiaoliangkou")
 
@@ -26,6 +27,9 @@ class SettingsStore(private val context: Context) {
         val lastEmail: String = "",
         val autoBookkeeping: Boolean = true,
         val onboarded: Boolean = false,
+        /** 常駐通知顯示對方的狀態，以及要顯示哪些項目（見 [StatusText]） */
+        val statusNotification: Boolean = true,
+        val statusItems: Set<String> = StatusText.DEFAULTS,
     ) {
         val configured get() = supabaseUrl.isNotEmpty() && supabaseKey.isNotEmpty()
     }
@@ -41,6 +45,8 @@ class SettingsStore(private val context: Context) {
         val email = stringPreferencesKey("email")
         val autoBookkeeping = booleanPreferencesKey("auto_bookkeeping")
         val onboarded = booleanPreferencesKey("onboarded")
+        val statusNotification = booleanPreferencesKey("status_notification")
+        val statusItems = stringSetPreferencesKey("status_items")
         val insidePlaces = stringSetPreferencesKey("inside_places")
         val stepDay = longPreferencesKey("step_day")
         val stepBase = longPreferencesKey("step_base")
@@ -64,6 +70,8 @@ class SettingsStore(private val context: Context) {
             lastEmail = p[K.email] ?: "",
             autoBookkeeping = p[K.autoBookkeeping] ?: true,
             onboarded = p[K.onboarded] ?: false,
+            statusNotification = p[K.statusNotification] ?: true,
+            statusItems = p[K.statusItems] ?: StatusText.DEFAULTS,
         )
     }
 
@@ -105,6 +113,8 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setOnboarded(v: Boolean) = context.dataStore.edit { it[K.onboarded] = v }
     suspend fun setAutoBookkeeping(v: Boolean) = context.dataStore.edit { it[K.autoBookkeeping] = v }
+    suspend fun setStatusNotification(v: Boolean) = context.dataStore.edit { it[K.statusNotification] = v }
+    suspend fun setStatusItems(items: Set<String>) = context.dataStore.edit { it[K.statusItems] = items }
 
     suspend fun insidePlaces(): Set<String> = context.dataStore.data.first()[K.insidePlaces] ?: emptySet()
     suspend fun setInsidePlaces(ids: Set<String>) = context.dataStore.edit { it[K.insidePlaces] = ids }

@@ -193,7 +193,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         return AppState(
             loaded = true, demo = true, connected = true,
             me = Profile(ME, "阿哲", email = "azhe@example.com"),
-            partner = Profile(PARTNER, "小雨"),
+            partner = Profile(PARTNER, "小雨", avatarUrl = Avatars.emoji("🐰")),
             couple = Couple("demo-couple", since.toString()),
             mySharing = Sharing(ME, shareLocation = true, shareDevice = true, shareExpenses = true, shareMood = true, shareCycle = false),
             partnerSharing = Sharing(PARTNER, shareLocation = true, shareDevice = true, shareExpenses = true, shareMood = true, shareCycle = true),
@@ -410,6 +410,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         throw AppException("示範模式不能解除配對，可以在「我的」離開示範模式")
     }
     override suspend fun updateProfile(displayName: String) = _state.update { it.copy(me = it.me?.copy(displayName = displayName)) }
+    override suspend fun updateAvatar(avatar: String?) = _state.update { it.copy(me = it.me?.copy(avatarUrl = avatar)) }
     override suspend fun setTogetherSince(date: String) = _state.update { it.copy(couple = it.couple?.copy(togetherSince = date)) }
 
     override suspend fun updateSharing(patch: JsonObject) {

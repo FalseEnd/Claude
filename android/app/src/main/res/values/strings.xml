@@ -2,4 +2,8 @@
 <resources>
     <string name="app_name">小倆口</string>
     <string name="payment_listener">小倆口自動記帳</string>
+    <string name="widget_together">在一起</string>
+    <string name="widget_together_desc">兩個人的頭像和在一起的天數</string>
+    <string name="widget_partner">對方狀態</string>
+    <string name="widget_partner_desc">對方在哪、電量、心情，還可以直接抱抱</string>
 </resources>

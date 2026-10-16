@@ -60,6 +60,36 @@
             </intent-filter>
         </service>
 
+        <!-- 桌面小工具 -->
+        <receiver
+            android:name=".widget.TogetherWidget"
+            android:exported="false"
+            android:label="@string/widget_together">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_together_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.PartnerWidget"
+            android:exported="false"
+            android:label="@string/widget_partner">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_partner_info" />
+        </receiver>
+
+        <!-- 常駐通知、桌面小工具上的「現在在哪？」「抱抱」按鈕 -->
+        <receiver
+            android:name=".service.StatusActionReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".service.BootReceiver"
             android:exported="true">

@@ -1,14 +1,19 @@
 package tw.xiaoliangkou.app.service
 
 import android.app.Notification
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.widget.Toast
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import tw.xiaoliangkou.app.container
 import tw.xiaoliangkou.app.core.PaymentParser
+import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.RemoteRepository
 import tw.xiaoliangkou.app.data.SettingsStore
 import java.security.MessageDigest
@@ -44,6 +49,49 @@ class BootReceiver : BroadcastReceiver() {
         val c = context.container
         c.scope.launch {
             if (c.settings.load().mode == SettingsStore.Mode.REMOTE) ShareService.start(context)
+        }
+    }
+}
+
+/** 常駐通知、桌面小工具上的按鈕：「現在在哪？」請對方手機回報位置、「抱抱」直接送一個抱抱 */
+class StatusActionReceiver : BroadcastReceiver() {
+    companion object {
+        const val LOCATE = "tw.xiaoliangkou.app.action.LOCATE"
+        const val HUG = "tw.xiaoliangkou.app.action.HUG"
+
+        fun intent(context: Context, action: String): PendingIntent = PendingIntent.getBroadcast(
+            context, action.hashCode(),
+            Intent(context, StatusActionReceiver::class.java).setAction(action),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        val action = intent.action ?: return
+        if (action != LOCATE && action != HUG) return
+        val pending = goAsync()
+        val c = context.applicationContext.container
+        c.scope.launch {
+            val msg = try {
+                // App 可能才剛被這個按鈕叫起來：等設定和資料載入（最多幾秒）
+                val repo = withTimeoutOrNull(6_000) {
+                    c.prefs.first { it != null }
+                    c.repo.value?.also { r -> r.state.first { it.loaded } }
+                }
+                val st = repo?.state?.value
+                when {
+                    repo == null || st == null -> "請先打開小倆口登入"
+                    !st.paired -> "還沒配對喔"
+                    action == LOCATE -> if (repo.locatePartner()) "已請 ${st.partnerName} 的手機回報位置 📍" else "${st.partnerName} 的手機目前不在線上"
+                    else -> { repo.sendComfort("hug", null); "已經抱抱 ${st.partnerName} 🤗" }
+                }
+            } catch (e: AppException) {
+                e.message ?: "沒有送出，請稍後再試"
+            } catch (e: Exception) {
+                "沒有送出，請確認網路連線"
+            }
+            Toast.makeText(context.applicationContext, msg, Toast.LENGTH_SHORT).show()
+            pending.finish()
         }
     }
 }

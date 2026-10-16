@@ -114,6 +114,17 @@ class ServerIntegrationTest {
             assertEquals(LocalDate.parse("2025-05-20"), s.togetherSince)
             eventually("配對通知") { zhe.notes.any { it.kind == "pairing" } }
 
+            // 頭像：存在 profiles.avatar_url（照片約 30–40 KB），對方的畫面靠 Realtime 自動更新
+            val photo = "data:image/jpeg;base64," + "A".repeat(40_000)
+            zhe.repo.updateAvatar(photo)
+            assertEquals(photo, zhe.repo.state.value.me?.avatarUrl)
+            eventually("對方看到新的照片頭像") { yu.repo.state.value.partner?.avatarUrl == photo }
+            zhe.repo.updateAvatar("emoji:🐻")
+            eventually("對方看到表情頭像") { yu.repo.state.value.partner?.avatarUrl == "emoji:🐻" }
+            zhe.repo.updateAvatar(null)
+            assertNull(zhe.repo.state.value.me?.avatarUrl)
+            assertEquals("阿哲", zhe.repo.state.value.me?.displayName)
+
             // 分享設定與手機狀態
             zhe.repo.updateSharing(buildJsonObject { put("location", true); put("device", true); put("expenses", true) })
             yu.repo.updateSharing(buildJsonObject { put("location", true); put("device", true); put("cycle", true) })

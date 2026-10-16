@@ -32,9 +32,13 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -77,6 +81,8 @@ class ShareService : LifecycleService() {
     private var lastSentAt = 0L
     private var stepTotal: Long? = null
     private var deviceJob: Job? = null
+    /** 目前常駐通知的內容；服務被重新啟動時沿用，不要又變回「連線中」 */
+    private var notice: ServiceNotice? = null
     private var receiversRegistered = false
 
     private val locationCallback = object : LocationCallback() {
@@ -108,22 +114,29 @@ class ShareService : LifecycleService() {
         goForeground("連線中…")
         registerSignals()
 
-        // 連線狀態與分享設定改變時，更新常駐通知與定位
         lifecycleScope.launch {
             container.repo.collectLatest { repo ->
                 if (repo !is RemoteRepository) { stopLocation(); return@collectLatest }
-                repo.state.map { Triple(it.connected, it.partnerName, it.mySharing?.locationLive == true) }
-                    .distinctUntilChanged()
-                    .collect { (connected, partner, sharingLocation) ->
-                        val text = when {
-                            !connected -> "即時連線暫時中斷，會自動重試；通知可能晚幾分鐘到"
-                            sharingLocation -> "正在和 $partner 分享位置"
-                            else -> "已連線，會即時收到 $partner 的通知"
-                        }
-                        container.notifier.updateService(text)
-                        if (sharingLocation) startLocation() else stopLocation()
-                        if (connected) scheduleDeviceReport(1_000)
+                coroutineScope {
+                    // 連線狀態與分享設定改變時，開關定位、回報手機狀態
+                    launch {
+                        repo.state.map { it.connected to (it.mySharing?.locationLive == true) }
+                            .distinctUntilChanged()
+                            .collect { (connected, sharingLocation) ->
+                                if (sharingLocation) startLocation() else stopLocation()
+                                if (connected) scheduleDeviceReport(1_000)
+                            }
                     }
+                    // 常駐通知：對方的狀態有變（或設定改了）就更新；每分鐘再看一次，「正在用手機」才會自己變回「休息中」
+                    launch {
+                        val everyMinute = flow { while (true) { emit(Unit); delay(60_000L) } }
+                        combine(repo.state, container.prefs.filterNotNull(), everyMinute) { st, p, _ ->
+                            ServiceNotice.of(st, p.statusNotification, p.statusItems)
+                        }
+                            .distinctUntilChanged()
+                            .collect { notice = it; container.notifier.updateService(it) }
+                    }
+                }
             }
         }
         // 對方按「現在在哪？」
@@ -164,7 +177,9 @@ class ShareService : LifecycleService() {
                 }
             }
         }
-        val notification = container.notifier.serviceNotification(text ?: "小倆口在背景保持連線")
+        val current = notice
+        val notification = if (text == null && current != null) container.notifier.serviceNotification(current)
+        else container.notifier.serviceNotification(text ?: "小倆口在背景保持連線")
         runCatching { ServiceCompat.startForeground(this, Notifier.SERVICE_ID, notification, types) }
             .onFailure {
                 // 例如背景啟動時沒有背景定位權限：退回不含定位的類型

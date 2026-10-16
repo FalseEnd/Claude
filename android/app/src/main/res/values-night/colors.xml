@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 桌面小工具（深色模式） -->
+    <color name="widget_bg">#FF2B1D25</color>
+    <color name="widget_text">#FFF8EDF1</color>
+    <color name="widget_muted">#FFC9B4BE</color>
+    <color name="widget_accent">#FFFF8FB1</color>
+    <color name="widget_chip">#FF4A2F3C</color>
+</resources>

@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.view.MotionEvent
 import androidx.compose.foundation.background
@@ -88,6 +87,7 @@ import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.infowindow.InfoWindow
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.Avatars
 import tw.xiaoliangkou.app.data.LatLng
 import tw.xiaoliangkou.app.data.Place
 import tw.xiaoliangkou.app.data.PlaceHit
@@ -364,7 +364,7 @@ private fun PartnerLine(s: AppState, vm: AppViewModel) {
     Box(Modifier.padding(horizontal = 16.dp)) {
         CuteCard {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Avatar(s.partnerName, Cute.colors.partner, 40.dp)
+                Avatar(s.partnerName, Cute.colors.partner, 40.dp, image = s.partner?.avatarUrl)
                 Column(Modifier.weight(1f)) {
                     if (s.partnerSharing?.locationLive == true) {
                         Text("${s.partnerName} ${Derived.partnerWhere(s)}", style = MaterialTheme.typography.titleMedium)
@@ -425,23 +425,10 @@ private class FenceOverlay(private val fences: List<Triple<GeoPoint, Float, Int>
     }
 }
 
-/** 圓形頭像（地圖標記用的 Bitmap） */
-private fun avatarBitmap(context: Context, text: String, color: Int, sizeDp: Int = 32): BitmapDrawable {
+/** 圓形頭像（地圖標記用）：照片、表情或暱稱的最後一個字，外圈白邊 */
+private fun avatarBitmap(context: Context, avatar: String?, name: String, color: Int, sizeDp: Int = 32): BitmapDrawable {
     val d = context.resources.displayMetrics.density
-    val size = (sizeDp * d).toInt()
-    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val c = Canvas(bmp)
-    val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    p.color = android.graphics.Color.WHITE
-    c.drawCircle(size / 2f, size / 2f, size / 2f, p)
-    p.color = color
-    c.drawCircle(size / 2f, size / 2f, size / 2f - 3 * d, p)
-    p.color = android.graphics.Color.WHITE
-    p.textSize = size * 0.45f
-    p.textAlign = Paint.Align.CENTER
-    p.typeface = Typeface.DEFAULT_BOLD
-    c.drawText(text, size / 2f, size / 2f - (p.descent() + p.ascent()) / 2, p)
-    return BitmapDrawable(context.resources, bmp)
+    return BitmapDrawable(context.resources, Avatars.circle(context, avatar, name, color, (sizeDp * d).toInt(), 3 * d))
 }
 
 private fun emojiBitmap(context: Context, emoji: String, bg: Int): BitmapDrawable {
@@ -508,8 +495,10 @@ private data class MapContent(
     val myId: String?,
     val me: LatLng?,
     val partner: LatLng?,
-    val myInitial: String,
+    val myName: String,
+    val myAvatar: String?,
     val partnerName: String,
+    val partnerAvatar: String?,
     val pin: PlaceHit?,
     val colors: MapColors,
 )
@@ -556,13 +545,12 @@ private class MapLayers(private val context: Context, private val map: MapView, 
         }
         if (me != null) layers += Marker(map).apply {
             position = me; title = "我"
-            icon = icon("me:${c.myInitial}:${col.me}") { avatarBitmap(context, c.myInitial, col.me) }
+            icon = icon("me:${c.myName}:${c.myAvatar.hashCode()}:${col.me}") { avatarBitmap(context, c.myAvatar, c.myName, col.me) }
             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
         }
         if (partner != null) layers += Marker(map).apply {
             position = partner; title = c.partnerName
-            val initial = c.partnerName.takeLast(1)
-            icon = icon("partner:$initial:${col.partner}") { avatarBitmap(context, initial, col.partner, 36) }
+            icon = icon("partner:${c.partnerName}:${c.partnerAvatar.hashCode()}:${col.partner}") { avatarBitmap(context, c.partnerAvatar, c.partnerName, col.partner, 36) }
             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
         }
         c.pin?.let { hit ->
@@ -638,7 +626,7 @@ private fun OsmMap(s: AppState, camera: MapCamera, flyTo: FlyTo?, pin: PlaceHit?
     }
     val me = s.myLocation
     val partner = s.partnerStatus.location?.takeIf { s.partnerSharing?.locationLive == true }?.let { LatLng(it.lat, it.lng) }
-    val content = MapContent(s.places, s.myId, me, partner, (s.me?.displayName ?: "我").takeLast(1), s.partnerName, pin, colors)
+    val content = MapContent(s.places, s.myId, me, partner, s.me?.displayName ?: "我", s.me?.avatarUrl, s.partnerName, s.partner?.avatarUrl, pin, colors)
     AndroidView(factory = { map }, modifier = Modifier.fillMaxSize()) { mv ->
         layers.show(content)
         // 第一次拿到位置時對準兩個人；使用者動過地圖就不再自動移動

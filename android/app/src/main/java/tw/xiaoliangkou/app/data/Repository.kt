@@ -75,6 +75,8 @@ interface CoupleRepository {
     suspend fun acceptInvite(code: String, togetherSince: String?)
     suspend fun unpair()
     suspend fun updateProfile(displayName: String)
+    /** 頭像：照片或表情（見 [Avatars]），null 是改回用暱稱 */
+    suspend fun updateAvatar(avatar: String?)
     suspend fun setTogetherSince(date: String)
 
     // 分享

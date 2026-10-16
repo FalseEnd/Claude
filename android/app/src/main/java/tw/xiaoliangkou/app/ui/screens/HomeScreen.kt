@@ -148,7 +148,7 @@ private fun PartnerPhone(s: AppState, vm: AppViewModel) {
     CuteCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box {
-                Avatar(s.partnerName, Cute.colors.partner, 34.dp)
+                Avatar(s.partnerName, Cute.colors.partner, 34.dp, image = s.partner?.avatarUrl)
                 if (s.partnerOnline) Box(Modifier.align(Alignment.BottomEnd).offset(2.dp, 2.dp).size(12.dp).clip(CircleShape).background(Cute.colors.card).padding(2.dp).clip(CircleShape).background(Cute.colors.good))
             }
             Text("${s.partnerName} 的手機", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -210,8 +210,8 @@ private fun MoodCard(s: AppState, open: (String) -> Unit, sheet: (SheetSpec) -> 
             Text("心情紀錄 ›", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.bouncyClick { open("mood") })
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MoodHalf(s.partnerName, Cute.colors.partner, pm?.mood, pm?.note, pm?.createdAt, Modifier.weight(1f), if (s.partnerSharing?.shareMood == false) "沒有分享心情" else "今天還沒更新", null)
-            MoodHalf("我", Cute.colors.me, mm?.mood, mm?.note, mm?.createdAt, Modifier.weight(1f), "點我設定心情", onClick = { open("mood") })
+            MoodHalf(s.partnerName, Cute.colors.partner, s.partner?.avatarUrl, pm?.mood, pm?.note, pm?.createdAt, Modifier.weight(1f), if (s.partnerSharing?.shareMood == false) "沒有分享心情" else "今天還沒更新", null)
+            MoodHalf("我", Cute.colors.me, s.me?.avatarUrl, mm?.mood, mm?.note, mm?.createdAt, Modifier.weight(1f), "點我設定心情", onClick = { open("mood") })
         }
         val m = Catalog.mood(pm?.mood)
         if (m?.needsComfort == true) {
@@ -227,7 +227,7 @@ private fun MoodCard(s: AppState, open: (String) -> Unit, sheet: (SheetSpec) -> 
 }
 
 @Composable
-private fun MoodHalf(name: String, color: Color, mood: String?, note: String?, at: String?, modifier: Modifier, empty: String, onClick: (() -> Unit)?) {
+private fun MoodHalf(name: String, color: Color, avatar: String?, mood: String?, note: String?, at: String?, modifier: Modifier, empty: String, onClick: (() -> Unit)?) {
     val m = Catalog.mood(mood)
     Column(
         modifier.clip(RoundedCornerShape(22.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
@@ -235,7 +235,7 @@ private fun MoodHalf(name: String, color: Color, mood: String?, note: String?, a
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Avatar(name, color, 18.dp)
+            Avatar(name, color, 18.dp, image = avatar)
             Text(name + (at?.toInstantOrNull()?.let { " · ${Fmt.time(it)}" } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (m != null) {

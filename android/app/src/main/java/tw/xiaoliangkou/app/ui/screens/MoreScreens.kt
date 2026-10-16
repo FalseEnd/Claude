@@ -2,15 +2,19 @@ package tw.xiaoliangkou.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
@@ -23,12 +27,15 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.LinkOff
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WaterDrop
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -56,8 +63,11 @@ import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Dates
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.InviteLink
+import tw.xiaoliangkou.app.service.ServiceNotice
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Fmt
+import tw.xiaoliangkou.app.ui.SheetSpec
+import tw.xiaoliangkou.app.ui.StatusText
 import tw.xiaoliangkou.app.ui.components.Avatar
 import tw.xiaoliangkou.app.ui.components.ChoiceChip
 import tw.xiaoliangkou.app.ui.components.CoupleMascots
@@ -79,7 +89,7 @@ import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.LocalDate
 
 @Composable
-fun MoreScreen(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
+fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, open: (String) -> Unit) {
     val c = Cute.colors
     var confirmUnpair by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -89,7 +99,14 @@ fun MoreScreen(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
             CuteCard(color = c.partnerSoft) {
                 CoupleMascots(height = 90.dp)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Avatar(s.me?.displayName ?: "我", c.me, 44.dp)
+                    // 點頭像換照片或表情
+                    Box(Modifier.bouncyClick { sheet(SheetSpec.Avatar) }) {
+                        Avatar(s.me?.displayName ?: "我", c.me, 52.dp, image = s.me?.avatarUrl)
+                        Icon(
+                            Icons.Rounded.PhotoCamera, "設定頭像", tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.align(Alignment.BottomEnd).offset(4.dp, 4.dp).size(22.dp).clip(CircleShape).background(c.card).padding(4.dp),
+                        )
+                    }
                     Column(Modifier.weight(1f)) {
                         Text(s.me?.displayName ?: "我", style = MaterialTheme.typography.titleLarge)
                         Text(
@@ -112,7 +129,8 @@ fun MoreScreen(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
         item {
             CuteCard {
                 MenuRow(Icons.Rounded.Shield, c.mint, MaterialTheme.colorScheme.secondaryContainer, "分享與隱私", if (s.mySharing?.paused == true) "暫停分享中" else "決定 ${s.partnerName} 能看到什麼") { open("privacy") }
-                MenuRow(Icons.Rounded.Notifications, c.peach, c.peach.copy(alpha = 0.25f), "通知設定", "想收到哪些通知") { open("notif") }
+                MenuRow(Icons.Rounded.Notifications, c.peach, c.peach.copy(alpha = 0.25f), "通知設定", "通知列顯示 ${s.partnerName} 的狀態、想收到哪些通知") { open("notif") }
+                MenuRow(Icons.Rounded.Widgets, c.butter, c.butter.copy(alpha = 0.25f), "桌面小工具", "在桌面看在一起的天數、${s.partnerName} 的狀態") { open("widgets") }
                 if (!s.demo) {
                     MenuRow(Icons.Rounded.Tune, c.me, c.meSoft, "權限與背景執行", "位置、通知、省電、自動記帳") { open("permissions") }
                     MenuRow(Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號", "連線、邀請另一半、改密碼、登出") { open("account") }
@@ -210,14 +228,78 @@ fun NotificationScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
         Triple("battery_low", "對方電量低", "🔋"), Triple("guess", "猜花費", "💰"), Triple("event", "約會邀請與提醒", "📅"),
         Triple("anniversary", "紀念日與里程碑", "🎂"), Triple("cycle_care", "經期關懷提醒", "🌸"),
     )
+    val prefs by vm.prefs.collectAsState()
+    val scope = rememberCoroutineScope()
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenHeader("通知設定", onBack = back) }
+        item { StatusNoticeCard(s, vm, prefs?.statusNotification != false, prefs?.statusItems ?: StatusText.DEFAULTS) { block -> scope.launch { block() } } }
         item {
             CuteCard {
+                Text("要收到哪些通知", style = MaterialTheme.typography.titleMedium)
                 kinds.forEach { (k, l, e) -> ToggleRow(l, s.notifPrefs[k] != false, emoji = e) { v -> vm.act { it.setNotifPref(k, v) } } }
             }
         }
         item { Note("「對方新增會偵測你的標點」與「分享設定變更」的通知不能關閉，讓兩個人都知道自己分享了什麼。也可以在系統設定裡分別調整每種通知的聲音。", "🔔") }
+    }
+}
+
+/** 常駐通知顯示對方的狀態：開關、要顯示哪些項目、預覽 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun StatusNoticeCard(s: AppState, vm: AppViewModel, on: Boolean, items: Set<String>, launch: (suspend () -> Unit) -> Unit) {
+    CuteCard {
+        ToggleRow("通知列顯示 ${s.partnerName} 的狀態", on, "常駐通知會顯示對方的電量、位置、心情", "📌") { v -> launch { vm.container.setStatusNotification(v) } }
+        if (!on) return@CuteCard
+        Text("要顯示哪些", style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusText.options.forEach { (k, label) ->
+                ChoiceChip(label, k in items) { launch { vm.container.setStatusItems(if (k in items) items - k else items + k) } }
+            }
+        }
+        if (!s.paired) {
+            Note("配對之後，這裡會顯示 ${s.partnerName} 的狀態", "💞")
+            return@CuteCard
+        }
+        Text("預覽", style = MaterialTheme.typography.labelLarge)
+        NoticePreview(ServiceNotice.of(s, true, items))
+        Text("只會出現 ${s.partnerName} 有分享的項目。通知上的按鈕可以直接問對方在哪、送一個抱抱。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val context = LocalContext.current
+        val allowed = android.os.Build.VERSION.SDK_INT < 33 ||
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        when {
+            s.demo -> Note("示範模式只有預覽，登入 Supabase 後才會出現在通知列", "🧪")
+            !allowed -> Note("通知權限還沒打開，到「我的 › 權限與背景執行」打開後才看得到", "🔕")
+        }
+    }
+}
+
+/** 長得像系統通知的預覽 */
+@Composable
+private fun NoticePreview(n: ServiceNotice) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(Icons.Rounded.Favorite, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+            Text(
+                listOfNotNull("小倆口", n.sub, n.whenMs?.let { Fmt.time(java.time.Instant.ofEpochMilli(it)) }).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(n.title, style = MaterialTheme.typography.titleSmall)
+                (n.big ?: n.text).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            if (n.status) Avatar(n.avatarName, Cute.colors.partner, 40.dp, image = n.avatar)
+        }
+        if (n.locate || n.hug) {
+            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                if (n.locate) Text("📍 現在在哪？", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                if (n.hug) Text("🤗 抱抱", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            }
+        }
     }
 }
 

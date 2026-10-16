@@ -79,6 +79,7 @@ import tw.xiaoliangkou.app.ui.components.rememberHeartBurst
 import tw.xiaoliangkou.app.ui.screens.AccountScreen
 import tw.xiaoliangkou.app.ui.screens.AnniversaryScreen
 import tw.xiaoliangkou.app.ui.screens.AnniversarySheet
+import tw.xiaoliangkou.app.ui.screens.AvatarSheet
 import tw.xiaoliangkou.app.ui.screens.CalendarScreen
 import tw.xiaoliangkou.app.ui.screens.ComfortSheet
 import tw.xiaoliangkou.app.ui.screens.ConsentScreen
@@ -107,6 +108,7 @@ import tw.xiaoliangkou.app.ui.screens.RegisterScreen
 import tw.xiaoliangkou.app.ui.screens.SupabaseSetupScreen
 import tw.xiaoliangkou.app.ui.screens.SplashScreen
 import tw.xiaoliangkou.app.ui.screens.WelcomeScreen
+import tw.xiaoliangkou.app.ui.screens.WidgetsScreen
 import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.LocalDate
 
@@ -117,6 +119,7 @@ sealed interface SheetSpec {
     data class ExpenseEdit(val id: String?) : SheetSpec
     data class ExpenseView(val id: String) : SheetSpec
     data object ParseTest : SheetSpec
+    data object Avatar : SheetSpec
     /** [name]：從地圖搜尋新增時，先填好的名稱 */
     data class PlaceEdit(val id: String?, val lat: Double, val lng: Double, val name: String = "") : SheetSpec
     data class EventEdit(val id: String?, val date: LocalDate) : SheetSpec
@@ -284,13 +287,14 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
             composable("map") { MapScreen(s, vm, showSheet) }
             composable("money") { MoneyScreen(s, vm, showSheet) }
             composable("calendar") { CalendarScreen(s, vm, showSheet, calendarDate) }
-            composable("more") { MoreScreen(s, vm, open) }
+            composable("more") { MoreScreen(s, vm, showSheet, open) }
             composable("mood") { MoodScreen(s, vm, back) }
             composable("anniv") { AnniversaryScreen(s, vm, back, showSheet) }
             composable("cycle") { CycleScreen(s, vm, back, showSheet) }
             composable("history") { HistoryScreen(s, vm, back) }
             composable("privacy") { PrivacyScreen(s, vm, back) }
             composable("notif") { NotificationScreen(s, vm, back) }
+            composable("widgets") { WidgetsScreen(s, vm, back) }
             composable("account") { AccountScreen(s, vm, back) }
             composable("permissions") { PermissionsScreen(vm, back, null) }
             composable("demo") { DemoConsole(s, vm, back) }
@@ -309,6 +313,7 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
                     is SheetSpec.ExpenseEdit -> ExpenseEditSheet(s, vm, current.id, close)
                     is SheetSpec.ExpenseView -> ExpenseViewSheet(s, current.id, close)
                     SheetSpec.ParseTest -> ParseTestSheet(vm, close)
+                    SheetSpec.Avatar -> AvatarSheet(s, vm, close)
                     is SheetSpec.PlaceEdit -> PlaceSheet(s, vm, current.id, current.lat, current.lng, current.name, close)
                     is SheetSpec.EventEdit -> EventSheet(s, vm, current.id, current.date) { calendarDate = current.date; close() }
                     is SheetSpec.AnniversaryEdit -> AnniversarySheet(s, vm, current.id, close)

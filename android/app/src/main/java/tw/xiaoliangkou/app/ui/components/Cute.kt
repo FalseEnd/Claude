@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -49,9 +51,12 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +66,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import tw.xiaoliangkou.app.data.Avatars
 import tw.xiaoliangkou.app.ui.theme.Cute
 
 /** 按下去會「啵」一下縮小再彈回來的點擊效果 */
@@ -114,16 +120,22 @@ fun EmojiBubble(emoji: String, background: Color, size: Dp = 40.dp) {
     }
 }
 
-/** 名字最後一個字做成的圓形頭像 */
+/** 頭像：照片、表情，或暱稱的最後一個字（[image] 是 profiles.avatar_url，見 [Avatars]） */
 @Composable
-fun Avatar(name: String, color: Color, size: Dp = 36.dp, ring: Boolean = false) {
-    val ch = name.trim().lastOrNull()?.toString() ?: "?"
+fun Avatar(name: String, color: Color, size: Dp = 36.dp, ring: Boolean = false, image: String? = null) {
+    val photo = remember(image) { Avatars.photoOf(image)?.asImageBitmap() }
+    val emoji = remember(image) { Avatars.emojiOf(image) }
+    val scale = size / 36.dp
     Box(
         Modifier.size(size).then(if (ring) Modifier.border(3.dp, MaterialTheme.colorScheme.background, CircleShape) else Modifier)
-            .clip(CircleShape).background(color),
+            .clip(CircleShape).background(if (emoji != null) color.copy(alpha = 0.28f).compositeOver(Cute.colors.card) else color),
         contentAlignment = Alignment.Center,
     ) {
-        Text(ch, color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontSize = MaterialTheme.typography.titleMedium.fontSize * (size / 36.dp)))
+        when {
+            photo != null -> Image(photo, name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            emoji != null -> Text(emoji, style = MaterialTheme.typography.titleMedium.copy(fontSize = MaterialTheme.typography.titleMedium.fontSize * scale * 1.15f))
+            else -> Text(Avatars.initial(name), color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontSize = MaterialTheme.typography.titleMedium.fontSize * scale))
+        }
     }
 }
 
