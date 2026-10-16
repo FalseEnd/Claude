@@ -73,6 +73,25 @@ class HoroscopeTest {
         }
     }
 
+    @Test fun dailyGoldenValues() {
+        // 釘住實際結果：重構時不小心改到亂數順序或種子，大家的運勢就會整個換掉
+        val day = Horoscope.daily(signs[0], d("2026-10-16"))
+        assertEquals(listOf(3, 3, 3, 4, 3), day.aspects.map { it.stars })
+        assertEquals(1, day.luckyNumber)
+        assertEquals("杏桃色", day.luckyColor.name)
+        assertEquals("記得抬頭看看天空，今天也很美。", day.advice)
+        assertEquals(
+            listOf(
+                "適合整理桌面、行程或心情，清爽之後運氣也會跟著來。",
+                "適合一起做家事或煮飯，合作中會有小小的甜蜜。",
+                "工作量剛剛好，記得準時下班，留點時間給自己和另一半。",
+                "收支都很順，記得犒賞一下努力的自己。",
+                "眼睛用久了就看看遠方，讓它休息一下。",
+            ),
+            day.aspects.map { it.text },
+        )
+    }
+
     @Test fun dailyVariesByDateAndSign() {
         val start = d("2026-10-01")
         signs.forEach { s ->
@@ -164,6 +183,23 @@ class HoroscopeTest {
         assertTrue(scores.getValue(3).all { it < 70 })
         assertTrue(scores.values.flatten().toSet().size >= 20)
         assertTrue(Horoscope.match(signs[3], signs[7]).score >= 90)
+    }
+
+    @Test fun matchGoldenValues() {
+        assertEquals(96, Horoscope.match(signs[3], signs[7]).score)
+        assertEquals(86, Horoscope.match(signs[3], signs[3]).score)
+        assertEquals(98, Horoscope.match(signs[0], signs[8]).score)
+        assertEquals(95, Horoscope.matchOfDay(signs[3], signs[7], d("2026-10-16")).score)
+    }
+
+    @Test fun matchFairToEverySign() {
+        // 微調不能讓某個星座跟誰配都比較低：每個星座相對同類組合平均的偏移要在 ±1.5 內
+        fun gap(a: Horoscope.Sign, b: Horoscope.Sign) = minOf(abs(a.id - b.id), 12 - abs(a.id - b.id))
+        val gapMean = pairs.groupBy({ (a, b) -> gap(a, b) }, { (a, b) -> Horoscope.match(a, b).score }).mapValues { it.value.average() }
+        signs.forEach { s ->
+            val offset = signs.map { Horoscope.match(s, it).score - gapMean.getValue(gap(s, it)) }.average()
+            assertTrue("${s.name} $offset", abs(offset) <= 1.5)
+        }
     }
 
     @Test fun matchOfDay() {
