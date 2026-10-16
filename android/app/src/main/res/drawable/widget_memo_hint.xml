@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 還沒有放在桌面的備忘錄：虛線框 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/widget_memo_hint" />
+    <stroke android:width="1.5dp" android:color="@color/widget_memo_hint_stroke" android:dashWidth="5dp" android:dashGap="4dp" />
+    <corners android:radius="18dp" />
+</shape>

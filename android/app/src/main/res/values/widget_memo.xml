@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面小工具「備忘錄」 -->
+<resources>
+    <string name="widget_memo">備忘錄</string>
+    <string name="widget_memo_desc">放在桌面的備忘錄：採買清單、想去的地方、給對方的小紙條</string>
+    <!-- 便利貼的顏色（跟 App 裡一樣） -->
+    <color name="widget_memo_pink">#FFFFE1EA</color>
+    <color name="widget_memo_yellow">#FFFFF0BD</color>
+    <color name="widget_memo_mint">#FFD5F3E8</color>
+    <color name="widget_memo_sky">#FFDCEDFF</color>
+    <color name="widget_memo_lavender">#FFEAE3FF</color>
+    <color name="widget_memo_peach">#FFFFE3D3</color>
+    <color name="widget_memo_body">#FF6B5560</color>
+    <color name="widget_memo_hint">#FFFFEEF3</color>
+    <color name="widget_memo_hint_stroke">#FFF2C4D3</color>
+</resources>

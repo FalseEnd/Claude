@@ -47,6 +47,8 @@ import tw.xiaoliangkou.app.data.apiCall
 import tw.xiaoliangkou.app.service.AutoBookkeeping
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.ShareService
+import tw.xiaoliangkou.app.widget.MemoWidget
+import tw.xiaoliangkou.app.widget.MemoWidgetSnapshot
 import tw.xiaoliangkou.app.widget.WidgetSnapshot
 import tw.xiaoliangkou.app.widget.Widgets
 
@@ -133,6 +135,18 @@ class AppContainer(private val app: Application) {
                 .collectLatest { snap ->
                     delay(800) // 一次來好幾個變動時，等一下再一起畫
                     withContext(Dispatchers.IO) { Widgets.publish(app, snap) }
+                }
+        }
+        // 備忘錄小工具：放在桌面的備忘錄（照片縮圖從 media 讀；登出後就清掉）
+        scope.launch {
+            _prefs.first { it != null }
+            _repo.flatMapLatest { r -> r?.state ?: flowOf(null) }
+                .filter { it == null || it.loaded }
+                .map { MemoWidgetSnapshot.of(it) }
+                .distinctUntilChanged()
+                .collectLatest { snap ->
+                    delay(800)
+                    withContext(Dispatchers.IO) { MemoWidget.publish(app, snap, media) }
                 }
         }
         // 回到前景：即時連線斷了的話馬上重連，也先用 RPC 補抓通知
