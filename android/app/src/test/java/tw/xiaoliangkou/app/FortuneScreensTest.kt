@@ -8,13 +8,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.Lifecycle
 import com.github.takahirom.roborazzi.captureRoboImage
 import kotlinx.coroutines.CoroutineScope
@@ -41,6 +49,7 @@ import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.ui.screens.FortuneContent
 import tw.xiaoliangkou.app.ui.screens.FortuneStore
 import tw.xiaoliangkou.app.ui.screens.FortuneTab
+import tw.xiaoliangkou.app.ui.screens.ShakeGate
 import tw.xiaoliangkou.app.ui.screens.chineseNumber
 import tw.xiaoliangkou.app.ui.theme.XlkTheme
 import java.time.LocalDate
@@ -67,7 +76,7 @@ class FortuneScreensTest {
         }
     private val now = LocalDateTime.of(2026, 10, 16, 21, 30)
     private val clock = { now }
-    private val store by lazy { FortuneStore(RuntimeEnvironment.getApplication()) }
+    private val store by lazy { FortuneStore(RuntimeEnvironment.getApplication(), s.myId.orEmpty()) }
 
     @After fun tearDown() = scope.cancel()
 
@@ -93,7 +102,7 @@ class FortuneScreensTest {
 
     @Test fun horoscope() {
         shot("55_fortune_horoscope") { FortuneContent(s, {}, FortuneTab.HOROSCOPE, clock) }
-        compose.onNodeWithText("摩羯座的今日運勢").assertExists()
+        compose.onNodeWithText("阿哲 · 摩羯座的今日運勢").assertExists()
         compose.onNodeWithText("依星座與日期產生，僅供娛樂").assertExists()
         compose.onNodeWithText("看更多 ›").assertExists()
         val match = Horoscope.matchOfDay(Horoscope.signs[9], Horoscope.signs[8], now.toLocalDate())
@@ -104,7 +113,7 @@ class FortuneScreensTest {
         shot("58_fortune_horoscope_dark", dark = true, act = { compose.onNodeWithText("明天 10/17").performClick() }) {
             FortuneContent(s, {}, FortuneTab.HOROSCOPE, clock)
         }
-        compose.onNodeWithText("摩羯座的明日運勢").assertExists()
+        compose.onNodeWithText("阿哲 · 摩羯座的明日運勢").assertExists()
         val tomorrow = Horoscope.daily(Horoscope.signs[9], LocalDate.of(2026, 10, 17))
         compose.onNodeWithText(tomorrow.advice).assertExists()
     }
@@ -119,9 +128,27 @@ class FortuneScreensTest {
         compose.onNodeWithText("獅子座").performClick()
         compose.mainClock.advanceTimeBy(1000)
         assertEquals("獅子座", store.sign("me:${s.myId}")?.name)
-        compose.onNodeWithText("獅子座的今日運勢").assertExists()
+        compose.onNodeWithText("阿哲 · 獅子座的今日運勢").assertExists()
         // 還不知道對方的星座，就先不顯示速配
         assertTrue(compose.onAllNodesWithText("今天的速配指數", substring = true).fetchSemanticsNodes().isEmpty())
+        compose.onRoot().captureRoboImage("build/screens/59_fortune_sign_manual.png")
+        // 手動選的可以再換
+        compose.onNodeWithText("手動選的 · 換一個").assertHasClickAction().performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("你是什麼星座？").assertExists()
+        compose.onNodeWithText("收起").performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        assertTrue(compose.onAllNodesWithText("你是什麼星座？").fetchSemanticsNodes().isEmpty())
+    }
+
+    /** 點對方的卡片就看對方的運勢；標題寫名字，同星座也分得出來 */
+    @Test fun switchToPartner() {
+        compose.setContent { XlkTheme { FortuneContent(s, {}, FortuneTab.HOROSCOPE, clock) } }
+        compose.onNode(isSelectable() and hasText("阿哲")).assertIsSelected()
+        compose.onNode(isSelectable() and hasText("小雨")).assertIsNotSelected().performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNode(isSelectable() and hasText("小雨")).assertIsSelected()
+        compose.onNodeWithText("小雨 · 射手座的今日運勢").assertExists()
     }
 
     @Test fun omikujiIdleWithHistory() {
@@ -144,7 +171,9 @@ class FortuneScreensTest {
         shot("57_fortune_omikuji_result", act = ::drawAndWait) { FortuneContent(s, {}, FortuneTab.OMIKUJI, clock, Random(seed)) }
         assertEquals(2, compose.onAllNodesWithText("第 ${expected.no} 籤").fetchSemanticsNodes().size) // 籤詩卡＋紀錄
         compose.onNodeWithText("看完整解籤 ›").assertExists()
-        assertEquals(2, compose.onAllNodesWithText("再抽一支").fetchSemanticsNodes().size) // 上面的按鈕＋籤詩卡
+        // 只有籤詩卡上有「再抽一支」，上面的按鈕維持「搖一搖抽籤」
+        assertEquals(1, compose.onAllNodesWithText("再抽一支").fetchSemanticsNodes().size)
+        compose.onNodeWithText("搖一搖抽籤").assertExists()
         val draws = store.draws()
         assertEquals(listOf(expected.no, 23), draws.map { it.no })
         assertEquals(now, draws.first().at)
@@ -158,13 +187,42 @@ class FortuneScreensTest {
         assertEquals(expected.no, store.draws().single().no)
     }
 
+    /** 系統字體調大（1.3 倍）：籤詩格子、紀錄的「第 100 籤」都不能被切到 */
+    @Test fun omikujiLargeText() {
+        val seed = seedFor("末小吉")
+        store.add(100, now.minusHours(1))
+        shot("57_fortune_omikuji_large_text", act = ::drawAndWait) {
+            val d = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(d.density, fontScale = 1.3f)) {
+                FortuneContent(s, {}, FortuneTab.OMIKUJI, clock, Random(seed))
+            }
+        }
+        compose.onNodeWithText("第 100 籤").assertExists()
+        assertEquals(2, store.draws().size)
+    }
+
+    /** 切到星座運勢再回來，剛抽到的籤還在 */
+    @Test fun resultSurvivesTabSwitch() {
+        compose.setContent { XlkTheme { FortuneContent(s, {}, FortuneTab.OMIKUJI, clock, Random(5)) } }
+        drawAndWait()
+        val no = Omikuji.draw(Random(5)).no
+        compose.onNodeWithText("🔮 星座運勢").performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        assertTrue(compose.onAllNodesWithText("看完整解籤 ›").fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithText("⛩️ 御神籤").performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("看完整解籤 ›").assertExists()
+        assertEquals(2, compose.onAllNodesWithText("第 $no 籤").fetchSemanticsNodes().size)
+        assertEquals(1, store.draws().size)
+    }
+
     /** 一般手機的高度：抽完會自動捲到籤詩，再抽一次也看得到結果 */
     @Config(qualifiers = "w400dp-h740dp-xhdpi")
     @Test fun resultScrollsIntoViewOnPhone() {
         compose.setContent { XlkTheme { FortuneContent(s, {}, FortuneTab.OMIKUJI, clock, Random(11)) } }
         drawAndWait()
         compose.onNodeWithText("看完整解籤 ›").assertIsDisplayed()
-        compose.onAllNodesWithText("再抽一支")[1].performClick()
+        compose.onNodeWithText("再抽一支").performClick()
         compose.mainClock.advanceTimeBy(4000)
         compose.waitForIdle()
         compose.onNodeWithText("看完整解籤 ›").assertIsDisplayed()
@@ -206,6 +264,24 @@ class FortuneScreensTest {
 
     private fun event(x: Float, y: Float, z: Float) = ShadowSensorManager.createSensorEvent(3, Sensor.TYPE_ACCELEROMETER).apply {
         values[0] = x; values[1] = y; values[2] = z
+    }
+
+    /** 搖一下只抽一支：動畫中還在搖、動畫一結束手還在搖，都不能多抽 */
+    @Test fun oneShakeDrawsOnce() {
+        val gate = ShakeGate(1500)
+        assertTrue(gate.spike(0, enabled = true))
+        assertFalse(gate.spike(300, enabled = true)) // 同一次搖
+        assertFalse(gate.spike(1200, enabled = false)) // 抽籤動畫中
+        assertFalse(gate.spike(2600, enabled = true)) // 動畫剛結束，手還在搖
+        assertTrue(gate.spike(4200, enabled = true)) // 停了一下再搖，才是新的一支
+        assertFalse(gate.spike(9000, enabled = false))
+    }
+
+    /** 抽籤紀錄跟著帳號：換人登入看不到上一個人的籤 */
+    @Test fun drawsBelongToTheAccount() {
+        store.add(7, now)
+        assertTrue(FortuneStore(RuntimeEnvironment.getApplication(), "someone-else").draws().isEmpty())
+        assertEquals(listOf(7), store.draws().map { it.no })
     }
 
     @Test fun storeKeepsLastTen() {

@@ -26,8 +26,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,9 +37,11 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -46,9 +50,11 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,18 +76,28 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -117,9 +133,13 @@ internal object FortuneTab {
     const val OMIKUJI = "omikuji"
 }
 
-/** 存在手機裡：上次看的分頁、手動選的星座、抽過的籤（最近 10 支） */
-internal class FortuneStore(context: Context) {
+/**
+ * 存在手機裡：上次看的分頁、手動選的星座、抽過的籤（最近 10 支）。
+ * 抽籤紀錄跟著帳號（[owner]）走，換人登入不會看到上一個人的籤。
+ */
+internal class FortuneStore(context: Context, owner: String) {
     private val prefs = context.getSharedPreferences("fortune", Context.MODE_PRIVATE)
+    private val drawsKey = "draws:$owner"
 
     data class Draw(val no: Int, val at: LocalDateTime) {
         val lot: Omikuji.Lot? get() = Omikuji.lots.firstOrNull { it.no == no }
@@ -134,7 +154,7 @@ internal class FortuneStore(context: Context) {
     fun setSign(key: String, sign: Horoscope.Sign) = prefs.edit().putInt("sign:$key", sign.id).apply()
 
     /** 新的在前 */
-    fun draws(): List<Draw> = prefs.getString("draws", null).orEmpty().split(';').mapNotNull { e ->
+    fun draws(): List<Draw> = prefs.getString(drawsKey, null).orEmpty().split(';').mapNotNull { e ->
         val parts = e.split('@').takeIf { it.size == 2 } ?: return@mapNotNull null
         val no = parts[0].toIntOrNull()?.takeIf { it in 1..Omikuji.lots.size } ?: return@mapNotNull null
         val at = runCatching { LocalDateTime.parse(parts[1]) }.getOrNull() ?: return@mapNotNull null
@@ -143,7 +163,7 @@ internal class FortuneStore(context: Context) {
 
     fun add(no: Int, at: LocalDateTime): List<Draw> {
         val list = (listOf(Draw(no, at.withNano(0))) + draws()).take(MAX)
-        prefs.edit().putString("draws", list.joinToString(";") { "${it.no}@${it.at}" }).apply()
+        prefs.edit().putString(drawsKey, list.joinToString(";") { "${it.no}@${it.at}" }).apply()
         return list
     }
 
@@ -165,8 +185,10 @@ internal fun FortuneContent(
     random: Random = Random.Default,
 ) {
     val context = LocalContext.current
-    val store = remember { FortuneStore(context) }
+    val store = remember(s.myId) { FortuneStore(context, s.myId.orEmpty()) }
     var current by rememberSaveable { mutableStateOf(tab ?: store.tab) }
+    // 放在這裡：切到星座運勢再回來，剛抽到的籤還在
+    val shown = rememberSaveable(s.myId) { mutableStateOf<Int?>(null) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -176,7 +198,7 @@ internal fun FortuneContent(
             current = it
             store.tab = it
         }
-        if (current == FortuneTab.OMIKUJI) OmikujiTab(store, clock, random) else HoroscopeTab(s, store, clock().toLocalDate())
+        if (current == FortuneTab.OMIKUJI) OmikujiTab(store, shown, clock, random) else HoroscopeTab(s, store, clock().toLocalDate())
     }
 }
 
@@ -196,17 +218,21 @@ private fun HoroscopeTab(s: AppState, store: FortuneStore, today: LocalDate) {
 
     var who by rememberSaveable { mutableStateOf("me") }
     val viewing = if (s.paired) who else "me"
-    var picking by remember { mutableStateOf<String?>(null) }
+    var picking by rememberSaveable { mutableStateOf<String?>(null) }
     var day by rememberSaveable { mutableStateOf(0) }
     val sign = if (viewing == "me") mySign else partnerSign
     // 正在看的人還沒有星座：直接打開選擇
     val pickerFor = picking ?: viewing.takeIf { sign == null }
 
+    val myName = s.me?.displayName ?: "我"
     CuteCard {
-        Text("我們的星座", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (s.paired) "我們的星座" else "我的星座", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            if (s.paired) Text("點一下切換看誰的運勢", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(Modifier.height(IntrinsicSize.Min).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SignTile(
-                name = s.me?.displayName ?: "我", color = Cute.colors.me, image = s.me?.avatarUrl, sign = mySign,
+                name = myName, color = Cute.colors.me, image = s.me?.avatarUrl, sign = mySign,
                 manual = myBirth == null, selected = viewing == "me", modifier = Modifier.weight(1f),
                 onChange = { who = "me"; picking = "me" },
             ) { who = "me"; picking = if (mySign == null) "me" else null }
@@ -240,10 +266,10 @@ private fun HoroscopeTab(s: AppState, store: FortuneStore, today: LocalDate) {
     val date = today.plusDays(day.toLong())
     val dayWord = if (day == 0) "今天" else "明天"
     val daily = remember(sign, date) { Horoscope.daily(sign, date) }
-    DailyCard(daily, dayWord) { runCatching { uri.openUri(Horoscope.moreUrl(sign)) } }
+    DailyCard(daily, if (viewing == "me") myName else s.partnerName, dayWord) { runCatching { uri.openUri(Horoscope.moreUrl(sign)) } }
     if (mySign != null && partnerSign != null) {
         val match = remember(mySign, partnerSign, date) { Horoscope.matchOfDay(mySign, partnerSign, date) }
-        MatchCard(match, s.me?.displayName ?: "我", s.partnerName, dayWord)
+        MatchCard(match, myName, s.partnerName, dayWord)
     }
 }
 
@@ -260,12 +286,15 @@ private fun SignTile(
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(22.dp)
+    val link = manual && sign != null
     Column(
-        modifier.clip(shape)
+        modifier.fillMaxHeight().clip(shape)
             .background(if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             .border(2.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, shape)
-            .bouncyClick(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 8.dp),
+            .semantics { this.selected = selected }
+            .bouncyClick(role = Role.Tab, onClick = onClick)
+            // 「換一個」本身就有 48dp 高，底下的留白就不用再加
+            .padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = if (link) 0.dp else 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -279,11 +308,19 @@ private fun SignTile(
             sign?.let { "${it.range} · ${it.element.label}" } ?: "點我選星座",
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
         )
-        if (manual && sign != null) Text(
-            "手動選的 · 換一個",
-            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onChange).padding(horizontal = 6.dp, vertical = 2.dp),
-        )
+        if (link) TextLink("手動選的 · 換一個", MaterialTheme.typography.labelSmall, onClick = onChange)
+    }
+}
+
+/** 小小的文字連結，點擊範圍至少 48dp */
+@Composable
+private fun TextLink(text: String, style: TextStyle, color: Color = MaterialTheme.colorScheme.primary, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(RoundedCornerShape(50)).clickable(role = Role.Button, onClick = onClick)
+            .minimumInteractiveComponentSize().padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, style = style, color = color)
     }
 }
 
@@ -292,10 +329,7 @@ private fun SignPicker(title: String, selected: Horoscope.Sign?, onClose: (() ->
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            if (onClose != null) Text(
-                "收起", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClose).padding(horizontal = 8.dp, vertical = 4.dp),
-            )
+            if (onClose != null) TextLink("收起", MaterialTheme.typography.labelMedium, MaterialTheme.colorScheme.onSurfaceVariant, onClose)
         }
         Horoscope.signs.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -320,13 +354,14 @@ private fun SignPicker(title: String, selected: Horoscope.Sign?, onClose: (() ->
 }
 
 @Composable
-private fun DailyCard(daily: Horoscope.Daily, dayWord: String, onMore: () -> Unit) {
+private fun DailyCard(daily: Horoscope.Daily, name: String, dayWord: String, onMore: () -> Unit) {
     val sign = daily.sign
     CuteCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             EmojiBubble(sign.emoji, Cute.colors.lavender.copy(alpha = 0.25f).compositeOver(Cute.colors.card), 52.dp)
             Column(Modifier.weight(1f)) {
-                Text("${sign.name}的${if (dayWord == "今天") "今日" else "明日"}運勢", style = MaterialTheme.typography.titleMedium)
+                // 兩個人同星座時也分得出是誰的
+                Text("$name · ${sign.name}的${if (dayWord == "今天") "今日" else "明日"}運勢", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "${Fmt.md(daily.date)}（${Fmt.weekday(daily.date).substring(1)}）· ${sign.element.emoji} ${sign.element.label} · ${sign.trait}",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -366,10 +401,7 @@ private fun DailyCard(daily: Horoscope.Daily, dayWord: String, onMore: () -> Uni
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("依星座與日期產生，僅供娛樂", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            Text(
-                "看更多 ›", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onMore).padding(horizontal = 8.dp, vertical = 4.dp),
-            )
+            TextLink("看更多 ›", MaterialTheme.typography.labelLarge, onClick = onMore)
         }
     }
 }
@@ -448,15 +480,16 @@ private fun ScoreRing(score: Int) {
 private val hm = DateTimeFormatter.ofPattern("HH:mm")
 
 @Composable
-private fun OmikujiTab(store: FortuneStore, clock: () -> LocalDateTime, random: Random) {
+private fun OmikujiTab(store: FortuneStore, shownState: MutableState<Int?>, clock: () -> LocalDateTime, random: Random) {
     val uri = LocalUriHandler.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    var draws by remember { mutableStateOf(store.draws()) }
-    var shown by rememberSaveable { mutableStateOf<Int?>(null) }
+    var draws by remember(store) { mutableStateOf(store.draws()) }
+    var shown by shownState
     var drawing by remember { mutableStateOf<Omikuji.Lot?>(null) }
     val shake = remember { Animatable(0f) }
-    val stick = remember { Animatable(0f) }
+    // 從星座運勢切回來時，籤還插在籤筒上
+    val stick = remember { Animatable(if (shown != null) 1f else 0f) }
     val appear = remember { Animatable(1f) }
     val bring = remember { BringIntoViewRequester() }
     val boxBring = remember { BringIntoViewRequester() }
@@ -484,7 +517,8 @@ private fun OmikujiTab(store: FortuneStore, clock: () -> LocalDateTime, random: 
         drawing = null
     }
 
-    val sway by rememberInfiniteTransition(label = "sway").animateFloat(
+    // 動畫的值只在 graphicsLayer／offset 裡讀，每一幀只重畫籤筒，不會整張卡重新組合
+    val sway = rememberInfiniteTransition(label = "sway").animateFloat(
         0f, 0f,
         infiniteRepeatable(keyframes {
             durationMillis = 3200
@@ -499,19 +533,13 @@ private fun OmikujiTab(store: FortuneStore, clock: () -> LocalDateTime, random: 
             Text("心裡默念想問的事，再搖一搖籤筒 🙏", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         }
         OmikujiBox(
-            rotation = if (drawing != null) shake.value else sway,
-            stickOut = stick.value,
+            rotation = { if (drawing != null) shake.value else sway.value },
+            stickOut = { stick.value },
             number = drawing?.no ?: shown,
             modifier = Modifier.align(Alignment.CenterHorizontally),
         )
-        CuteButton(
-            when {
-                drawing != null -> "搖呀搖…"
-                shown != null -> "再抽一支"
-                else -> "搖一搖抽籤"
-            },
-            Modifier.fillMaxWidth(), enabled = drawing == null, onClick = draw,
-        )
+        // 抽到之後「再抽一支」在籤詩卡上，這裡維持原本的字
+        CuteButton(if (drawing != null) "搖呀搖…" else "搖一搖抽籤", Modifier.fillMaxWidth(), enabled = drawing == null, onClick = draw)
         if (hasSensor) Text(
             "也可以直接搖手機 📳", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -574,8 +602,8 @@ private fun HistoryRow(d: FortuneStore.Draw, lot: Omikuji.Lot, selected: Boolean
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(hm.format(d.at), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("第 ${lot.no} 籤", style = MaterialTheme.typography.titleSmall, modifier = Modifier.width(64.dp), maxLines = 1)
-        Box(Modifier.width(60.dp)) { lot.luck?.let { LuckPill(it) } }
+        Text("第 ${lot.no} 籤", style = MaterialTheme.typography.titleSmall, modifier = Modifier.widthIn(min = 64.dp), maxLines = 1)
+        Box(Modifier.widthIn(min = 60.dp)) { lot.luck?.let { LuckPill(it) } }
         Text(
             lot.poem.first() + "…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -606,10 +634,16 @@ private fun luckColor(luck: String?): Color = when (luck) {
 private fun OmikujiSlip(lot: Omikuji.Lot, modifier: Modifier, onAgain: () -> Unit, again: Boolean, onMore: () -> Unit) {
     val ink = Cute.colors.thread
     val paper = Cute.colors.butter.copy(alpha = if (dark()) 0.07f else 0.14f).compositeOver(Cute.colors.card)
+    // 格子跟著字級放大，系統字體調大也不會切到字
+    val (cellW, cellH) = with(LocalDensity.current) { 30.sp.toDp() to 32.sp.toDp() }
     CuteCard(modifier, color = paper, padding = PaddingValues(20.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // 抽到新的籤時，TalkBack 會唸出「第 N 籤」和吉凶
+        Row(
+            Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Column(Modifier.weight(1f)) {
-                Text("觀音百籤 · 第${chineseNumber(lot.no)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("淺草寺 · 觀音百籤", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("第 ${lot.no} 籤", style = MaterialTheme.typography.headlineMedium)
             }
             lot.luck?.let { LuckStamp(it) }
@@ -622,10 +656,10 @@ private fun OmikujiSlip(lot: Omikuji.Lot, modifier: Modifier, onAgain: () -> Uni
         ) {
             // 直書，由右往左讀
             lot.poem.reversed().forEachIndexed { i, line ->
-                if (i > 0) Box(Modifier.padding(horizontal = 14.dp).width(1.dp).height(PoemCell * line.length).background(ink.copy(alpha = 0.22f)))
+                if (i > 0) Box(Modifier.padding(horizontal = 14.dp).width(1.dp).height(cellH * line.length).background(ink.copy(alpha = 0.22f)))
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     line.forEach { ch ->
-                        Box(Modifier.size(30.dp, PoemCell), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(cellW, cellH), contentAlignment = Alignment.Center) {
                             Text(ch.toString(), style = MaterialTheme.typography.titleLarge)
                         }
                     }
@@ -640,19 +674,19 @@ private fun OmikujiSlip(lot: Omikuji.Lot, modifier: Modifier, onAgain: () -> Uni
     }
 }
 
-private val PoemCell = 32.dp
+/** 印章、籤筒上的字是圖案的一部分：固定成 dp 大小，不跟著系統字級放大 */
+@Composable
+private fun fixedSp(dp: Float): TextUnit = with(LocalDensity.current) { dp.dp.toSp() }
 
 @Composable
 private fun LuckStamp(luck: String) {
     val c = luckColor(luck)
+    val size = fixedSp(if (luck.length >= 3) 14f else 22f)
     Box(
         Modifier.rotate(-10f).size(64.dp).border(2.5.dp, c, CircleShape).padding(4.dp).border(1.dp, c.copy(alpha = 0.5f), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            luck, color = c, fontWeight = FontWeight.Bold,
-            style = if (luck.length >= 3) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleLarge,
-        )
+        Text(luck, color = c, fontWeight = FontWeight.Bold, maxLines = 1, style = MaterialTheme.typography.titleLarge.copy(fontSize = size, lineHeight = size))
     }
 }
 
@@ -667,10 +701,11 @@ internal fun chineseNumber(n: Int): String = when {
 
 /**
  * 淺草寺那種六角形籤筒：搖一搖，籤從上面的小洞跑出來。
- * 座標用 170×236 的設計單位（1 單位 = 1dp）
+ * 座標用 170×236 的設計單位（1 單位 = 1dp）。最上面 [BOX_TOP] 只有籤跑出來時才用得到，
+ * 不算在版面高度裡（籤直接畫到外面），平常籤筒上方就不會空一大塊。
  */
 @Composable
-private fun OmikujiBox(rotation: Float, stickOut: Float, number: Int?, modifier: Modifier = Modifier) {
+private fun OmikujiBox(rotation: () -> Float, stickOut: () -> Float, number: Int?, modifier: Modifier = Modifier) {
     val lacquer = Color(0xFFE25A47)
     val lacquerLight = Color(0xFFF07A66)
     val lacquerDark = Color(0xFFB83E2D)
@@ -682,12 +717,18 @@ private fun OmikujiBox(rotation: Float, stickOut: Float, number: Int?, modifier:
     val cream = Color(0xFFFFF6DD)
     val shadow = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.10f)
     val cheek = Color(0xFFFFA7B5)
-    val glow = Cute.colors.butter.copy(alpha = if (dark()) 0.16f else 0.4f)
+    val glow = Cute.colors.butter.copy(alpha = if (dark()) 0.18f else 0.55f)
+    val labelSp = fixedSp(12f)
+    val labelLine = fixedSp(15f)
+    val stickSp = fixedSp(10f)
+    val stickLine = fixedSp(12f)
     Box(
-        modifier.size(170.dp, 236.dp).graphicsLayer {
-            rotationZ = rotation
-            transformOrigin = TransformOrigin(0.5f, 0.92f)
-        },
+        modifier.size(170.dp, (236 - BOX_TOP).dp)
+            .clearAndSetSemantics { contentDescription = "觀音籤筒" }
+            .graphicsLayer {
+                rotationZ = rotation()
+                transformOrigin = TransformOrigin(0.5f, (217f - BOX_TOP) / (236f - BOX_TOP))
+            },
     ) {
         Canvas(Modifier.fillMaxSize()) {
             val u = size.width / 170f
@@ -697,55 +738,80 @@ private fun OmikujiBox(rotation: Float, stickOut: Float, number: Int?, modifier:
                 for (i in 2 until xy.size step 2) lineTo(xy[i] * u, xy[i + 1] * u)
                 close()
             }
-            drawCircle(Brush.radialGradient(listOf(glow, glow.copy(alpha = 0f)), p(85f, 138f), 104f * u), 104f * u, p(85f, 138f))
-            drawOval(shadow, p(32f, 220f), Size(106f * u, 14f * u))
-            // 左、正、右三面
-            drawPath(poly(30f, 92f, 52f, 104f, 52f, 224f, 30f, 212f), lacquerLight)
-            drawPath(poly(52f, 104f, 118f, 104f, 118f, 224f, 52f, 224f), lacquer)
-            drawPath(poly(118f, 104f, 140f, 92f, 140f, 212f, 118f, 224f), lacquerDark)
-            // 上蓋和小洞
-            drawPath(poly(30f, 92f, 52f, 80f, 118f, 80f, 140f, 92f, 118f, 104f, 52f, 104f), top)
-            drawOval(hole, p(76f, 88f), Size(18f * u, 8f * u))
-            // 金色的邊
-            listOf(110f, 198f).forEach { y ->
-                val band = Path().apply {
-                    moveTo(30f * u, y * u); lineTo(52f * u, (y + 12f) * u); lineTo(118f * u, (y + 12f) * u); lineTo(140f * u, y * u)
+            translate(top = -BOX_TOP * u) {
+                // 光暈往上移一點，籤跑出來的地方也亮亮的
+                drawCircle(Brush.radialGradient(listOf(glow, glow.copy(alpha = 0f)), p(85f, 122f), 100f * u), 100f * u, p(85f, 122f))
+                drawOval(shadow, p(32f, 220f), Size(106f * u, 14f * u))
+                // 左、正、右三面
+                drawPath(poly(30f, 92f, 52f, 104f, 52f, 224f, 30f, 212f), lacquerLight)
+                drawPath(poly(52f, 104f, 118f, 104f, 118f, 224f, 52f, 224f), lacquer)
+                drawPath(poly(118f, 104f, 140f, 92f, 140f, 212f, 118f, 224f), lacquerDark)
+                // 上蓋和小洞
+                drawPath(poly(30f, 92f, 52f, 80f, 118f, 80f, 140f, 92f, 118f, 104f, 52f, 104f), top)
+                drawOval(hole, p(76f, 88f), Size(18f * u, 8f * u))
+                // 金色的邊
+                listOf(110f, 198f).forEach { y ->
+                    val band = Path().apply {
+                        moveTo(30f * u, y * u); lineTo(52f * u, (y + 12f) * u); lineTo(118f * u, (y + 12f) * u); lineTo(140f * u, y * u)
+                    }
+                    drawPath(band, gold, style = Stroke(5f * u))
                 }
-                drawPath(band, gold, style = Stroke(5f * u))
+                // 小臉
+                drawCircle(inkBrown, 2.6f * u, p(74f, 190f))
+                drawCircle(inkBrown, 2.6f * u, p(96f, 190f))
+                drawOval(cheek.copy(alpha = 0.8f), p(62f, 193f), Size(8f * u, 4.5f * u))
+                drawOval(cheek.copy(alpha = 0.8f), p(100f, 193f), Size(8f * u, 4.5f * u))
+                drawArc(inkBrown, 20f, 140f, false, p(81f, 189f), Size(8f * u, 6f * u), style = Stroke(1.8f * u, cap = StrokeCap.Round))
             }
-            // 小臉
-            drawCircle(inkBrown, 2.6f * u, p(74f, 190f))
-            drawCircle(inkBrown, 2.6f * u, p(96f, 190f))
-            drawOval(cheek.copy(alpha = 0.8f), p(62f, 193f), Size(8f * u, 4.5f * u))
-            drawOval(cheek.copy(alpha = 0.8f), p(100f, 193f), Size(8f * u, 4.5f * u))
-            drawArc(inkBrown, 20f, 140f, false, p(81f, 189f), Size(8f * u, 6f * u), style = Stroke(1.8f * u, cap = StrokeCap.Round))
         }
         // 正面的貼紙
         Column(
-            Modifier.offset(70.dp, 128.dp).size(30.dp, 54.dp).clip(RoundedCornerShape(4.dp)).background(cream)
+            Modifier.offset(70.dp, (128 - BOX_TOP).dp).size(30.dp, 54.dp).clip(RoundedCornerShape(4.dp)).background(cream)
                 .border(1.dp, lacquerDark.copy(alpha = 0.6f), RoundedCornerShape(4.dp)),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            "觀音籤".forEach { Text(it.toString(), color = lacquerDark, fontSize = 12.sp, lineHeight = 15.sp) }
+            "觀音籤".forEach { Text(it.toString(), color = lacquerDark, fontSize = labelSp, lineHeight = labelLine) }
         }
-        // 從小洞跑出來的籤
-        Box(Modifier.offset(75.dp, 0.dp).size(20.dp, 92.dp).clipToBounds()) {
+        // 從小洞跑出來的籤（「第一」比單獨一個「一」更看得出是籤號）
+        Box(Modifier.offset(75.dp, (-BOX_TOP).dp).size(20.dp, 92.dp).clipToBounds()) {
             Column(
-                Modifier.offset(y = 92.dp - 66.dp * stickOut).size(20.dp, 100.dp).clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)).background(bamboo),
+                Modifier.offset { IntOffset(0, (92.dp - STICK_RISE.dp * stickOut()).roundToPx()) }
+                    .size(20.dp, 100.dp).clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)).background(bamboo),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Box(Modifier.fillMaxWidth().height(9.dp).background(lacquer))
-                if (number != null) chineseNumber(number).forEach {
-                    Text(it.toString(), color = inkBrown, fontSize = 11.sp, lineHeight = 13.sp)
+                Box(Modifier.fillMaxWidth().height(8.dp).background(lacquer))
+                if (number != null) Column(Modifier.padding(top = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    "第${chineseNumber(number)}".forEach {
+                        Text(it.toString(), color = inkBrown, fontSize = stickSp, lineHeight = stickLine, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
-        if (stickOut > 0.6f) {
-            val a = ((stickOut - 0.6f) / 0.4f).coerceIn(0f, 1f)
-            Text("✨", fontSize = 18.sp, modifier = Modifier.offset(40.dp, 30.dp).graphicsLayer { alpha = a })
-            Text("✨", fontSize = 14.sp, modifier = Modifier.offset(108.dp, 46.dp).graphicsLayer { alpha = a })
+        listOf(Triple(40, 30, 18f), Triple(108, 46, 14f)).forEach { (x, y, sz) ->
+            Text(
+                "✨", fontSize = fixedSp(sz),
+                modifier = Modifier.offset(x.dp, (y - BOX_TOP).dp).graphicsLayer { alpha = ((stickOut() - 0.6f) / 0.4f).coerceIn(0f, 1f) },
+            )
         }
+    }
+}
+
+/** 籤筒上方留給籤跑出來的高度（設計單位），畫在版面外 */
+private const val BOX_TOP = 32
+
+/** 籤最多跑出來多長（設計單位）：「第九十九」四個字也看得到 */
+private const val STICK_RISE = 62
+
+/** 搖一下只抽一支：大力搖的空檔要超過 [quietMs]，下一次才算新的一搖 */
+internal class ShakeGate(private val quietMs: Long = 1500) {
+    private var last = -1L
+
+    /** 每次加速度超過門檻就呼叫（抽籤動畫中也要），回傳這次要不要抽 */
+    fun spike(now: Long, enabled: Boolean): Boolean {
+        val fresh = last < 0 || now - last > quietMs
+        last = now
+        return fresh && enabled
     }
 }
 
@@ -763,16 +829,13 @@ private fun shakeToDraw(enabled: Boolean, onShake: () -> Unit): Boolean {
     val shake by rememberUpdatedState(onShake)
     DisposableEffect(sm, sensor, lifecycle) {
         if (sm == null || sensor == null) return@DisposableEffect onDispose {}
-        var last = -1L
+        val gate = ShakeGate()
         val listener = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) {
                 val (x, y, z) = Triple(e.values[0], e.values[1], e.values[2])
                 val g = sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH
-                val now = SystemClock.elapsedRealtime()
-                if (g > SHAKE_G && (last < 0 || now - last > 1500) && canShake) {
-                    last = now
-                    shake()
-                }
+                // 動畫中還在搖也要記下來，免得動畫一結束又馬上多抽一支
+                if (g > SHAKE_G && gate.spike(SystemClock.elapsedRealtime(), canShake)) shake()
             }
 
             override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
