@@ -50,8 +50,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -100,6 +102,8 @@ fun CalendarScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, in
         val occ = if (a.repeat == "yearly") Dates.nextOccurrence(d, LocalDate.of(month.year, 1, 1), true).date else d
         occ to a
     }.groupBy({ it.first }, { it.second })
+    val journal = remember(s.dayEntries) { journalMarks(s.dayEntries) }
+    LoadJournal(s, vm, month)
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             ScreenHeader("日曆") { CuteButton("約會", icon = Icons.Rounded.Add, small = true) { sheet(SheetSpec.EventEdit(null, selected)) } }
@@ -129,6 +133,7 @@ fun CalendarScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, in
                                 d, Modifier.weight(1f), inMonth = d.month == month.month, today = d == today, selected = d == selected,
                                 phase = phase, event = eventsByDay[d] != null, ann = annByDay[d] != null,
                                 milestone = s.togetherSince?.let { Dates.isMilestone(Dates.daysTogether(it, d)) } == true,
+                                journal = journal[d],
                             ) { selected = d; if (d.month != month.month) month = YearMonth.from(d) }
                         }
                     }
@@ -137,6 +142,7 @@ fun CalendarScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, in
             }
         }
         item { DayPanel(s, vm, selected, eventsByDay[selected].orEmpty(), annByDay[selected].orEmpty().map { it.title to it.kind }, showCycle, sheet) }
+        item { DayJournal(s, vm, selected, sheet) }
         val upcoming = s.events.filter { !it.localDate.isBefore(today) && it.status != "cancelled" }.sortedBy { it.start }
         item { SectionTitle("接下來的約會", trailing = "${upcoming.size} 個") }
         if (upcoming.isEmpty()) item { CuteCard { EmptyState("還沒有約會，約一下吧", "🗓️") } }
@@ -147,7 +153,7 @@ fun CalendarScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, in
 @Composable
 private fun DayCell(
     d: LocalDate, modifier: Modifier, inMonth: Boolean, today: Boolean, selected: Boolean,
-    phase: Cycle.DayInfo?, event: Boolean, ann: Boolean, milestone: Boolean, onClick: () -> Unit,
+    phase: Cycle.DayInfo?, event: Boolean, ann: Boolean, milestone: Boolean, journal: JournalMark?, onClick: () -> Unit,
 ) {
     val c = Cute.colors
     val bg = when {
@@ -173,14 +179,22 @@ private fun DayCell(
             "${d.dayOfMonth}", style = MaterialTheme.typography.labelLarge,
             color = when { selected -> MaterialTheme.colorScheme.onPrimary; !inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f); today -> MaterialTheme.colorScheme.primary; else -> MaterialTheme.colorScheme.onSurface },
         )
-        Row(Modifier.height(8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.height(10.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
             val dot = if (selected) MaterialTheme.colorScheme.onPrimary else null
             if (event) Box(Modifier.size(5.dp).clip(CircleShape).background(dot ?: MaterialTheme.colorScheme.onSurfaceVariant))
             if (ann) Text("♥", style = MaterialTheme.typography.labelSmall.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize * 0.8f), color = dot ?: c.thread)
             if (milestone) Box(Modifier.size(5.dp).clip(CircleShape).background(dot ?: c.butter))
+            when (journal) {
+                JournalMark.PHOTO -> Text("📷", style = MarkEmoji)
+                JournalMark.DOT -> Box(Modifier.size(5.dp).clip(CircleShape).background(dot ?: MaterialTheme.colorScheme.secondary))
+                null -> Unit
+            }
         }
     }
 }
+
+/** 格子裡的小 📷：行高跟字一樣高，才不會撐開格子 */
+private val MarkEmoji = TextStyle(fontSize = 8.sp, lineHeight = 9.sp)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -190,6 +204,8 @@ private fun Legend(cycle: Boolean) {
         LegendItem("約會") { Box(Modifier.size(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurfaceVariant)) }
         LegendItem("紀念日") { Text("♥", color = c.thread, style = MaterialTheme.typography.labelSmall) }
         LegendItem("里程碑") { Box(Modifier.size(6.dp).clip(CircleShape).background(c.butter)) }
+        LegendItem("生活紀錄") { Box(Modifier.size(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary)) }
+        LegendItem("有照片") { Text("📷", style = MarkEmoji) }
         if (cycle) {
             LegendItem("經期") { Box(Modifier.size(12.dp).clip(RoundedCornerShape(4.dp)).background(c.periodSoft)) }
             LegendItem("預測經期") { Box(Modifier.size(12.dp).border(1.5.dp, c.period, RoundedCornerShape(4.dp))) }
