@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面小工具「在一起」比較窄、但夠高時的直排版面（頭像、在一起 N 天、一行小字），大小在程式裡依高度調整 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:paddingHorizontal="10dp"
+    android:paddingVertical="8dp">
+
+    <LinearLayout
+        android:id="@+id/couple"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:id="@+id/me_avatar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:adjustViewBounds="true"
+            android:contentDescription="@null"
+            android:maxWidth="46dp"
+            android:maxHeight="46dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/widget_avatar_me" />
+
+        <TextView
+            android:id="@+id/heart"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="-6dp"
+            android:layout_marginEnd="-6dp"
+            android:includeFontPadding="false"
+            android:text="💗"
+            android:textSize="14sp"
+            android:translationZ="2dp" />
+
+        <ImageView
+            android:id="@+id/partner_avatar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:adjustViewBounds="true"
+            android:contentDescription="@null"
+            android:maxWidth="46dp"
+            android:maxHeight="46dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/widget_avatar_partner" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:baselineAligned="true"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/together_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:fontFamily="@font/huninn"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="在一起"
+            android:textColor="@color/widget_muted"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/together_days"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/huninn"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="514"
+            android:textColor="@color/widget_accent"
+            android:textSize="30sp" />
+
+        <TextView
+            android:id="@+id/together_unit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="3dp"
+            android:fontFamily="@font/huninn"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="天"
+            android:textColor="@color/widget_accent"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/together_sub"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:fontFamily="@font/huninn"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="阿哲 ♥ 小雨"
+        android:textColor="@color/widget_muted"
+        android:textSize="12sp" />
+</LinearLayout>

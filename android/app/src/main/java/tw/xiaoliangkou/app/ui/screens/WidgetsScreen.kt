@@ -45,12 +45,14 @@ fun WidgetsScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenHeader("桌面小工具", onBack = back) }
         item {
-            WidgetCard("在一起", "兩個人的頭像和在一起的天數，快到 100、520 這種里程碑時會提醒", 150.dp, 150.dp,
-                remember(snap) { Widgets.together(context, snap, interactive = false) }) { pin(TogetherWidget::class.java) }
+            val size = Widgets.TOGETHER_SIZE
+            WidgetCard("在一起", "兩個人的頭像和在一起的天數，快到 100、520 這種里程碑時會提醒", size.width.dp, size.height.dp,
+                remember(snap) { Widgets.together(context, snap, interactive = false, size = size) }) { pin(TogetherWidget::class.java) }
         }
         item {
-            WidgetCard("${s.partnerName} 的狀態", "在哪、電量、心情、手機使用；右上角可以直接抱抱 ${s.partnerName}", 320.dp, 140.dp,
-                remember(snap) { Widgets.partner(context, snap, interactive = false) }) { pin(PartnerWidget::class.java) }
+            val size = Widgets.PARTNER_SIZE
+            WidgetCard("${s.partnerName} 的狀態", "在哪、電量、心情，放得下多少放多少；按右邊的 🤗 就能直接抱抱 ${s.partnerName}", size.width.dp, size.height.dp,
+                remember(snap) { Widgets.partner(context, snap, interactive = false, size = size) }) { pin(PartnerWidget::class.java) }
         }
         item {
             Note("也可以長按桌面空白處 › 小工具 › 找到「小倆口」。App 收到新的狀態就會更新小工具，系統也會每 30 分鐘更新一次。只會顯示 ${s.partnerName} 有分享的項目。", "📱")
