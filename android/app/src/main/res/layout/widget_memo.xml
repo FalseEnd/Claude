@@ -42,12 +42,22 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <!-- 便利貼由上往下排（一般大小） -->
     <LinearLayout
         android:id="@+id/memo_list"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="vertical"
+        android:visibility="gone" />
+
+    <!-- 又寬又矮（橫的桌面、4×1）：便利貼並排 -->
+    <LinearLayout
+        android:id="@+id/memo_row"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
         android:visibility="gone" />
 
     <LinearLayout
@@ -66,6 +76,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="📌"
+            android:textColor="@color/widget_text"
             android:textSize="20sp" />
 
         <TextView

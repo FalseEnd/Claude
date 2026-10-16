@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 便利貼之間的空隙 -->
-<View xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
+<!-- 便利貼之間的空隙（直的、橫的清單都用這個；RemoteViews 不能用單純的 View，所以用 FrameLayout） -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="6dp"
     android:layout_height="6dp" />

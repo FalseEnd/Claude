@@ -52,6 +52,7 @@ fun WidgetsScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
             WidgetCard("${s.partnerName} 的狀態", "在哪、電量、心情、手機使用；右上角可以直接抱抱 ${s.partnerName}", 320.dp, 140.dp,
                 remember(snap) { Widgets.partner(context, snap, interactive = false) }) { pin(PartnerWidget::class.java) }
         }
+        item { MemoWidgetCard(s, vm) }
         item {
             Note("也可以長按桌面空白處 › 小工具 › 找到「小倆口」。App 收到新的狀態就會更新小工具，系統也會每 30 分鐘更新一次。只會顯示 ${s.partnerName} 有分享的項目。", "📱")
         }

@@ -1,21 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 備忘錄小工具裡的一張便利貼：縮圖、標題、內容前幾行 -->
+<!--
+  備忘錄小工具裡的一張便利貼：縮圖、標題、內容前幾行。
+  寬高都是 match_parent + weight 1：放在直的或橫的清單裡都會平分空間。
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/memo_note"
     android:layout_width="match_parent"
-    android:layout_height="0dp"
+    android:layout_height="match_parent"
     android:layout_weight="1"
     android:background="@drawable/widget_memo_note_pink"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingHorizontal="10dp"
-    android:paddingVertical="7dp">
+    android:paddingVertical="6dp">
 
     <ImageView
         android:id="@+id/memo_thumb"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_marginEnd="9dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginEnd="8dp"
+        android:contentDescription="@null"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/memo_thumb_big"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="10dp"
         android:contentDescription="@null"
         android:scaleType="fitCenter"
         android:visibility="gone" />
@@ -59,6 +72,7 @@
             android:id="@+id/memo_body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
             android:ellipsize="end"
             android:fontFamily="@font/huninn"
             android:maxLines="1"
