@@ -44,6 +44,7 @@ import tw.xiaoliangkou.app.data.Note
 import tw.xiaoliangkou.app.data.PhotoTools
 import tw.xiaoliangkou.app.data.Profile
 import tw.xiaoliangkou.app.data.ProfileInfo
+import tw.xiaoliangkou.app.data.VoiceRecorder
 import tw.xiaoliangkou.app.ui.components.formatDuration
 import java.io.File
 import java.security.MessageDigest
@@ -171,6 +172,10 @@ class DataV2Test {
         assertEquals("invalid_media", st(415, """{"statusCode":"415","error":"invalid_mime_type","message":"mime type text/plain is not supported"}""").code)
         assertEquals("jwt_expired", st(400, """{"statusCode":"400","error":"InvalidJWT","message":"jwt expired"}""").code)
         assertEquals("server_error", st(502, "<html>Bad gateway</html>").code)
+        // 其他看不懂的錯誤：不顯示 Storage 的英文訊息
+        st(400, """{"statusCode":"400","error":"Weird","message":"Something odd happened"}""").let {
+            assertEquals("storage_error", it.code); assertEquals("檔案傳送失敗，等一下再試試看（400）", it.message)
+        }
     }
 
     @Test fun mediaPathsStayInsideTheBucket() = runBlocking<Unit> {
@@ -246,7 +251,7 @@ class DataV2Test {
 
     @Test fun demoProfileAndNotes() = runBlocking<Unit> {
         val info = ProfileInfo.build(mapOf(ProfileInfo.HEIGHT to "177", ProfileInfo.LIKES to "拉麵"))
-        demo.updateProfileInfo("阿哲哲", "1998-05-20", info)
+        demo.updateProfileInfo(" 阿哲哲 ", "1998-05-20", info)
         demo.state.value.me!!.let { assertEquals("阿哲哲", it.displayName); assertEquals("1998-05-20", it.birthday); assertEquals(info, it.info) }
         demo.updateProfileInfo("阿哲", null, info)
         assertNull(demo.state.value.me!!.birthday)
@@ -427,6 +432,25 @@ class DataV2Test {
         assertEquals(1600, decoded.width)
         val tiny = Bitmap.createBitmap(40, 30, Bitmap.Config.ARGB_8888)
         assertEquals(40, PhotoTools.compress(tiny).second.width)
+    }
+
+    @Test fun voiceRecorderLetsGoOfTheMicrophone() = runBlocking<Unit> {
+        val rec = VoiceRecorder(context)
+        val first = rec.start()
+        assertTrue(rec.isRecording)
+        // 取消的是之前那一段：現在這段不受影響
+        rec.cancel(File(first.parentFile, "older.m4a"))
+        assertTrue(rec.isRecording)
+        rec.cancel(first)
+        assertFalse(rec.isRecording)
+        failsWith("recorder") { rec.stop() }
+
+        // 離開畫面後：錄音丟掉，之後也不會再開麥克風
+        rec.start()
+        rec.release()
+        assertFalse(rec.isRecording)
+        failsWith("recorder") { rec.start() }
+        assertFalse(rec.isRecording)
     }
 
     @Test fun formatsVoiceLength() {

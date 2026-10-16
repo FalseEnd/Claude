@@ -107,8 +107,9 @@ class RemoteV2Test {
         assertEquals(Errors.SCHEMA_OUTDATED, e.message)
         // 舊的 app_update_profile 不認得 info：暱稱、生日存好了，但要提醒更新
         rpc("app_update_profile") { """{"id":"u-1","displayName":"阿哲","avatarUrl":null,"birthday":"1998-05-20"}""" }
-        failsWith(Errors.SCHEMA_OUTDATED_CODE) { r.updateProfileInfo("阿哲", "1998-05-20", JsonObject(emptyMap())) }
+        failsWith(Errors.SCHEMA_OUTDATED_CODE) { r.updateProfileInfo(" 阿哲 ", "1998-05-20", JsonObject(emptyMap())) }
         val sent = calls("POST /rest/v1/rpc/app_update_profile").last().json
+        assertEquals("阿哲", sent["displayName"]!!.jsonPrimitive.content)
         assertEquals("1998-05-20", sent["birthday"]!!.jsonPrimitive.content)
         assertTrue("info" in sent)
 
@@ -190,6 +191,19 @@ class RemoteV2Test {
         calls("POST /rest/v1/rpc/app_day_entries").last().json.let {
             assertEquals("2026-03-25", it["from"]!!.jsonPrimitive.content); assertEquals("2026-05-07", it["to"]!!.jsonPrimitive.content)
         }
+        // 有變動時：重新載入預設區間（跟著今天走）＋最近換到的那段，更早看過的不再重抓
+        val today = LocalDate.now()
+        val older = today.minusMonths(10) to today.minusMonths(9)
+        r.loadDayEntries(older.first, older.second)
+        val latest = today.minusMonths(6) to today.minusMonths(5)
+        r.loadDayEntries(latest.first, latest.second)
+        val before = calls("POST /rest/v1/rpc/app_day_entries").size
+        r.refreshAll()
+        val reloaded = calls("POST /rest/v1/rpc/app_day_entries").drop(before).map {
+            LocalDate.parse(it.json["from"]!!.jsonPrimitive.content) to LocalDate.parse(it.json["to"]!!.jsonPrimitive.content)
+        }
+        assertEquals(listOf(RemoteRepository.defaultDayRange(), latest), reloaded)
+
         val photo = MediaItem("c/c-1/a.jpg", "photo", "image/jpeg", 4, 3)
         r.saveDayEntry(null, LocalDate.of(2026, 10, 16), "一起吃了火鍋", listOf(photo))
         calls("POST /rest/v1/rpc/app_save_day_entry").last().json.let {
@@ -242,5 +256,70 @@ class RemoteV2Test {
         rpc("app_memos") { "[]" }
         r.saveMemo(null, "自己的", "", emptyList(), shared = true, pinned = false, color = "pink")
         assertEquals("false", calls("POST /rest/v1/rpc/app_save_memo").last().json["shared"]!!.jsonPrimitive.content)
+        // 以前配對時的照片已經讀不到了：不去下載，直接拿掉，備忘錄照樣存得了
+        r.saveMemo("m1", "以前的", "", listOf(MediaItem("c/old/a.jpg", MediaItem.PHOTO)), shared = true, pinned = false, color = "pink")
+        assertTrue(calls("GET /storage/").isEmpty())
+        assertTrue(calls("POST /storage/").isEmpty())
+        assertEquals("[]", calls("POST /rest/v1/rpc/app_save_memo").last().json["media"].toString())
+    }
+
+    @Test fun privateMemoMediaLeavesTheSharedFolder() = runBlocking<Unit> {
+        rpc("app_health") { """{"ok":true,"schema":2}""" }
+        val today = LocalDate.now()
+        // 日曆也用到同一張照片：那張不能刪
+        rpc("app_day_entries") { """[{"id":"d1","userId":"u-1","day":"$today","media":[{"path":"c/c-1/diary.jpg","kind":"photo"}],"createdAt":"2026-10-15T02:16:21+00:00"}]""" }
+        val media = listOf("c/c-1/a.jpg", "c/c-1/diary.jpg", "c/c-1/gone.jpg", "c/old/b.jpg", "u/u-1/mine.jpg")
+            .joinToString(",", "[", "]") { """{"path":"$it","kind":"photo"}""" }
+        rpc("app_memos") { "[${memo("m1", "u-1", true, media)}]" }
+        rpc("app_save_memo") { memo("m1", "u-1", false) }
+        val r = repo()
+        routes["GET /storage/v1/object/authenticated/media/c/c-1/a.jpg"] = { Res(200, byteArrayOf(1, 2, 3), "image/jpeg") }
+        routes["GET /storage/v1/object/authenticated/media/c/c-1/diary.jpg"] = { Res(200, byteArrayOf(4), "image/jpeg") }
+        json("GET /storage/v1/object/authenticated/media/c/c-1/gone.jpg", 400) { """{"statusCode":"404","error":"not_found","message":"Object not found"}""" }
+        json("POST /storage/v1/object/media/") { """{"Key":"x"}""" }
+        json("DELETE /storage/v1/object/media") { "[]" }
+
+        val m = r.state.value.memos.single()
+        r.saveMemo(m.id, m.title, m.body, m.media, shared = false, pinned = false, color = "pink")
+        // 搬到 u/<我>/；被刪掉的、以前配對的拿掉，本來就在 u/<我>/ 的不動
+        val saved = calls("POST /rest/v1/rpc/app_save_memo").last().json
+        assertEquals("false", saved["shared"]!!.jsonPrimitive.content)
+        val paths = saved["media"]!!.jsonArray.map { it.jsonObject["path"]!!.jsonPrimitive.content }
+        assertEquals(3, paths.size)
+        assertTrue(paths.toString(), paths.all { it.startsWith("u/u-1/") })
+        assertEquals("u/u-1/mine.jpg", paths.last())
+        assertTrue(calls("GET /storage/v1/object/authenticated/media/c/old/").isEmpty())
+        assertEquals(2, calls("POST /storage/v1/object/media/u/u-1/").size)
+        // 共用資料夾裡的原始檔刪掉，對方就列不出來、讀不到（日曆還在用的那張留著）
+        val del = calls("DELETE /storage/v1/object/media").single()
+        assertEquals("""{"prefixes":["c/c-1/a.jpg"]}""", del.body.decodeToString())
+        assertEquals("Bearer a-1", del.header("Authorization"))
+        assertEquals(key, del.header("apikey"))
+
+        // 一直是共用的：不刪任何檔案
+        r.saveMemo(m.id, m.title, "改內容", listOf(MediaItem("c/c-1/a.jpg", MediaItem.PHOTO)), shared = true, pinned = false, color = "pink")
+        assertEquals(1, calls("DELETE /storage/").size)
+        // 刪不掉（例如是對方上傳的）也沒關係，備忘錄已經存好了
+        json("DELETE /storage/v1/object/media", 400) { """{"statusCode":"403","error":"Unauthorized","message":"row-level security"}""" }
+        routes["GET /storage/v1/object/authenticated/media/c/c-1/new.jpg"] = { Res(200, byteArrayOf(5), "image/jpeg") }
+        r.saveMemo(null, "新的", "", listOf(MediaItem("c/c-1/new.jpg", MediaItem.PHOTO, "image/jpeg")), shared = false, pinned = false, color = "pink")
+        assertEquals(2, calls("DELETE /storage/").size)
+        assertTrue(calls("POST /rest/v1/rpc/app_save_memo").last().json["media"]!!.jsonArray.single().jsonObject["path"]!!.jsonPrimitive.content.startsWith("u/u-1/"))
+    }
+
+    @Test fun dayWindowsFollowTodayAndTheLatestMonth() {
+        val d = RemoteRepository.defaultDayRange(LocalDate.of(2026, 10, 16))
+        assertEquals(LocalDate.of(2026, 8, 15) to LocalDate.of(2026, 11, 16), d)
+        assertEquals(listOf(d), RemoteRepository.dayWindows(d, null))
+        assertEquals(listOf(d), RemoteRepository.dayWindows(d, LocalDate.of(2026, 9, 24) to LocalDate.of(2026, 11, 7)))
+        // 接在一起的合成一段，離很遠的分開抓（不會抓中間好幾個月）
+        assertEquals(
+            listOf(LocalDate.of(2026, 7, 25) to LocalDate.of(2026, 11, 16)),
+            RemoteRepository.dayWindows(d, LocalDate.of(2026, 7, 25) to LocalDate.of(2026, 8, 14)),
+        )
+        assertEquals(
+            listOf(d, LocalDate.of(2026, 3, 25) to LocalDate.of(2026, 5, 7)),
+            RemoteRepository.dayWindows(d, LocalDate.of(2026, 3, 25) to LocalDate.of(2026, 5, 7)),
+        )
     }
 }

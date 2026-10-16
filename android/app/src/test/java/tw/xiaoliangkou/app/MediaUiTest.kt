@@ -31,6 +31,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowMediaPlayer
+import org.robolectric.shadows.util.DataSource
 import tw.xiaoliangkou.app.data.DemoMedia
 import tw.xiaoliangkou.app.data.MediaItem
 import tw.xiaoliangkou.app.ui.AppViewModel
@@ -98,6 +100,27 @@ class MediaUiTest {
         compose.onNodeWithContentDescription("關閉").performClick()
         compose.waitUntil(WAIT) { compose.onAllNodesWithContentDescription("照片 2").fetchSemanticsNodes().isEmpty() }
         assertEquals(3, photoCount())
+    }
+
+    @Test fun voiceChipFollowsThePlayer() {
+        val file = runBlocking {
+            vm.container.media.clear()
+            vm.container.media.put(DemoMedia.VOICE.path, DemoMedia.sample(DemoMedia.VOICE.path)!!)
+            vm.container.media.file(DemoMedia.VOICE.path)!!
+        }
+        ShadowMediaPlayer.addMediaInfo(DataSource.toDataSource(file.absolutePath), ShadowMediaPlayer.MediaInfo(3200, 0))
+        compose.setContent { XlkTheme { VoiceChip(DemoMedia.VOICE, vm) } }
+        fun showing(desc: String) = compose.onAllNodesWithContentDescription(desc).fetchSemanticsNodes().isNotEmpty()
+        compose.onNodeWithText("🎙️ 0:03").performClick()
+        compose.waitUntil(WAIT) { showing("暫停") }
+        // 播完、被別段語音打斷：不管是誰停的，膠囊都變回可以播放
+        vm.container.voice.stop()
+        compose.waitUntil(WAIT) { showing("播放") }
+        compose.onNodeWithContentDescription("播放").performClick()
+        compose.waitUntil(WAIT) { showing("暫停") }
+        compose.onNodeWithContentDescription("暫停").performClick()
+        compose.waitUntil(WAIT) { showing("播放") }
+        assertEquals(null, vm.container.voice.playing.value)
     }
 
     companion object {

@@ -163,9 +163,19 @@ class ServerIntegrationTest {
         yu.repo.saveDayEntry(null, today, "", listOf(voice))
         eventually("自己看到對方的語音") { zhe.repo.state.value.dayEntriesOn(today).size == 2 }
         assertEquals(listOf(voice), zhe.repo.state.value.dayEntriesOn(today).first { it.userId == yu.userId }.media)
-        // media 不能指到別的配對或私人資料夾；不能改、刪對方的
-        failsWith("invalid_media") { zhe.repo.saveDayEntry(null, today, "偷看", listOf(MediaItem("c/${UUID.randomUUID()}/x.jpg", MediaItem.PHOTO))) }
-        failsWith("invalid_media") { zhe.repo.saveDayEntry(null, today, "私人的", listOf(secret)) }
+        // media 不能指到別的配對或私人資料夾（資料庫擋；直接呼叫 RPC，不經過 App 搬檔案）；不能改、刪對方的
+        suspend fun saveRaw(media: List<MediaItem>) = zhe.api.saveDayEntry(buildJsonObject {
+            put("day", today.toString()); put("body", "偷看"); put("media", Api.mediaJson(media))
+        })
+        failsWith("invalid_media") { saveRaw(listOf(MediaItem("c/${UUID.randomUUID()}/x.jpg", MediaItem.PHOTO))) }
+        failsWith("invalid_media") { saveRaw(listOf(secret)) }
+        // 從 App 存：私人檔案先複製到共用的地方，對方讀得到；別的配對的檔案讀不到，直接拿掉
+        zhe.repo.saveDayEntry(null, today, "私人的", listOf(secret, MediaItem("c/${UUID.randomUUID()}/x.jpg", MediaItem.PHOTO)))
+        val copied = zhe.repo.state.value.dayEntriesOn(today).single { it.body == "私人的" }
+        assertTrue(copied.media.single().path, copied.media.single().path.startsWith("c/$couple/"))
+        assertArrayEquals(secretBytes, yu.repo.downloadMedia(copied.media.single().path))
+        zhe.repo.deleteDayEntry(copied.id)
+        eventually("刪掉複製的紀錄") { zhe.repo.state.value.dayEntriesOn(today).size == 2 && yu.repo.state.value.dayEntries.none { it.id == copied.id } }
         fails("改對方的紀錄") { yu.repo.saveDayEntry(entry.id, today, "改掉", emptyList()) }
         runCatching { apiCall { yu.api.deleteDayEntry(entry.id) } }
         zhe.repo.loadDayEntries(today.minusDays(1), today.plusDays(1))
@@ -217,6 +227,16 @@ class ServerIntegrationTest {
         assertArrayEquals(secretBytes, yu.repo.downloadMedia(moved.media.single().path))
         zhe.repo.deleteMemo(surprise.id)
         eventually("對方看到刪除的備忘錄") { yu.repo.state.value.memo(surprise.id) == null }
+        // 改成只有自己：照片搬到 u/<我>/，共用資料夾裡的原始檔刪掉，對方就讀不到了
+        val draft = zhe.repo.uploadMedia(photoBytes, "image/jpeg", MediaItem.PHOTO, shared = true)
+        assertArrayEquals(photoBytes, yu.repo.downloadMedia(draft.path))
+        zhe.repo.saveMemo(null, "偷偷準備", "驚喜派對", listOf(draft), shared = false, pinned = false, color = "peach")
+        val hidden = zhe.repo.state.value.memos.first { it.title == "偷偷準備" }
+        assertFalse(hidden.shared)
+        assertTrue(hidden.media.single().path, hidden.media.single().path.startsWith("u/${zhe.userId}/"))
+        assertArrayEquals(photoBytes, zhe.repo.downloadMedia(hidden.media.single().path))
+        fails("對方讀改成私人前的照片") { yu.repo.downloadMedia(draft.path) }
+        zhe.repo.deleteMemo(hidden.id)
         assertTrue(zhe.repo.state.value.memo(memo.id)!!.pinned)
         return V2Files(photo, photoBytes, secret, secretBytes)
     }
