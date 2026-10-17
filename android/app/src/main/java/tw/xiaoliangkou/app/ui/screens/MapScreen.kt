@@ -160,6 +160,9 @@ fun MapScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, searche
     val keyboard = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
     var locating by remember { mutableStateOf(false) }
+    /** 自動定位還沒好時使用者按了 📍：抓到後要飛過去 */
+    var flyWhenFound by remember { mutableStateOf(false) }
+    var askedAt by remember { mutableStateOf(0L) }
 
     /**
      * 我的位置：直接問手機（不用打開位置分享，也不會上傳）。
@@ -176,17 +179,21 @@ fun MapScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, searche
                 vm.toast("手機的「定位」沒有打開，打開後再按一次 📍")
                 runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
             }
-            Locator.Status.OK -> if (!locating) {
-                locating = true
-                scope.launch {
-                    try {
-                        val loc = Locator.current(context)
-                        if (loc != null) {
-                            vm.repo.value?.setMyLocation(loc.latitude, loc.longitude)
-                            if (!quiet) flyTo = FlyTo(loc.latitude, loc.longitude, 16.0)
-                        } else if (!quiet) vm.toast("暫時抓不到位置，到窗邊或戶外再試一次")
-                    } finally {
-                        locating = false
+            Locator.Status.OK -> {
+                if (!quiet) flyWhenFound = true
+                if (!locating) {
+                    locating = true
+                    scope.launch {
+                        try {
+                            val loc = Locator.current(context)
+                            if (loc != null) {
+                                vm.repo.value?.setMyLocation(loc.latitude, loc.longitude)
+                                if (flyWhenFound) flyTo = FlyTo(loc.latitude, loc.longitude, 16.0)
+                            } else if (flyWhenFound) vm.toast("暫時抓不到位置，到窗邊或戶外再試一次")
+                        } finally {
+                            locating = false
+                            flyWhenFound = false
+                        }
                     }
                 }
             }
@@ -200,13 +207,19 @@ fun MapScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, searche
             locateMe()
         } else {
             val activity = context.findActivity()
-            if (activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_FINE_LOCATION)) {
+            // 對話框根本沒出現（馬上就被拒絕）＝之前選了「不再詢問」，只能到設定打開；自己關掉對話框的話不用跳去設定
+            val blocked = System.currentTimeMillis() - askedAt < 500 &&
+                activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_FINE_LOCATION)
+            if (blocked) {
                 vm.toast("定位權限被關掉了，請在設定的「權限 › 位置」允許小倆口")
                 openAppSettings(context)
             } else vm.toast("沒有定位權限，地圖找不到你在哪裡")
         }
     }
-    val requestLocation = { askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }
+    val requestLocation = {
+        askedAt = System.currentTimeMillis()
+        askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
 
     // 打開地圖時還不知道你在哪：有權限就安靜地抓一次，地圖會自動對準
     LaunchedEffect(Unit) { if (s.myLocation == null) locateMe(quiet = true) }
@@ -432,7 +445,7 @@ private fun PartnerLine(s: AppState, vm: AppViewModel) {
                     if (s.partnerSharing?.locationLive == true) {
                         Text("${s.partnerName} ${Derived.partnerWhere(s)}", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            listOfNotNull(Derived.distanceToPartner(s)?.let { "距離你 ${Fmt.distance(it)}" }, "更新於 ${Fmt.rel(s.partnerStatus.location?.updatedAt?.toInstantOrNull())}").joinToString(" · "),
+                            listOfNotNull(Derived.distanceToPartner(s)?.let { "距離你 ${Fmt.distance(it)}" }, "更新於 ${Fmt.rel(s.partnerStatus.location?.let { it.recordedAt ?: it.updatedAt }?.toInstantOrNull())}").joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {

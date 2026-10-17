@@ -210,7 +210,7 @@ interface CoupleRepository {
 
     // 背景服務回報（示範模式不做事）
     suspend fun reportDevice(body: JsonObject) {}
-    suspend fun reportLocation(lat: Double, lng: Double, accuracy: Float?, speed: Float?) {}
+    suspend fun reportLocation(lat: Double, lng: Double, accuracy: Float?, speed: Float?, recordedAt: java.time.Instant? = null) {}
     /** 地圖上「我」的位置：只存在這支手機，不會上傳（要分享位置才會用 [reportLocation] 回報） */
     fun setMyLocation(lat: Double, lng: Double) {}
     suspend fun reportPlaceEvent(placeId: String, arrive: Boolean) {}

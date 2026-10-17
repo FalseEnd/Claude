@@ -2,6 +2,12 @@ package tw.xiaoliangkou.app.service
 
 import android.Manifest
 import android.annotation.SuppressLint
+import tw.xiaoliangkou.app.core.StepCounter
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Mutex
+import java.time.ZoneId
+import java.util.UUID
+import android.os.SystemClock
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -80,8 +86,13 @@ class ShareService : LifecycleService() {
     private var lastSentAt = 0L
     private var stepTotal: Long? = null
     private var stepsRegistered = false
-    /** 沒有計步器、只有「偵測到一步」的手機：自己數 */
+    /** 用的是「偵測到一步」（沒有計步器的手機）：自己數，服務重開就從 0 開始 */
+    private var stepDetector = false
     private var detectedSteps = 0L
+    private val startedAt = System.currentTimeMillis()
+    private val serviceId = UUID.randomUUID().toString().take(8)
+    /** 同時來兩個位置（馬上抓的一次和定期更新）時，一個一個處理，抵達通知才不會發兩次 */
+    private val locationLock = Mutex()
     private var deviceJob: Job? = null
     /** 目前常駐通知的內容；服務被重新啟動時沿用，不要又變回「連線中」 */
     private var notice: ServiceNotice? = null
@@ -99,7 +110,10 @@ class ShareService : LifecycleService() {
 
     private val stepListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
+            val first = stepTotal == null
             stepTotal = if (event.sensor.type == Sensor.TYPE_STEP_DETECTOR) ++detectedSteps else event.values[0].toLong()
+            // 第一次讀到步數：不用等 5 分鐘後的定期回報
+            if (first) scheduleDeviceReport(5_000)
         }
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
     }
@@ -148,11 +162,14 @@ class ShareService : LifecycleService() {
         lifecycleScope.launch {
             container.realtime.events.collect { e -> if (e is RealtimeClient.Event.Locate) locateNow() }
         }
-        // 每 5 分鐘回報一次手機狀態
+        // 每 5 分鐘回報一次手機狀態；分享位置時 10 分鐘都沒有新位置（定期更新沒來），自己抓一次
         lifecycleScope.launch {
             while (true) {
                 delay(5 * 60_000L)
                 scheduleDeviceReport(0)
+                if (wantLocation && System.currentTimeMillis() - lastSentAt > 10 * 60_000L) {
+                    Locator.current(this@ShareService)?.let { handleLocation(it, force = false) }
+                }
             }
         }
         // 即時連線連不上（但 API 可以用）時，每 3 分鐘用 RPC 補抓一次通知，抱抱、抵達提醒才不會一直收不到
@@ -220,10 +237,24 @@ class ShareService : LifecycleService() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
         if (!activityOk) return
         val sm = getSystemService(SensorManager::class.java) ?: return
-        // 有些手機（例如部分 OPPO）沒有開放計步器，只有「偵測到一步」
-        val sensor = sm.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) ?: sm.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) ?: return
-        stepsRegistered = sm.registerListener(stepListener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
-        if (stepsRegistered) scheduleDeviceReport(20_000)
+        // 有些手機（例如部分 OPPO）沒有開放計步器，只有「偵測到一步」；有的只有可喚醒版本，getDefaultSensor 找不到
+        val sensor = stepSensor(sm, Sensor.TYPE_STEP_COUNTER) ?: stepSensor(sm, Sensor.TYPE_STEP_DETECTOR) ?: return
+        stepDetector = sensor.type == Sensor.TYPE_STEP_DETECTOR
+        // 偵測器要批次回報：螢幕關著時一步一步叫醒手機太耗電，不批次的話步數又會掉
+        stepsRegistered = sm.registerListener(stepListener, sensor, SensorManager.SENSOR_DELAY_NORMAL, if (stepDetector) 60_000_000 else 0)
+    }
+
+    private fun stepSensor(sm: SensorManager, type: Int): Sensor? =
+        sm.getDefaultSensor(type, true) ?: sm.getDefaultSensor(type) ?: sm.getSensorList(type).firstOrNull()
+
+    /** 這一次的計步器：計步器是「這次開機以來」，偵測器是「這個服務啟動以來」 */
+    private fun stepReading(total: Long): StepCounter.Reading {
+        val now = System.currentTimeMillis()
+        val bootAt = now - SystemClock.elapsedRealtime()
+        val (session, since) = if (stepDetector) "svc-$serviceId" to startedAt else "boot-${bootAt / 60_000}" to bootAt
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        return StepCounter.Reading(today.toEpochDay(), total, session, since, now, today.atStartOfDay(zone).toInstant().toEpochMilli())
     }
 
     // ---------------------------------------------------------------- 手機狀態
@@ -262,7 +293,7 @@ class ShareService : LifecycleService() {
         val nm = getSystemService(NotificationManager::class.java)
         val silenced = nm != null && nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL
         val interactive = getSystemService(PowerManager::class.java)?.isInteractive == true
-        val steps = stepTotal?.let { container.settings.stepsToday(LocalDate.now().toEpochDay(), it) }
+        val steps = stepTotal?.let { container.settings.stepsToday(stepReading(it)) }
         runCatching {
             repo.reportDevice(buildJsonObject {
                 if (level != null) put("batteryLevel", level)
@@ -299,6 +330,7 @@ class ShareService : LifecycleService() {
             .build()
         runCatching {
             fused.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+                .addOnFailureListener { locationOn = false } // 例如沒有 Google 服務：靠下面的定期檢查補位置
             locationOn = true
         }
         // 定期更新可能要等好幾分鐘（或手機沒有 Google 服務根本不會來）：先馬上抓一次
@@ -312,26 +344,29 @@ class ShareService : LifecycleService() {
     }
 
     private suspend fun locateNow() {
-        Locator.current(this)?.let { handleLocation(it, force = true) }
+        // 我沒有分享位置：不用開 GPS（反正不會上傳）
+        if (wantLocation) Locator.current(this)?.let { handleLocation(it, force = true) }
         reportDevice()
     }
 
-    private suspend fun handleLocation(loc: Location, force: Boolean) {
-        val repo = container.repo.value as? RemoteRepository ?: return
+    private suspend fun handleLocation(loc: Location, force: Boolean) = locationLock.withLock {
+        val repo = container.repo.value as? RemoteRepository ?: return@withLock
         repo.setMyLocation(loc.latitude, loc.longitude)
         val st = repo.state.value
-        if (st.mySharing?.locationLive != true || !st.paired) return
+        if (st.mySharing?.locationLive != true || !st.paired) return@withLock
         val now = System.currentTimeMillis()
+        // 抓不到新位置時用的是手機記得的上一個位置：照實寫上那個時間，對方才不會以為是剛剛的
+        val at = loc.time.takeIf { it in 1..now } ?: now
         val moved = lastSent?.distanceTo(loc) ?: Float.MAX_VALUE
         if (force || moved > 25f || now - lastSentAt > 4 * 60_000L) {
             runCatching {
-                repo.reportLocation(loc.latitude, loc.longitude, loc.accuracy, if (loc.hasSpeed()) loc.speed else null)
+                repo.reportLocation(loc.latitude, loc.longitude, loc.accuracy, if (loc.hasSpeed()) loc.speed else null, Instant.ofEpochMilli(at))
                 lastSent = loc
                 lastSentAt = now
             }
         }
-        // 精確度太差（> 150 公尺）不拿來判斷進出，避免誤報
-        if (loc.accuracy > 150f) return
+        // 精確度太差（> 150 公尺）或太舊（> 2 分鐘）的位置不拿來判斷進出，避免誤報
+        if (loc.accuracy > 150f || now - at > 2 * 60_000L) return@withLock
         val fences = st.places.filter { it.watchUser == null || it.watchUser == st.myId }
             .map { Geo.Fence(it.id, it.lat, it.lng, it.radiusM.toDouble()) }
         val previous = container.settings.insidePlaces()

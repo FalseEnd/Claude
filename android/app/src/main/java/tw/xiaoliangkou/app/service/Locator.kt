@@ -98,7 +98,7 @@ object Locator {
     @SuppressLint("MissingPermission")
     suspend fun lastKnown(context: Context, maxAgeMs: Long = MAX_AGE_MS): Location? {
         if (!hasPermission(context)) return null
-        val google = runCatching { LocationServices.getFusedLocationProviderClient(context).lastLocation.await() }.getOrNull()
+        val google = withTimeoutOrNull(3_000) { runCatching { LocationServices.getFusedLocationProviderClient(context).lastLocation.await() }.getOrNull() }
         val system = withContext(Dispatchers.IO) {
             val lm = context.getSystemService(LocationManager::class.java) ?: return@withContext emptyList()
             providers(context, lm).mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
