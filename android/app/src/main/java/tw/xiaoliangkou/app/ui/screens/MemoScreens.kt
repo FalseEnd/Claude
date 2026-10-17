@@ -275,6 +275,8 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
     val nowShared = if (mine) shared && canShare else true
     val partner = s.partnerName
     val hasContent = title.isNotBlank() || body.isNotBlank() || media.isNotEmpty()
+    // 寫了還沒儲存（或正在錄音）：滑掉面板、按返回前先問
+    tw.xiaoliangkou.app.ui.SheetDraftGuard(recording || title != (original?.title ?: "") || body != (original?.body ?: "") || media != (original?.media ?: emptyList()))
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

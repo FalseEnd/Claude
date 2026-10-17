@@ -244,6 +244,8 @@ private fun EntryForm(s: AppState, vm: AppViewModel, e: DayEntry?, date: LocalDa
             if (drop.isNotEmpty() && r != null) vm.container.scope.launch(Dispatchers.IO) { runCatching { r.discardMedia(drop) } }
         }
     }
+    // 寫了還沒儲存（或正在錄音）：滑掉面板、按返回前先問
+    tw.xiaoliangkou.app.ui.SheetDraftGuard(recording || body.trim() != e?.body.orEmpty().trim() || media != e?.media.orEmpty() || (e != null && day != e.day))
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(if (e == null) "記錄這天的生活 ✍️" else "編輯這天的紀錄", style = MaterialTheme.typography.titleLarge)
         DateField("日期", day) { day = it }

@@ -94,11 +94,15 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.ZoneOffset
 
+/**
+ * [jumpTo]：從通知、存好的約會指定要看的那天，跳過去以後呼叫 [onJumped] 清掉（只跳一次）；
+ * [jumpId] 不一樣時，同一天也會再跳一次
+ */
 @Composable
-fun CalendarScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, initialDate: LocalDate? = null) {
+fun CalendarScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, jumpTo: LocalDate? = null, jumpId: Long = 0L, onJumped: () -> Unit = {}) {
     val today = LocalDate.now()
-    var month by remember { mutableStateOf(YearMonth.from(initialDate ?: today)) }
-    var selected by remember { mutableStateOf(initialDate ?: today) }
+    var month by remember { mutableStateOf(YearMonth.from(jumpTo ?: today)) }
+    var selected by remember { mutableStateOf(jumpTo ?: today) }
     val showCycle = s.cycleVisible && s.cyclePeriods.isNotEmpty()
     val eventsByDay = s.events.groupBy { it.localDate }
     val annByDay = s.anniversaries.mapNotNull { a ->
@@ -108,10 +112,11 @@ fun CalendarScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, in
     }.groupBy({ it.first }, { it.second })
     val journal = remember(s.dayEntries) { journalMarks(s.dayEntries) }
     LoadJournal(s, vm, month)
-    // 已經在日曆時又從通知、存好的約會指定了日期：跳到那一天
-    LaunchedEffect(initialDate) {
-        val d = initialDate ?: return@LaunchedEffect
-        if (d != selected) { selected = d; month = YearMonth.from(d) }
+    // 從通知、存好的約會指定了日期（已經在日曆上也一樣）：跳到那一天
+    LaunchedEffect(jumpTo, jumpId) {
+        val d = jumpTo ?: return@LaunchedEffect
+        selected = d; month = YearMonth.from(d)
+        onJumped()
     }
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
