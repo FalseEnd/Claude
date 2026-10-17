@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -282,6 +283,8 @@ fun CountUpText(value: Int, style: androidx.compose.ui.text.TextStyle, prefix: S
 @Composable
 fun CategoryBars(items: List<Triple<String, String, Double>>, color: Color, money: (Double) -> String) {
     val max = items.maxOfOrNull { it.third }?.takeIf { it > 0 } ?: 1.0
+    // 類別名稱、金額的欄寬跟著系統字體放大（最多 1.4 倍，留空間給長條）：「咖啡飲料」「NT$1,200」不會被擠成兩行
+    val grow = LocalDensity.current.fontScale.coerceIn(1f, 1.4f)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items.forEachIndexed { i, (emoji, label, amount) ->
             var started by remember { mutableStateOf(false) }
@@ -289,11 +292,11 @@ fun CategoryBars(items: List<Triple<String, String, Double>>, color: Color, mone
             val f by animateFloatAsState(if (started) (amount / max).toFloat() else 0f, tween(700, delayMillis = i * 90, easing = FastOutSlowInEasing), label = "bar")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(emoji, modifier = Modifier.width(28.dp))
-                Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(64.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(64.dp * grow), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Box(Modifier.weight(1f).height(14.dp)) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(f.coerceAtLeast(0.02f)).clip(RoundedCornerShape(7.dp)).background(color))
                 }
-                Text(money(amount), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(84.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                Text(money(amount), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(84.dp * grow), textAlign = androidx.compose.ui.text.style.TextAlign.End)
             }
         }
     }

@@ -37,7 +37,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
@@ -120,6 +119,7 @@ import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.StatTile
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.bouncyClick
 import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.LocalDate
@@ -304,9 +304,10 @@ private fun SignTile(
         }
         Text(sign?.emoji ?: "❔", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 4.dp))
         Text(sign?.name ?: "還不知道", style = MaterialTheme.typography.titleSmall)
-        Text(
+        // 放不下一行時在「·」後面換行（「11/23–12/21 · / 火象」），不會把「火象」切成「火」
+        TidyText(
             sign?.let { "${it.range} · ${it.element.label}" } ?: "點我選星座",
-            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
         )
         if (link) TextLink("手動選的 · 換一個", MaterialTheme.typography.labelSmall, onClick = onChange)
     }
@@ -332,20 +333,25 @@ private fun SignPicker(title: String, selected: Horoscope.Sign?, onClose: (() ->
             if (onClose != null) TextLink("收起", MaterialTheme.typography.labelMedium, MaterialTheme.colorScheme.onSurfaceVariant, onClose)
         }
         Horoscope.signs.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 同一排的格子一樣高（日期換行時也是）
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { sg ->
                     val on = sg == selected
                     Column(
-                        Modifier.weight(1f).clip(RoundedCornerShape(18.dp))
+                        Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(18.dp))
                             .background(if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                             .border(1.5.dp, if (on) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(18.dp))
                             .bouncyClick { onPick(sg) }
-                            .padding(vertical = 8.dp),
+                            .padding(horizontal = 4.dp, vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(sg.emoji, style = MaterialTheme.typography.titleLarge)
                         Text(sg.name, style = MaterialTheme.typography.labelLarge)
-                        Text(sg.range, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // 日期不留字距，窄的格子也放得下；真的放不下時在「–」後面換行，不會把一個日期拆開
+                        TidyText(
+                            sg.range, style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+                        )
                     }
                 }
             }
@@ -584,10 +590,11 @@ private fun OmikujiTab(store: FortuneStore, shownState: MutableState<Int?>, cloc
         }
     }
 
-    Text(
+    // 放不下一行時在「；」後面換行，不會把「台灣好廟網」拆開
+    TidyText(
         "籤詩：元三大師觀音百籤（淺草寺）；解籤：台灣好廟網",
-        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth(),
+        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
     )
 }
 
@@ -602,12 +609,17 @@ private fun HistoryRow(d: FortuneStore.Draw, lot: Omikuji.Lot, selected: Boolean
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(hm.format(d.at), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("第 ${lot.no} 籤", style = MaterialTheme.typography.titleSmall, modifier = Modifier.widthIn(min = 64.dp), maxLines = 1)
-        Box(Modifier.widthIn(min = 60.dp)) { lot.luck?.let { LuckPill(it) } }
-        Text(
-            lot.poem.first() + "…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
+        // 籤號、吉凶在上，籤詩第一句在下面整行：字放大也看得到完整的一句
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("第 ${lot.no} 籤", style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                lot.luck?.let { LuckPill(it) }
+            }
+            Text(
+                lot.poem.first(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

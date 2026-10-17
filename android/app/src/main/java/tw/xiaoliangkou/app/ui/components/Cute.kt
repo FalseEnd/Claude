@@ -192,6 +192,7 @@ fun SoftButton(text: String, modifier: Modifier = Modifier, icon: ImageVector? =
  * 一排並排的按鈕（取代 Row + Modifier.weight）：每顆按鈕的字都放得下一行就並排，寬度照 [weights] 分（沒給就平分）；
  * 放不下的時候（字放大、窄手機）從放不下的那顆開始換到下一排，自己佔滿一排，字不會被切掉。
  * [maxPerRow]：一排最多幾顆。按鈕不要再加 weight / fillMaxWidth，寬度由這裡決定。
+ * 一排小卡（[StatTile]）也可以用：數值放得下一行就並排，放不下的那格換到下一排。
  */
 @Composable
 fun ButtonRow(modifier: Modifier = Modifier, weights: List<Float> = emptyList(), spacing: Dp = 8.dp, maxPerRow: Int = Int.MAX_VALUE, content: @Composable () -> Unit) {
@@ -299,7 +300,8 @@ fun ChoiceChip(text: String, selected: Boolean, emoji: String? = null, onClick: 
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         if (emoji != null) Text(emoji)
-        Text(text, color = fg, style = MaterialTheme.typography.labelLarge)
+        // 一行就好：膠囊放不下時整顆換到下一行（請放在 FlowRow 裡），不會被擠成一字一行的細長條；比整行還長的字才會出現「…」
+        Text(text, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -57,6 +58,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlinx.serialization.json.buildJsonObject
@@ -83,6 +85,7 @@ import tw.xiaoliangkou.app.ui.components.Pill
 import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.SoftButton
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.ToggleRow
 import tw.xiaoliangkou.app.ui.components.bouncyClick
 import tw.xiaoliangkou.app.ui.theme.Cute
@@ -211,7 +214,7 @@ private fun DayCell(
         Row(Modifier.height(10.dp).clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
             val dot = if (selected) MaterialTheme.colorScheme.onPrimary else null
             if (event) Box(Modifier.size(5.dp).clip(CircleShape).background(dot ?: MaterialTheme.colorScheme.onSurfaceVariant))
-            if (ann) Text("♥", style = MaterialTheme.typography.labelSmall.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize * 0.8f), color = dot ?: c.thread)
+            if (ann) Icon(Icons.Rounded.Favorite, null, tint = dot ?: c.thread, modifier = Modifier.size(8.dp))
             if (milestone) Box(Modifier.size(5.dp).clip(CircleShape).background(dot ?: c.butter))
             // 有照片是小相機，其他是小點；跟小點同色，深色模式、選到的格子也看得清楚
             when (journal) {
@@ -229,7 +232,8 @@ private fun Legend(cycle: Boolean) {
     val c = Cute.colors
     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         LegendItem("約會") { Box(Modifier.size(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurfaceVariant)) }
-        LegendItem("紀念日") { Text("♥", color = c.thread, style = MaterialTheme.typography.labelSmall) }
+        // 用向量圖示：「♥」會變成彩色表情，行高比較高，旁邊的字會往下掉
+        LegendItem("紀念日") { Icon(Icons.Rounded.Favorite, null, tint = c.thread, modifier = Modifier.size(12.dp)) }
         LegendItem("里程碑") { Box(Modifier.size(6.dp).clip(CircleShape).background(c.butter)) }
         LegendItem("生活紀錄") { Box(Modifier.size(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary)) }
         LegendItem("有照片") { Icon(Icons.Rounded.PhotoCamera, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(12.dp)) }
@@ -281,6 +285,7 @@ private fun Line(emoji: String, title: String, sub: String) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EventRow(s: AppState, vm: AppViewModel, e: DateEvent, withDate: Boolean, onClick: () -> Unit) {
     val mine = e.createdBy == s.myId
@@ -288,22 +293,30 @@ private fun EventRow(s: AppState, vm: AppViewModel, e: DateEvent, withDate: Bool
         Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Cute.colors.card).bouncyClick(onClick = onClick).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        val invited = e.status == "proposed" && !mine
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             EmojiBubble("📅", if (mine) Cute.colors.meSoft else Cute.colors.partnerSoft)
             Column(Modifier.weight(1f)) {
-                Text(e.title, style = MaterialTheme.typography.titleSmall)
-                Text(listOfNotNull(if (withDate) Fmt.dayLabel(e.localDate) else null, Fmt.time(e.start), e.locationText, e.note).joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            }
-            when {
-                e.status == "confirmed" -> Pill("已確認", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
-                e.status == "declined" -> Pill("已婉拒")
-                e.status == "proposed" && mine -> Pill("等 ${s.partnerName} 回覆", Cute.colors.butter.copy(alpha = 0.4f))
-                else -> Pill("${s.partnerName} 約你 💌", MaterialTheme.colorScheme.primaryContainer)
+                // 狀態放在名稱旁邊，下面的日期、時間、地點可以用整個寬度
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TidyText(e.title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                    when {
+                        e.status == "confirmed" -> Pill("已確認", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                        e.status == "declined" -> Pill("已婉拒")
+                        e.status == "proposed" && mine -> Pill("等 ${s.partnerName} 回覆", Cute.colors.butter.copy(alpha = 0.4f))
+                        else -> Unit // 對方約你：標籤放在下面的答應、婉拒旁邊
+                    }
+                }
+                // 日期、時間、地點、備註：放不下就換行，不要把時間切掉；備註太長才會「…」（點進去看得到全部）
+                TidyText(
+                    listOfNotNull(if (withDate) Fmt.dayLabel(e.localDate) else null, Fmt.time(e.start), e.locationText, e.note).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
             }
         }
-        if (e.status == "proposed" && !mine) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (invited) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill("${s.partnerName} 約你 💌", MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.align(Alignment.CenterVertically))
                 CuteButton("答應", icon = Icons.Rounded.Check, small = true) { vm.act("已答應，${s.partnerName} 收到通知了 🥳", hearts = true) { it.answerEvent(e.id, "confirmed") } }
                 SoftButton("婉拒", small = true) { vm.act("已婉拒") { it.answerEvent(e.id, "declined") } }
             }
@@ -340,10 +353,13 @@ fun EventSheet(s: AppState, vm: AppViewModel, id: String?, date: LocalDate, clos
             }
         }
         CuteField(place, { place = it.take(40) }, "地點", placeholder = "選一個標點或自己輸入")
-        if (s.places.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { s.places.take(3).forEach { p -> ChoiceChip(p.name, place == p.name, placeEmoji(p.icon)) { place = p.name } } }
+        // 小膠囊放不下就換到下一行，不要被擠成一字一行
+        if (s.places.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            s.places.take(3).forEach { p -> ChoiceChip(p.name, place == p.name, placeEmoji(p.icon)) { place = p.name } }
+        }
         CuteField(note, { note = it.take(100) }, "備註（選填）")
         Text("提醒", style = MaterialTheme.typography.labelLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(30 to "30 分鐘前", 60 to "1 小時前", 1440 to "前一天").forEach { (m, l) -> ChoiceChip(l, remind == m) { remind = m } }
         }
         CuteButton(if (e == null) "送出邀請" else "儲存", Modifier.fillMaxWidth(), enabled = title.isNotBlank() && !vm.busy) {
@@ -385,7 +401,7 @@ fun AnniversaryScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (S
             items(Dates.upcomingMilestones(since, today, 3), key = { "m${it.day}" }) { m ->
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Cute.colors.card).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     EmojiBubble(if (m.day == 520) "💗" else if (m.day == 1314) "💍" else "✨", Cute.colors.butter.copy(alpha = 0.3f))
-                    Column(Modifier.weight(1f)) { Text("第 ${m.day} 天", style = MaterialTheme.typography.titleSmall); Text("${m.date}（${Fmt.weekday(m.date)}）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Column(Modifier.weight(1f)) { Text("第 ${m.day} 天", style = MaterialTheme.typography.titleSmall); TidyText(fullDay(m.date), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     Pill(Fmt.daysLeft(m.daysLeft), if (m.daysLeft <= 7) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
                 }
             }
@@ -399,17 +415,29 @@ fun AnniversaryScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (S
             ) {
                 EmojiBubble(when (a.kind) { "birthday" -> "🎂"; "first_date" -> "🌹"; "together" -> "💞"; else -> "💝" }, Cute.colors.partnerSoft)
                 Column(Modifier.weight(1f)) {
-                    Text(a.title + if (o.years > 0) (if (a.kind == "birthday") " · ${o.years} 歲" else " · 第 ${o.years} 年") else "", style = MaterialTheme.typography.titleSmall)
-                    Text("${o.date}（${Fmt.weekday(o.date)}）· 提醒 " + a.remindDays.joinToString("、") { if (it == 0) "當天" else "前 $it 天" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    // 還有幾天放在名稱旁邊，下面的日期和提醒可以用整個寬度
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // 「第 2 年」「27 歲」用不換行空格連起來，換行時整個一起換
+                        TidyText(
+                            a.title + if (o.years > 0) (if (a.kind == "birthday") " · ${o.years}\u00A0歲" else " · 第\u00A0${o.years}\u00A0年") else "",
+                            Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
+                        )
+                        if (o.daysLeft == 0) HeartBeat { Pill("就是今天 🎉", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary) }
+                        else Pill(Fmt.daysLeft(o.daysLeft), if (o.daysLeft <= 7) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                    }
+                    // 日期和提醒：放不下就在「·」後面換行，不會被切掉
+                    TidyText(
+                        "${fullDay(o.date)} · 提醒：" + a.remindDays.joinToString("、") { if (it == 0) "當天" else "前\u00A0$it\u00A0天" },
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                if (o.daysLeft == 0) HeartBeat { Pill("就是今天 🎉", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary) }
-                else Pill(Fmt.daysLeft(o.daysLeft), if (o.daysLeft <= 7) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
             }
         }
         item { Note("兩個人都會收到提醒。2/29 的紀念日在平年會在 2/28 提醒。", "🔔") }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AnniversarySheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
     val a = id?.let { x -> s.anniversaries.firstOrNull { it.id == x } }
@@ -422,11 +450,11 @@ fun AnniversarySheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Un
         Text(if (a == null) "新增紀念日 🎈" else "編輯紀念日", style = MaterialTheme.typography.titleLarge)
         CuteField(title, { title = it.take(30) }, "名稱", placeholder = "例如：第一次出國")
         DateField("日期", date) { date = it }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("custom" to "💝 自訂", "birthday" to "🎂 生日", "first_date" to "🌹 第一次約會").forEach { (k, l) -> ChoiceChip(l, kind == k) { kind = k } }
         }
         Text("提醒時間", style = MaterialTheme.typography.labelLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(0 to "當天", 1 to "前 1 天", 3 to "前 3 天", 7 to "前 7 天").forEach { (d, l) -> ChoiceChip(l, d in remind) { remind = if (d in remind) remind - d else remind + d } }
         }
         ToggleRow("每年重複", yearly, emoji = "🔁") { yearly = it }
@@ -440,6 +468,9 @@ fun AnniversarySheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Un
         if (a != null) SoftButton("刪除", Modifier.fillMaxWidth(), icon = Icons.Rounded.Delete) { vm.act("已刪除", onDone = close) { it.deleteAnniversary(a.id) } }
     }
 }
+
+/** 2027/4/21（三）：比 2027-04-21（週三）短，字放大時也放得下一行 */
+private fun fullDay(d: LocalDate) = "${d.year}/${d.monthValue}/${d.dayOfMonth}（${Fmt.weekday(d).substring(1)}）"
 
 // ---------------------------------------------------------------- 日期與時間選擇
 

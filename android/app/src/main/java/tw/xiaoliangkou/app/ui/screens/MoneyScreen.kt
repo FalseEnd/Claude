@@ -72,6 +72,7 @@ import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.StatTile
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.ToggleRow
 import tw.xiaoliangkou.app.ui.components.Wiggle
 import tw.xiaoliangkou.app.ui.components.bouncyClick
@@ -156,7 +157,8 @@ private fun GuessCard(s: AppState, pending: List<Expense>, sheet: (SheetSpec) ->
             ) {
                 EmojiBubble(Catalog.category(e.category).emoji, Cute.colors.card)
                 Column(Modifier.weight(1f)) {
-                    Text(e.merchant, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    // 店名最多兩行，再長才「…」（點進去看得到全名）
+                    TidyText(e.merchant, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text("${Catalog.category(e.category).label} · ${Fmt.rel(e.time)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Wiggle(8f, 1200) { Pill("猜！", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary) }
@@ -173,9 +175,10 @@ private fun GuessCard(s: AppState, pending: List<Expense>, sheet: (SheetSpec) ->
 @Composable
 private fun ExpenseRow(e: Expense, mine: Boolean, onClick: () -> Unit) {
     val c = Catalog.category(e.category)
+    // 時間放前面，換行時最常看的時間一定在第一行；「LINE Pay」用不換行空格連起來，不會拆成兩行
     val tags = buildList {
-        add(Catalog.sources[e.source] ?: "付款通知")
         add(Fmt.time(e.time))
+        add((Catalog.sources[e.source] ?: "付款通知").replace(' ', '\u00A0'))
         if (mine && e.visibility == "private") add("不給看")
         if (mine && e.visibility == "surprise") add("禮物 · ${e.revealOn?.let { Fmt.parseDate(it)?.let(Fmt::md) } ?: ""} 公開")
         if (mine && e.guessable) add(e.theirGuess?.let { "對方猜 ${Fmt.money(it)}" } ?: "開放猜")
@@ -187,8 +190,13 @@ private fun ExpenseRow(e: Expense, mine: Boolean, onClick: () -> Unit) {
     ) {
         EmojiBubble(c.emoji, if (mine) Cute.colors.meSoft else Cute.colors.partnerSoft)
         Column(Modifier.weight(1f)) {
-            Text(e.merchant, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-            Text("${c.label} · " + tags.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            // 店名最多兩行，再長才「…」（點進去看得到全名）
+            TidyText(e.merchant, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // 類別、時間、來源和「不給看」「開放猜」「你猜…分」這些標籤：放不下就換行，不會無聲無息被切掉
+            TidyText(
+                "${c.label} · " + tags.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3, overflow = TextOverflow.Ellipsis,
+            )
         }
         Text(Fmt.money(e.amount), style = MaterialTheme.typography.titleSmall)
     }
@@ -260,10 +268,11 @@ fun ExpenseViewSheet(s: AppState, id: String, close: () -> Unit) {
                 Text(Fmt.money(e.amount), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile("類別", c.label, Modifier.weight(1f))
-            StatTile("時間", "${Fmt.dayLabel(Fmt.localDate(e.time))} ${Fmt.time(e.time)}", Modifier.weight(1f))
-            StatTile("來源", Catalog.sources[e.source] ?: "—", Modifier.weight(1f))
+        // 三格放得下一行就並排；字放大時最長的「時間」自己一排，每格的字都完整
+        ButtonRow {
+            StatTile("類別", c.label)
+            StatTile("來源", Catalog.sources[e.source] ?: "—")
+            StatTile("時間", "${Fmt.dayLabel(Fmt.localDate(e.time))} ${Fmt.time(e.time)}")
         }
         if (e.myGuess != null) Note("你猜了 ${Fmt.money(e.myGuess)}，拿到 ${e.myPoints} 分", "💰")
         CuteButton("關閉", Modifier.fillMaxWidth(), onClick = close)
