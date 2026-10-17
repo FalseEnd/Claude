@@ -502,10 +502,11 @@ class RemoteRepository(
 
     // ---------------------------------------------------------------- 背景服務
     override suspend fun reportDevice(body: JsonObject) { apiCall { api.putDevice(body) } }
-    override suspend fun reportLocation(lat: Double, lng: Double, accuracy: Float?, speed: Float?) {
+    override suspend fun reportLocation(lat: Double, lng: Double, accuracy: Float?, speed: Float?, recordedAt: java.time.Instant?) {
         apiCall {
             api.putLocation(buildJsonObject {
                 put("lat", lat); put("lng", lng)
+                if (recordedAt != null) put("recordedAt", recordedAt.toString())
                 if (accuracy != null) put("accuracyM", accuracy)
                 if (speed != null) put("speedMps", speed)
             })

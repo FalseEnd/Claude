@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
 import tw.xiaoliangkou.app.ui.StatusText
+import tw.xiaoliangkou.app.core.StepCounter
 
 private val Context.dataStore by preferencesDataStore("xiaoliangkou")
 
@@ -52,6 +53,8 @@ class SettingsStore(private val context: Context) {
         val stepBase = longPreferencesKey("step_base")
         val stepLast = longPreferencesKey("step_last")
         val stepCarry = longPreferencesKey("step_carry")
+        val stepLastAt = longPreferencesKey("step_last_at")
+        val stepSession = stringPreferencesKey("step_session")
         // 舊版留下的設定，登出時順便清掉
         val legacy = listOf(stringPreferencesKey("server_url"), stringPreferencesKey("token"))
     }
@@ -121,31 +124,28 @@ class SettingsStore(private val context: Context) {
     suspend fun insidePlaces(): Set<String> = context.dataStore.data.first()[K.insidePlaces] ?: emptySet()
     suspend fun setInsidePlaces(ids: Set<String>) = context.dataStore.edit { it[K.insidePlaces] = ids }
 
-    /** 計步感測器是開機後的累計值：記住每天第一次讀到的數字當作基準 */
-    suspend fun stepsToday(dayNumber: Long, sensorTotal: Long): Int {
+    /** 今日步數（換算方式見 [StepCounter]） */
+    suspend fun stepsToday(r: StepCounter.Reading): Int {
         var steps = 0L
         context.dataStore.edit {
             val day = it[K.stepDay]
-            val last = it[K.stepLast]
-            var base = it[K.stepBase] ?: sensorTotal
-            var carry = it[K.stepCarry] ?: 0L
-            when {
-                day != dayNumber -> {
-                    // 新的一天：從昨天最後看到的數字算起（服務晚一點才啟動也不會少算早上的步數）
-                    base = if (day == dayNumber - 1 && last != null && last <= sensorTotal) last else sensorTotal
-                    carry = 0
-                }
-                // 計步器歸零了（重新開機、服務重新啟動）：今天已經走的先存起來
-                last != null && sensorTotal < last -> {
-                    carry += (last - base).coerceAtLeast(0)
-                    base = 0
-                }
-            }
-            it[K.stepDay] = dayNumber
-            it[K.stepBase] = base
-            it[K.stepCarry] = carry
-            it[K.stepLast] = sensorTotal
-            steps = carry + (sensorTotal - base).coerceAtLeast(0)
+            val prev = if (day == null) null else StepCounter.State(
+                day = day,
+                base = it[K.stepBase] ?: 0,
+                carry = it[K.stepCarry] ?: 0,
+                // 舊版只存了 base
+                last = it[K.stepLast] ?: it[K.stepBase] ?: 0,
+                lastAt = it[K.stepLastAt] ?: 0,
+                session = it[K.stepSession],
+            )
+            val (next, n) = StepCounter.next(prev, r)
+            it[K.stepDay] = next.day
+            it[K.stepBase] = next.base
+            it[K.stepCarry] = next.carry
+            it[K.stepLast] = next.last
+            it[K.stepLastAt] = next.lastAt
+            next.session?.let { v -> it[K.stepSession] = v }
+            steps = n
         }
         return steps.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }

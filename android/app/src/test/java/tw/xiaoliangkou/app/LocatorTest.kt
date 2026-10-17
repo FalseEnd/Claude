@@ -3,16 +3,22 @@ package tw.xiaoliangkou.app
 import android.Manifest
 import android.location.Location
 import android.location.LocationManager
+import android.os.Looper
 import android.os.SystemClock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import tw.xiaoliangkou.app.core.StepCounter
 import tw.xiaoliangkou.app.service.Locator
 import tw.xiaoliangkou.app.service.ShareService
 
@@ -42,15 +48,29 @@ class LocatorTest {
         assertNull(Locator.current(app, googleMs = 200, systemMs = 200))
     }
 
-    @Test fun fallsBackToTheSystemWhenGoogleCannotHelp() = runBlocking {
+    @Test fun systemLocationWinsTheRaceWithoutGoogle() {
         shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
         shadowOf(lm).setLocationEnabled(true)
-        shadowOf(lm).setProviderEnabled(LocationManager.GPS_PROVIDER, false)
+        shadowOf(lm).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
         shadowOf(lm).setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
-        shadowOf(lm).simulateLocation(loc(LocationManager.NETWORK_PROVIDER, 25.0330, 121.5654))
-        val got = Locator.current(app, googleMs = 300, systemMs = 1_000)!!
+        val started = System.currentTimeMillis()
+        // 在背景跑，主執行緒要一直處理定位的回呼
+        val job = CoroutineScope(Dispatchers.Default).async { Locator.current(app, googleMs = 300, systemMs = 8_000) }
+        val end = started + 6_000
+        var sent = false
+        while (!job.isCompleted && System.currentTimeMillis() < end) {
+            shadowOf(Looper.getMainLooper()).idle()
+            // GPS 在室內等不到；網路定位先回來
+            if (!sent && System.currentTimeMillis() - started > 800) {
+                shadowOf(lm).simulateLocation(loc(LocationManager.NETWORK_PROVIDER, 25.0330, 121.5654))
+                sent = true
+            }
+            Thread.sleep(20)
+        }
+        val got = runBlocking { job.await() }!!
+        assertEquals(LocationManager.NETWORK_PROVIDER, got.provider)
         assertEquals(25.0330, got.latitude, 1e-6)
-        assertEquals(121.5654, got.longitude, 1e-6)
+        assertTrue("不用等到 8 秒的期限", System.currentTimeMillis() - started < 5_000)
     }
 
     @Test fun lastKnownIgnoresOldFixes() = runBlocking {
@@ -72,30 +92,69 @@ class LocatorTest {
     }
 }
 
-/** 今日步數：服務晚啟動、重新開機、沒有計步器只能自己數的手機 */
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
-class StepsTodayTest {
-    private val settings get() = tw.xiaoliangkou.app.data.SettingsStore(RuntimeEnvironment.getApplication())
+/** 今日步數：服務晚啟動、重新開機、沒有計步器只能自己數的手機、從舊版更新 */
+class StepCounterTest {
+    private val h = 60 * 60_000L
+    private val day = 100L
+    private val midnight = 1_000_000_000_000L
+    private val bootedYesterday = midnight - 30 * h
+    private var state: StepCounter.State? = null
 
-    @Test fun countsFromTheFirstReadingAndCarriesAcrossReboots() = runBlocking {
-        val st = settings
-        st.clear()
-        assertEquals(0, st.stepsToday(100, 5_000))
-        assertEquals(1_200, st.stepsToday(100, 6_200))
-        // 重新開機：計步器從 0 開始，今天已經走的 1,200 步不能不見
-        assertEquals(1_200 + 300, st.stepsToday(100, 300))
-        assertEquals(1_200 + 800, st.stepsToday(100, 800))
+    private fun read(total: Long, session: String = "boot-1", since: Long = bootedYesterday, at: Long = midnight + 12 * h, d: Long = day): Long {
+        val dayStart = midnight + (d - day) * 24 * h
+        val (next, steps) = StepCounter.next(state, StepCounter.Reading(d, total, session, since, at, dayStart))
+        state = next
+        return steps
     }
 
-    @Test fun newDayStartsFromYesterdaysLastReading() = runBlocking {
-        val st = settings
-        st.clear()
-        st.stepsToday(100, 10_000)
-        st.stepsToday(100, 12_000)
-        // 隔天中午服務才讀到：從昨天最後看到的 12,000 算起，不會從中午才開始算
-        assertEquals(3_000, st.stepsToday(101, 15_000))
-        // 隔了好幾天：不知道之前走了多少，就從現在算起
-        assertEquals(0, st.stepsToday(105, 20_000))
+    @Test fun countsFromTheFirstReading() {
+        assertEquals(0, read(5_000))
+        assertEquals(1_200, read(6_200))
+    }
+
+    @Test fun firstReadingAfterBootingTodayCountsEverything() {
+        assertEquals(3_000, read(3_000, since = midnight + 7 * h))
+    }
+
+    @Test fun rebootKeepsTodaysSteps() {
+        read(5_000); read(5_400)
+        // 重新開機後走了 6,000 步才讀到（數字沒有變小，但開機時間不一樣）
+        assertEquals(400 + 6_000, read(6_000, session = "boot-2", since = midnight + 13 * h))
+        assertEquals(400 + 6_500, read(6_500, session = "boot-2", since = midnight + 13 * h))
+    }
+
+    @Test fun detectorRestartsWithTheService() {
+        read(0, session = "svc-a"); read(300, session = "svc-a")
+        assertEquals(305, read(5, session = "svc-b"))
+    }
+
+    @Test fun updatingFromTheOldVersionDoesNotGetStuckAtZero() {
+        // 舊版只存了基準 5,000；之後手機重新開機，計步器從 0 開始
+        state = StepCounter.State(day, base = 5_000, carry = 0, last = 5_000, lastAt = 0, session = null)
+        assertEquals(300, read(300, since = midnight + 8 * h))
+        assertEquals(800, read(800, since = midnight + 8 * h))
+        assertEquals(2_000, read(2_000, since = midnight + 8 * h))
+    }
+
+    @Test fun newDayStartsFromLateLastNightOnly() {
+        read(10_000, at = midnight - 2 * h, d = day - 1)
+        read(12_000, at = midnight - 1 * h, d = day - 1)
+        // 昨晚 11 點還有讀到：從 12,000 算起，早上服務晚啟動也不會少算
+        assertEquals(3_000, read(15_000, at = midnight + 12 * h))
+
+        state = null
+        read(10_000, at = midnight - 8 * h, d = day - 1)
+        // 昨天下午之後就沒讀到：不知道晚上走了多少，從現在算起
+        assertEquals(0, read(15_000, at = midnight + 12 * h))
+    }
+
+    @Test fun rebootOvernightCountsSinceBoot() {
+        read(12_000, at = midnight - 1 * h, d = day - 1)
+        assertEquals(2_500, read(2_500, session = "boot-2", since = midnight + 2 * h))
+    }
+
+    @Test fun neverNegative() {
+        read(5_000)
+        assertEquals(0, read(5_000))
     }
 }
