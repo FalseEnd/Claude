@@ -94,7 +94,11 @@ class MemoScreensTest {
 
     /** 示範照片直接放進快取（不用登入、不用網路） */
     private fun primeCache() = runBlocking {
-        listOf(DemoMedia.PICNIC, DemoMedia.TRIP, DemoMedia.SUNSET).forEach { vm.container.media.put(it.path, DemoMedia.sample(it.path)!!) }
+        listOf(DemoMedia.PICNIC, DemoMedia.TRIP, DemoMedia.SUNSET).forEach {
+            vm.container.media.put(it.path, DemoMedia.sample(it.path)!!)
+            // 先解碼好：截圖不用等背景執行緒
+            vm.container.media.bitmap(it.path, 512)
+        }
     }
 
     /** 示範資料再多兩則：語音晚安（共用、放在桌面）、沒有標題的小紙條 */
