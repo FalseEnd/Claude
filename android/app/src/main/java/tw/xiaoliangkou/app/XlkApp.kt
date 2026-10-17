@@ -141,7 +141,8 @@ class AppContainer(private val app: Application) {
         scope.launch {
             _prefs.first { it != null }
             _repo.flatMapLatest { r -> r?.state ?: flowOf(null) }
-                .filter { it == null || it.loaded }
+                // 備忘錄還沒載入（或載入失敗）時不要畫：不然小工具會先變成「沒有放在桌面的備忘錄」、縮圖也被刪掉
+                .filter { it == null || (it.loaded && it.memosLoaded) }
                 .map { MemoWidgetSnapshot.of(it) }
                 .distinctUntilChanged()
                 .collectLatest { snap ->
@@ -157,11 +158,13 @@ class AppContainer(private val app: Application) {
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_START) scope.launch(Dispatchers.IO) { MemoWidget.refresh(app, media) }
         })
-        // 回到前景：即時連線斷了的話馬上重連，也先用 RPC 補抓通知
+        // 回到前景：即時連線斷了的話馬上重連，也先用 RPC 補抓通知。
+        // 資料庫還是舊的話再檢查一次：使用者常常是到電腦跑完 upgrade-v2.sql 再回來（背景服務讓 App 一直活著，不會重新載入）
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_START && supabase != null) {
                 realtime.reconnectNow()
                 realtime.pollIfDisconnected()
+                (_repo.value as? RemoteRepository)?.recheckSchema()
             }
         })
     }

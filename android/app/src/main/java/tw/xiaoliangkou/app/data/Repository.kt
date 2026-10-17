@@ -40,6 +40,8 @@ data class AppState(
     val dayEntries: List<DayEntry> = emptyList(),
     /** 自己的備忘錄＋對方共用的；釘選的在前 */
     val memos: List<Memo> = emptyList(),
+    /** 備忘錄載入過了（[loaded] 只代表帳號資料到了）：備忘錄小工具等它再畫，不然會先畫成「沒有放在桌面的備忘錄」 */
+    val memosLoaded: Boolean = false,
     /** 遠端資料庫還沒跑 upgrade-v2.sql */
     val schemaOutdated: Boolean = false,
 ) {

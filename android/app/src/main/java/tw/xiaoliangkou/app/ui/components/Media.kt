@@ -1,8 +1,13 @@
 package tw.xiaoliangkou.app.ui.components
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +18,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +26,9 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -32,11 +40,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -60,15 +70,23 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tw.xiaoliangkou.app.data.AppException
@@ -98,12 +116,17 @@ fun MediaThumbs(media: List<MediaItem>, vm: AppViewModel, size: Dp = 86.dp, onRe
     if (photos.isEmpty() && voices.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (photos.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 可以移除時，叉叉的按鈕有一半在照片外面：縮圖之間留寬一點，按叉叉才不會點到隔壁那張
+            val gap = if (onRemove != null) REMOVE_OUT + 2.dp else 8.dp
+            FlowRow(
+                Modifier.padding(top = if (onRemove != null) REMOVE_OUT / 2 else 0.dp),
+                horizontalArrangement = Arrangement.spacedBy(gap), verticalArrangement = Arrangement.spacedBy(gap),
+            ) {
                 photos.forEachIndexed { i, p ->
                     key(p.path) {
                         Box {
                             PhotoThumb(p, vm, size) { viewing = i }
-                            if (onRemove != null) RemoveDot(Modifier.align(Alignment.TopEnd).padding(4.dp)) { onRemove(p) }
+                            if (onRemove != null) RemoveDot(Modifier.align(Alignment.TopEnd).offset(REMOVE_OUT, -REMOVE_OUT)) { onRemove(p) }
                         }
                     }
                 }
@@ -182,27 +205,68 @@ fun VoiceChip(item: MediaItem, vm: AppViewModel) {
     }
 }
 
+/** 面板裡的錄音：錄音中、錄好了還沒傳上去，都還不能儲存（存了面板就關掉，那段錄音會不見） */
+enum class VoiceDraft(
+    /** 儲存按鈕上要顯示的字；null 就是可以存 */
+    val saveLabel: String?,
+) {
+    NONE(null),
+    RECORDING("先停止錄音再儲存"),
+    UNSENT("錄音還沒傳上去"),
+}
+
+/** 這次在面板裡上傳的照片、語音：最後沒存起來的，面板關掉時從 Storage 刪掉 */
+class Uploads {
+    val added = mutableListOf<MediaItem>()
+    /** 送出儲存過的（可能已經存進資料庫，不能刪） */
+    val kept = mutableSetOf<String>()
+}
+
+/** 面板用的 [Uploads]：換一則編輯（[key] 不一樣）或面板關掉時，上傳了沒存的刪掉 */
+@Composable
+fun rememberUploads(vm: AppViewModel, key: Any?): Uploads {
+    val uploads = remember(key) { Uploads() }
+    DisposableEffect(uploads) {
+        onDispose {
+            val drop = uploads.added.filter { it.path !in uploads.kept }
+            val r = vm.repo.value
+            if (drop.isNotEmpty() && r != null) vm.container.scope.launch(Dispatchers.IO) { runCatching { r.discardMedia(drop) } }
+        }
+    }
+    return uploads
+}
+
+/** 錄好了但傳不上去的錄音 */
+private class UnsentVoice(val file: File, val durationMs: Long)
+
 /**
  * 「📷 照片」「🎙️ 錄音」：選照片（一次最多 9 張，壓縮後上傳）、錄音（按一下開始、再按一下停止，停止後上傳）。
  * 上傳好一個就呼叫 [onAdded]；上傳期間 vm.busy。[shared] 決定檔案放在兩個人共用的地方還是只有自己的地方。
  * [remaining] 是還能加幾個（每則最多 [Limits.MEDIA] 個）。
- * 開始、停止錄音時呼叫 [onRecordingChange]（錄音中先別讓人按儲存，不然那段錄音會不見）。
+ * 錄音的狀態變了就呼叫 [onVoiceChange]：錄音中、錄好了還沒傳上去時先別讓人按儲存，不然那段錄音會不見。
+ * 錄音傳不上去（網路不好）不會丟掉，可以重新上傳；App 跑到背景時先停下來，把錄到的存起來。
  */
 @Composable
 fun MediaPickerRow(
     vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Unit, enabled: Boolean = true, remaining: Int = Limits.MEDIA,
-    onRecordingChange: (Boolean) -> Unit = {},
+    onVoiceChange: (VoiceDraft) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
     val added by rememberUpdatedState(onAdded)
-    val recordingChanged by rememberUpdatedState(onRecordingChange)
+    val voiceChanged by rememberUpdatedState(onVoiceChange)
     val isShared by rememberUpdatedState(shared)
     val left by rememberUpdatedState(remaining)
     var status by remember { mutableStateOf<String?>(null) }
     val recorder = remember { VoiceRecorder(context.applicationContext) }
     var recording by remember { mutableStateOf<File?>(null) }
     var elapsed by remember { mutableLongStateOf(0L) }
+    // 錄好了但傳不上去：先留在手機裡，可以重新上傳或丟掉（錄音不像照片可以再選一次）
+    var unsent by remember { mutableStateOf<UnsentVoice?>(null) }
+    // 麥克風權限被拒絕到系統不再詢問：問要不要去設定打開
+    var micBlocked by remember { mutableStateOf(false) }
 
     suspend fun upload(bytes: ByteArray, mime: String, kind: String, width: Int? = null, height: Int? = null, durationMs: Long? = null) {
         val r = vm.repo.value ?: throw AppException(Errors.RELOGIN, "not_authenticated")
@@ -248,6 +312,22 @@ fun MediaPickerRow(
         }
     }
 
+    /** 上傳錄好的語音：傳好了才刪掉手機裡的檔案，傳不上去就留著（[unsent]）讓人重新上傳 */
+    suspend fun sendVoice(file: File, ms: Long) {
+        unsent = null
+        try {
+            status = "上傳中…"
+            upload(withContext(Dispatchers.IO) { file.readBytes() }, VoiceRecorder.MIME, MediaItem.VOICE, durationMs = ms)
+        } catch (e: Exception) {
+            // 面板已經關掉（被取消）就不用留了
+            if (e !is CancellationException && currentCoroutineContext().isActive) unsent = UnsentVoice(file, ms)
+            throw e
+        } finally {
+            status = null
+            if (unsent?.file != file) withContext(NonCancellable + Dispatchers.IO) { file.delete() }
+        }
+    }
+
     fun stopRecording() {
         if (recording == null) return
         recording = null
@@ -255,13 +335,7 @@ fun MediaPickerRow(
             vm.uploading {
                 vm.reportErrors {
                     val (file, ms) = withContext(Dispatchers.IO) { recorder.stop() }
-                    try {
-                        status = "上傳中…"
-                        upload(withContext(Dispatchers.IO) { file.readBytes() }, VoiceRecorder.MIME, MediaItem.VOICE, durationMs = ms)
-                    } finally {
-                        status = null
-                        withContext(NonCancellable + Dispatchers.IO) { file.delete() }
-                    }
+                    sendVoice(file, ms)
                 }
             }
         }
@@ -274,24 +348,66 @@ fun MediaPickerRow(
         vm.container.scope.launch(Dispatchers.IO) { recorder.cancel(f) }
     }
 
+    fun retryVoice() {
+        val v = unsent ?: return
+        if (left <= 0) { vm.toast("照片和語音最多 ${Limits.MEDIA} 個，先移除一個再重新上傳"); return }
+        scope.launch { vm.uploading { vm.reportErrors { sendVoice(v.file, v.durationMs) } } }
+    }
+
+    fun dropVoice() {
+        val v = unsent ?: return
+        unsent = null
+        vm.container.scope.launch(Dispatchers.IO) { v.file.delete() }
+    }
+
     val pickMany = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { addPhotos(it) }
     val pickOne = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { addPhotos(listOfNotNull(it)) }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) startRecording() else vm.toast("要允許使用麥克風才能錄音 🎙️")
+        val activity = context.findActivity()
+        when {
+            ok -> startRecording()
+            // 拒絕過兩次，系統就不會再跳出詢問了：只能到設定裡打開
+            activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO) -> micBlocked = true
+            else -> vm.toast("要允許使用麥克風才能錄音 🎙️")
+        }
     }
 
+    val voice = when {
+        recording != null -> VoiceDraft.RECORDING
+        unsent != null -> VoiceDraft.UNSENT
+        else -> VoiceDraft.NONE
+    }
+    LaunchedEffect(voice) { voiceChanged(voice) }
     LaunchedEffect(recording) {
-        recordingChanged(recording != null)
         while (recording != null) { elapsed = recorder.elapsedMs; delay(250) }
+    }
+    // 錄音中螢幕不要自己關掉：關掉就跟跑到背景一樣，後面都錄不到聲音
+    val keepOn = recording != null
+    DisposableEffect(view, keepOn) {
+        if (keepOn) view.keepScreenOn = true
+        onDispose { if (keepOn) view.keepScreenOn = false }
+    }
+    // 按主畫面鍵、切到別的 App、關螢幕：系統只給背景的 App 靜音，先停下來把錄到的存起來
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_STOP && recording != null) {
+                val kept = recorder.elapsedMs >= VoiceRecorder.MIN_MS
+                stopRecording()
+                if (kept) vm.toast("離開 App 時錄音先停下來了，錄到的部分會加進來 🎙️")
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
     DisposableEffect(recorder) {
         // 錄到 3 分鐘會自己停：直接上傳
         recorder.onLimit = { scope.launch { stopRecording() } }
-        // 離開畫面：沒停的錄音直接丟掉，麥克風放開（還在開麥克風的也會馬上關掉）
+        // 離開畫面：沒停的錄音直接丟掉，麥克風放開（還在開麥克風的也會馬上關掉）；沒傳上去的錄音也刪掉
         onDispose {
             recorder.onLimit = {}
-            recordingChanged(false)
-            vm.container.scope.launch(Dispatchers.IO) { recorder.release() }
+            voiceChanged(VoiceDraft.NONE)
+            val leftover = unsent?.file
+            vm.container.scope.launch(Dispatchers.IO) { recorder.release(); leftover?.delete() }
         }
     }
 
@@ -310,7 +426,8 @@ fun MediaPickerRow(
                 CuteButton("⏹ 停止 ${formatDuration(elapsed)}", small = true, color = Cute.colors.bad, contentColor = Color.White) { stopRecording() }
                 SoftButton("取消", small = true) { cancelRecording() }
             } else {
-                SoftButton("🎙️ 錄音", small = true, enabled = idle) {
+                // 還有一段沒傳上去的錄音：先處理那段
+                SoftButton("🎙️ 錄音", small = true, enabled = idle && unsent == null) {
                     when {
                         left <= 0 -> vm.toast("照片和語音最多 ${Limits.MEDIA} 個")
                         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> startRecording()
@@ -319,6 +436,7 @@ fun MediaPickerRow(
                 }
             }
         }
+        val pending = unsent
         when {
             recording != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 RecordingDot()
@@ -328,7 +446,45 @@ fun MediaPickerRow(
                 CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
                 Text(status ?: "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            pending != null -> Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Cute.colors.butter.copy(alpha = 0.3f)).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "🎙️ ${formatDuration(pending.durationMs)} 的錄音還沒傳上去，錄音還留著，網路好一點再重新上傳就好",
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CuteButton("重新上傳", small = true, enabled = enabled && !vm.busy) { retryVoice() }
+                    SoftButton("丟掉這段", small = true, enabled = !vm.busy) { dropVoice() }
+                }
+            }
         }
+    }
+
+    if (micBlocked) AlertDialog(
+        onDismissRequest = { micBlocked = false },
+        title = { Text("要打開麥克風權限") },
+        text = { Text("麥克風權限被關掉了，系統不會再跳出詢問。按「去設定」› 權限 › 麥克風，選擇允許，回來就可以錄音了。") },
+        confirmButton = { TextButton(onClick = { micBlocked = false; openAppSettings(context) }) { Text("去設定") } },
+        dismissButton = { TextButton(onClick = { micBlocked = false }) { Text("先不要") } },
+    )
+}
+
+/** 面板裡的 context 可能被包了好幾層：一路拆到 Activity */
+tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+/** 打開這個 App 在系統設定裡的頁面（權限被拒絕到不再詢問時，只能從這裡打開） */
+fun openAppSettings(context: Context) {
+    runCatching {
+        context.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 }
 
@@ -406,13 +562,23 @@ private fun PhotoViewer(photos: List<MediaItem>, start: Int, vm: AppViewModel, c
     }
 }
 
-/** 縮圖角落的小叉叉 */
+/** 叉叉的按鈕有多少在照片外面 */
+private val REMOVE_OUT = 12.dp
+
+/**
+ * 縮圖角落的小叉叉：看起來是 24dp 的小圓點，可以按的範圍有 40dp。
+ * 照片上的往外推一半（[REMOVE_OUT]），按的範圍大一點也不會蓋掉太多照片，不會想移除卻打開了大圖
+ */
 @Composable
 private fun RemoveDot(modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier.size(24.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).bouncyClick(onClick = onClick),
+        modifier.size(40.dp).bouncyClick(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Icon(Icons.Rounded.Close, "移除", tint = Color.White, modifier = Modifier.size(16.dp)) }
+    ) {
+        Box(Modifier.size(24.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.Close, "移除", tint = Color.White, modifier = Modifier.size(16.dp))
+        }
+    }
 }
 
 /** 錄音中一閃一閃的小紅點 */

@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -19,6 +20,7 @@ import tw.xiaoliangkou.app.data.Api
 import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.Errors
 import tw.xiaoliangkou.app.data.MediaItem
+import tw.xiaoliangkou.app.data.ProfileInfo
 import tw.xiaoliangkou.app.data.RealtimeClient
 import tw.xiaoliangkou.app.data.RemoteRepository
 import tw.xiaoliangkou.app.data.Session
@@ -95,6 +97,9 @@ class RemoteV2Test {
         rpc("app_me") { me }
         val r = RemoteRepository(client().api, RealtimeClient(scope), scope) {}
         r.refreshAll()
+        // 建立時 init 也會自己跑一次 refreshAll：等它跑完，不然它晚到的結果會蓋掉測試接著存的資料
+        var n = -1
+        while (n != seen.size) { n = seen.size; delay(250) }
         return r
     }
 
@@ -105,9 +110,9 @@ class RemoteV2Test {
         // 新的 RPC 找不到（PGRST202）：訊息請使用者執行 upgrade-v2.sql
         val e = failsWith(Errors.SCHEMA_OUTDATED_CODE) { r.saveNote(null, "她喜歡半糖少冰") }
         assertEquals(Errors.SCHEMA_OUTDATED, e.message)
-        // 舊的 app_update_profile 不認得 info：暱稱、生日存好了，但要提醒更新
+        // 舊的 app_update_profile 不認得 info：暱稱、生日存好了，填了其他資料的話要提醒更新
         rpc("app_update_profile") { """{"id":"u-1","displayName":"阿哲","avatarUrl":null,"birthday":"1998-05-20"}""" }
-        failsWith(Errors.SCHEMA_OUTDATED_CODE) { r.updateProfileInfo(" 阿哲 ", "1998-05-20", JsonObject(emptyMap())) }
+        failsWith(Errors.SCHEMA_OUTDATED_CODE) { r.updateProfileInfo(" 阿哲 ", "1998-05-20", ProfileInfo.build(mapOf(ProfileInfo.HEIGHT to "172"))) }
         val sent = calls("POST /rest/v1/rpc/app_update_profile").last().json
         assertEquals("阿哲", sent["displayName"]!!.jsonPrimitive.content)
         assertEquals("1998-05-20", sent["birthday"]!!.jsonPrimitive.content)
@@ -290,13 +295,16 @@ class RemoteV2Test {
         assertEquals("u/u-1/mine.jpg", paths.last())
         assertTrue(calls("GET /storage/v1/object/authenticated/media/c/old/").isEmpty())
         assertEquals(2, calls("POST /storage/v1/object/media/u/u-1/").size)
-        // 共用資料夾裡的原始檔刪掉，對方就列不出來、讀不到（日曆還在用的那張留著）
+        // 共用資料夾裡的原始檔刪掉，對方就列不出來、讀不到（日曆還在用的那張留著）；
+        // 已經不見的那張也從備忘錄拿掉了，順便清掉。以前配對的資料夾刪不掉，不用送
         val del = calls("DELETE /storage/v1/object/media").single()
-        assertEquals("""{"prefixes":["c/c-1/a.jpg"]}""", del.body.decodeToString())
+        assertEquals("""{"prefixes":["c/c-1/a.jpg","c/c-1/gone.jpg"]}""", del.body.decodeToString())
         assertEquals("Bearer a-1", del.header("Authorization"))
         assertEquals(key, del.header("apikey"))
 
-        // 一直是共用的：不刪任何檔案
+        // 一直是共用的、照片沒拿掉：不刪任何檔案
+        rpc("app_memos") { "[${memo("m1", "u-1", true, """[{"path":"c/c-1/a.jpg","kind":"photo"}]""")}]" }
+        r.refreshAll()
         r.saveMemo(m.id, m.title, "改內容", listOf(MediaItem("c/c-1/a.jpg", MediaItem.PHOTO)), shared = true, pinned = false, color = "pink")
         assertEquals(1, calls("DELETE /storage/").size)
         // 刪不掉（例如是對方上傳的）也沒關係，備忘錄已經存好了

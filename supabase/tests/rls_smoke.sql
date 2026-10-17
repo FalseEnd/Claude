@@ -733,12 +733,25 @@ select public.app_save_memo(jsonb_build_object('id', (:'japan_memo'::jsonb)->>'i
 select test.login(test.id('mia'));
 select test.ok(public.app_memos()->0->>'title' = '一起存錢去日本' and jsonb_array_length(public.app_memos()) = 1,
                'until it is shared again on purpose');
+select test.ok(test.outbox_body(test.id('mia'), '阿哲 分享了一則備忘錄') = '一起存錢去日本', 'and the new partner is told when it is');
+-- 原本只有自己的備忘錄改成共用：一樣通知對方；之後再改內容就不再通知
+select test.login(test.id('zhe'));
+select public.app_save_memo('{"title": "聖誕節禮物", "shared": false}') as gift_memo \gset
+select test.ok(test.outbox_titled(test.id('mia'), '阿哲 分享了一則備忘錄') = 1, 'a private memo tells the partner nothing');
+select public.app_save_memo(jsonb_build_object('id', (:'gift_memo'::jsonb)->>'id', 'shared', true));
+select test.ok(test.outbox_titled(test.id('mia'), '阿哲 分享了一則備忘錄') = 2
+               and test.outbox_body(test.id('mia'), '阿哲 分享了一則備忘錄') = '聖誕節禮物', 'until I share it');
+select public.app_save_memo(jsonb_build_object('id', (:'gift_memo'::jsonb)->>'id', 'body', '圍巾', 'shared', true));
+select test.ok(test.outbox_titled(test.id('mia'), '阿哲 分享了一則備忘錄') = 2, 'editing a memo that is already shared sends no new notification');
 -- 什麼都沒寫的備忘錄、只有空白的日曆紀錄，通知也要有內容
 select test.login(test.id('zhe'));
 select public.app_save_memo('{}');
 select test.ok(test.outbox_body(test.id('mia'), '阿哲 新增了共同備忘錄') = '打開看看吧', 'an empty memo still has a notification body');
 select public.app_save_day_entry('{"day": "2026-10-20", "body": "  "}');
 select test.ok(test.outbox_body(test.id('mia'), '阿哲 記錄了 10/20 的生活') = '打開看看吧', 'so does a diary entry of only spaces');
+-- 下面會刪掉 mia 的帳號：寫給 mia 的備註不能變成「沒配對時寫的」，跑到下一位對方的頁面上
+select public.app_save_note('{"body": "米亞怕冷，約會帶外套"}') as mia_note \gset
+select test.ok((:'mia_note'::jsonb)->>'aboutUser' = test.id('mia')::text and jsonb_array_length(public.app_notes()) = 1, 'a note about mia');
 reset role;
 
 -- ---------------------------------------------------------------- 刪除帳號（Supabase 後台 › Authentication › Users）
@@ -755,6 +768,9 @@ set local role authenticated;
 select test.login(test.id('zhe'));
 select test.ok((public.app_me())->'couple' = 'null', 'app_me shows no couple');
 select test.ok(public.create_invite() ~ '^[A-HJ-NP-Z2-9]{6}$', 'the remaining member can pair again');
+select test.ok(public.app_notes() = '[]'
+               and (select about_user from public.partner_notes where id = ((:'mia_note'::jsonb)->>'id')::uuid) = test.id('mia'),
+               'notes about the deleted partner still remember who they were about and stay hidden');
 reset role;
 
 rollback;

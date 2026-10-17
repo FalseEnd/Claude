@@ -1,6 +1,7 @@
 package tw.xiaoliangkou.app
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -29,6 +30,14 @@ class MainActivity : ComponentActivity() {
                 XlkRoot(vm, deepLink) { deepLink = null }
             }
         }
+    }
+
+    /** 深色模式切換時畫面不會重建（見 AndroidManifest 的 configChanges）：狀態列、導覽列的圖示顏色和視窗底色要自己跟著換 */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        enableEdgeToEdge()
+        val night = newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        window.setBackgroundDrawableResource(if (night) R.color.night else R.color.blush)
     }
 
     override fun onNewIntent(intent: Intent) {

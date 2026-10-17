@@ -34,23 +34,34 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetDefaults
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -183,7 +194,7 @@ fun XlkRoot(vm: AppViewModel, deepLink: String?, onDeepLinkHandled: () -> Unit) 
             p == null -> SplashScreen()
             repo == null -> StartFlow(vm)
             !s.loaded -> Connecting(vm)
-            !s.paired -> Box(Modifier.systemBarsPadding()) { PairingScreen(s, vm) }
+            !s.paired -> UnpairedScaffold(vm, pendingRoute) { pendingRoute = null }
             !p.onboarded && !s.demo -> Box(Modifier.systemBarsPadding()) { Onboarding(s, vm) }
             else -> MainScaffold(vm, pendingRoute) { pendingRoute = null }
         }
@@ -270,12 +281,14 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     var sheet by remember { mutableStateOf<SheetSpec?>(null) }
-    var calendarDate by remember { mutableStateOf<LocalDate?>(null) }
+    // 從通知、存好的約會指定日曆要看哪天：跳過去一次就清掉（之後再進日曆照樣從今天開始）。
+    // 第二個值讓同一天再指定一次也會跳
+    var calendarJump by remember { mutableStateOf<Pair<LocalDate, Long>?>(null) }
     val tabIds = TABS.map { it.first }
     val open: (String) -> Unit = { target ->
         // 生活紀錄的通知：「calendar/2026-10-15」直接打開那一天
         val r = if (target.startsWith("calendar/")) {
-            runCatching { LocalDate.parse(target.substringAfter('/')) }.getOrNull()?.let { calendarDate = it }
+            runCatching { LocalDate.parse(target.substringAfter('/')) }.getOrNull()?.let { calendarJump = it to System.nanoTime() }
             "calendar"
         } else target
         if (r in tabIds) nav.navigate(r) {
@@ -302,7 +315,7 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
             composable("home") { HomeScreen(s, vm, open, showSheet) }
             composable("map") { MapScreen(s, vm, showSheet) }
             composable("money") { MoneyScreen(s, vm, showSheet) }
-            composable("calendar") { CalendarScreen(s, vm, showSheet, calendarDate) }
+            composable("calendar") { CalendarScreen(s, vm, showSheet, calendarJump?.first, calendarJump?.second ?: 0L) { calendarJump = null } }
             composable("more") { MoreScreen(s, vm, showSheet, open) }
             composable("mood") { MoodScreen(s, vm, back) }
             composable("anniv") { AnniversaryScreen(s, vm, back, showSheet) }
@@ -321,29 +334,118 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
         }
     }
 
-    val current = sheet
-    if (current != null) {
-        val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        val close: () -> Unit = { sheet = null }
-        ModalBottomSheet(onDismissRequest = close, sheetState = state, containerColor = MaterialTheme.colorScheme.background) {
+    sheet?.let { current -> SheetHost(s, vm, current, close = { sheet = null }) { calendarJump = it to System.nanoTime() } }
+}
+
+/** 還沒配對也能用的頁面（都有「還沒配對」的版本）；桌面的備忘錄小工具點了會到「memos」 */
+internal val UNPAIRED_ROUTES = setOf("profile", "memos", "fortune")
+
+/**
+ * 還沒配對（或解除配對後）：配對頁，加上配對前也能用的我的資料、備忘錄、星座運勢與御神籤。
+ * 解除配對後自己的備忘錄還在（桌面小工具也還看得到），這裡才打得開、改得了。
+ * 其他的通知（例如約會、心情）等配對好再打開。
+ */
+@Composable
+private fun UnpairedScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: () -> Unit) {
+    val s by vm.state.collectAsState()
+    val nav = rememberNavController()
+    var sheet by remember { mutableStateOf<SheetSpec?>(null) }
+    val open: (String) -> Unit = { nav.navigate(it) { launchSingleTop = true } }
+    val back: () -> Unit = { nav.popBackStack() }
+    LaunchedEffect(pendingRoute) { pendingRoute?.takeIf { it in UNPAIRED_ROUTES }?.let { open(it); routeHandled() } }
+    NavHost(
+        nav, "pairing", Modifier.fillMaxSize().systemBarsPadding(),
+        enterTransition = { fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 10 } },
+        exitTransition = { fadeOut(tween(160)) },
+        popEnterTransition = { fadeIn(tween(220)) },
+        popExitTransition = { fadeOut(tween(160)) + slideOutHorizontally(tween(220)) { it / 10 } },
+    ) {
+        composable("pairing") { PairingScreen(s, vm, open) }
+        composable("profile") { MyProfileScreen(s, vm, back) }
+        composable("memos") { MemosScreen(s, vm, back) { sheet = it } }
+        composable("fortune") { FortuneScreen(s, vm, back) }
+    }
+    sheet?.let { current -> SheetHost(s, vm, current, close = { sheet = null }) {} }
+}
+
+/** 打開的底部面板。[onEventSaved]：存好約會後日曆跳到那天 */
+@Composable
+private fun SheetHost(s: tw.xiaoliangkou.app.data.AppState, vm: AppViewModel, current: SheetSpec, close: () -> Unit, onEventSaved: (LocalDate) -> Unit) = key(current) {
+    // 會寫一大段字、放照片和語音的面板：還沒儲存就滑掉、點外面、按返回時先問一下
+    val guarded = current is SheetSpec.DayEntryEdit || current is SheetSpec.MemoEdit || current is SheetSpec.NoteEdit
+    XlkSheet(guarded, close) {
+        when (current) {
+            SheetSpec.Comfort -> ComfortSheet(s, vm, close)
+            is SheetSpec.GuessIt -> GuessSheet(s, vm, current.id, close)
+            is SheetSpec.ExpenseEdit -> ExpenseEditSheet(s, vm, current.id, close)
+            is SheetSpec.ExpenseView -> ExpenseViewSheet(s, current.id, close)
+            SheetSpec.ParseTest -> ParseTestSheet(vm, close)
+            SheetSpec.Avatar -> AvatarSheet(s, vm, close)
+            is SheetSpec.PlaceEdit -> PlaceSheet(s, vm, current.id, current.lat, current.lng, current.name, close)
+            is SheetSpec.EventEdit -> EventSheet(s, vm, current.id, current.date) { onEventSaved(current.date); close() }
+            is SheetSpec.AnniversaryEdit -> AnniversarySheet(s, vm, current.id, close)
+            is SheetSpec.PeriodEdit -> PeriodSheet(vm, current.forPartner, close)
+            is SheetSpec.NoteEdit -> NoteSheet(s, vm, current.id, close)
+            is SheetSpec.DayEntryEdit -> DayEntrySheet(s, vm, current.id, current.date, close)
+            is SheetSpec.MemoEdit -> MemoSheet(s, vm, current.id, close)
+        }
+    }
+}
+
+/** 面板裡還沒儲存的內容（面板用 [SheetDraftGuard] 回報） */
+internal class SheetDraft {
+    var dirty = false
+}
+
+internal val LocalSheetDraft = staticCompositionLocalOf<SheetDraft?> { null }
+
+/** 放在面板裡：[dirty] 表示有寫了還沒儲存的內容（或正在錄音），關掉面板前會先問 */
+@Composable
+fun SheetDraftGuard(dirty: Boolean) {
+    val draft = LocalSheetDraft.current ?: return
+    SideEffect { draft.dirty = dirty }
+    // 面板換成別的畫面（例如「已經不在了」）：不用再問
+    DisposableEffect(draft) { onDispose { draft.dirty = false } }
+}
+
+/**
+ * 底部面板。[guarded]：有還沒儲存的內容時，往下滑、點外面、按返回都先問要不要放棄，
+ * 不會一下子就把寫好的字、剛上傳的照片和語音丟掉。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun XlkSheet(guarded: Boolean, close: () -> Unit, content: @Composable () -> Unit) {
+    val draft = remember { SheetDraft() }
+    var askDiscard by remember { mutableStateOf(false) }
+    // 往下滑、點外面：先擋下來問
+    val confirm = remember(draft) {
+        { v: SheetValue -> if (v == SheetValue.Hidden && draft.dirty) { askDiscard = true; false } else true }
+    }
+    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = confirm)
+    val scope = rememberCoroutineScope()
+    ModalBottomSheet(
+        onDismissRequest = close, sheetState = state, containerColor = MaterialTheme.colorScheme.background,
+        // 系統的返回鍵不會經過上面的檢查：要問的面板自己處理返回
+        properties = if (guarded) ModalBottomSheetProperties(shouldDismissOnBackPress = false) else ModalBottomSheetDefaults.properties,
+    ) {
+        if (guarded) BackHandler {
+            if (draft.dirty) askDiscard = true
+            else scope.launch { state.hide() }.invokeOnCompletion { if (!state.isVisible) close() }
+        }
+        CompositionLocalProvider(LocalSheetDraft provides draft) {
             Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 32.dp)) {
-                when (current) {
-                    SheetSpec.Comfort -> ComfortSheet(s, vm, close)
-                    is SheetSpec.GuessIt -> GuessSheet(s, vm, current.id, close)
-                    is SheetSpec.ExpenseEdit -> ExpenseEditSheet(s, vm, current.id, close)
-                    is SheetSpec.ExpenseView -> ExpenseViewSheet(s, current.id, close)
-                    SheetSpec.ParseTest -> ParseTestSheet(vm, close)
-                    SheetSpec.Avatar -> AvatarSheet(s, vm, close)
-                    is SheetSpec.PlaceEdit -> PlaceSheet(s, vm, current.id, current.lat, current.lng, current.name, close)
-                    is SheetSpec.EventEdit -> EventSheet(s, vm, current.id, current.date) { calendarDate = current.date; close() }
-                    is SheetSpec.AnniversaryEdit -> AnniversarySheet(s, vm, current.id, close)
-                    is SheetSpec.PeriodEdit -> PeriodSheet(vm, current.forPartner, close)
-                    is SheetSpec.NoteEdit -> NoteSheet(s, vm, current.id, close)
-                    is SheetSpec.DayEntryEdit -> DayEntrySheet(s, vm, current.id, current.date, close)
-                    is SheetSpec.MemoEdit -> MemoSheet(s, vm, current.id, close)
-                }
+                content()
             }
         }
+        if (askDiscard) AlertDialog(
+            onDismissRequest = { askDiscard = false },
+            title = { Text("還沒儲存喔") },
+            text = { Text("剛剛寫的還沒儲存，要放棄這次寫的內容嗎？") },
+            confirmButton = { TextButton(onClick = { askDiscard = false }) { Text("繼續編輯") } },
+            dismissButton = {
+                TextButton(onClick = { askDiscard = false; draft.dirty = false; close() }) { Text("放棄", color = MaterialTheme.colorScheme.error) }
+            },
+        )
     }
 }
 

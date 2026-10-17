@@ -16,7 +16,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,14 +31,12 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DayEntry
 import tw.xiaoliangkou.app.data.Limits
-import tw.xiaoliangkou.app.data.MediaItem
 import tw.xiaoliangkou.app.data.RemoteRepository
 import tw.xiaoliangkou.app.data.toInstantOrNull
 import tw.xiaoliangkou.app.ui.AppViewModel
@@ -55,7 +52,9 @@ import tw.xiaoliangkou.app.ui.components.MediaThumbs
 import tw.xiaoliangkou.app.ui.components.Note
 import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.SoftButton
+import tw.xiaoliangkou.app.ui.components.VoiceDraft
 import tw.xiaoliangkou.app.ui.components.bouncyClick
+import tw.xiaoliangkou.app.ui.components.rememberUploads
 import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.LocalDate
 import java.time.YearMonth
@@ -221,13 +220,6 @@ fun DayEntrySheet(s: AppState, vm: AppViewModel, id: String?, date: LocalDate, c
     }
 }
 
-/** 這次在面板裡上傳的照片、語音：最後沒存起來的，面板關掉時刪掉 */
-private class Uploads {
-    val added = mutableListOf<MediaItem>()
-    /** 送出儲存過的（可能已經存進資料庫，不能刪） */
-    val kept = mutableSetOf<String>()
-}
-
 @Composable
 private fun EntryForm(s: AppState, vm: AppViewModel, e: DayEntry?, date: LocalDate, close: () -> Unit, onDeleting: () -> Unit) {
     val entryId = e?.id
@@ -235,15 +227,12 @@ private fun EntryForm(s: AppState, vm: AppViewModel, e: DayEntry?, date: LocalDa
     var body by remember(entryId) { mutableStateOf(e?.body ?: "") }
     var media by remember(entryId) { mutableStateOf(e?.media ?: emptyList()) }
     var confirmDelete by remember(entryId) { mutableStateOf(false) }
-    var recording by remember(entryId) { mutableStateOf(false) }
-    val uploads = remember(entryId) { Uploads() }
-    DisposableEffect(uploads) {
-        onDispose {
-            val drop = uploads.added.filter { it.path !in uploads.kept }
-            val r = vm.repo.value
-            if (drop.isNotEmpty() && r != null) vm.container.scope.launch(Dispatchers.IO) { runCatching { r.discardMedia(drop) } }
-        }
-    }
+    var voice by remember(entryId) { mutableStateOf(VoiceDraft.NONE) }
+    val recording = voice != VoiceDraft.NONE
+    // 這次上傳了沒存的照片、語音：面板關掉時刪掉
+    val uploads = rememberUploads(vm, entryId)
+    // 寫了還沒儲存（或正在錄音）：滑掉面板、按返回前先問
+    tw.xiaoliangkou.app.ui.SheetDraftGuard(recording || body.trim() != e?.body.orEmpty().trim() || media != e?.media.orEmpty() || (e != null && day != e.day))
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(if (e == null) "記錄這天的生活 ✍️" else "編輯這天的紀錄", style = MaterialTheme.typography.titleLarge)
         DateField("日期", day) { day = it }
@@ -259,11 +248,11 @@ private fun EntryForm(s: AppState, vm: AppViewModel, e: DayEntry?, date: LocalDa
         if (media.isNotEmpty()) MediaThumbs(media, vm, onRemove = { m -> media = media - m })
         MediaPickerRow(
             vm, shared = true, onAdded = { uploads.added += it; media = media + it }, remaining = Limits.MEDIA - media.size,
-            onRecordingChange = { recording = it },
+            onVoiceChange = { voice = it },
         )
-        // 錄音中先不能存：存了面板就關掉，還沒停的那段錄音會不見
+        // 錄音中、錄音還沒傳上去時先不能存：存了面板就關掉，那段錄音會不見
         CuteButton(
-            if (recording) "先停止錄音再儲存" else "儲存", Modifier.fillMaxWidth(),
+            voice.saveLabel ?: "儲存", Modifier.fillMaxWidth(),
             enabled = !recording && (body.isNotBlank() || media.isNotEmpty()) && !vm.busy,
         ) {
             val d = Fmt.parseDate(day) ?: date

@@ -5,7 +5,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import java.time.LocalDate
-import java.time.Period
+import java.time.Year
 
 /**
  * 個人資料（profiles.info）：資料庫只存一包 JSON，有哪些欄位由 App 決定。
@@ -100,9 +100,16 @@ object ProfileInfo {
     /** 畫面編輯用：info → key → 文字 */
     fun values(info: JsonObject): Map<String, String> = fields.associate { it.key to (text(info, it.key) ?: "") }
 
-    /** 滿幾歲（生日還沒到就少一歲；2/29 出生的人在平年 3/1 才加一歲） */
-    fun age(birthday: LocalDate, today: LocalDate = LocalDate.now()): Int =
-        if (birthday.isAfter(today)) 0 else Period.between(birthday, today).years
+    /**
+     * 滿幾歲（生日還沒到就少一歲）。2/29 出生的人在平年 2/28 就加一歲，
+     * 和生日倒數（[tw.xiaoliangkou.app.core.Dates.nextOccurrence]）同一天，畫面上不會一邊「24 歲」一邊「今天滿 25 歲」
+     */
+    fun age(birthday: LocalDate, today: LocalDate = LocalDate.now()): Int {
+        if (birthday.isAfter(today)) return 0
+        val day = if (birthday.monthValue == 2 && birthday.dayOfMonth == 29 && !Year.isLeap(today.year.toLong())) 28 else birthday.dayOfMonth
+        val thisYear = LocalDate.of(today.year, birthday.monthValue, day)
+        return today.year - birthday.year - if (today.isBefore(thisYear)) 1 else 0
+    }
 
     private fun parseNumber(s: String): Double? = s.replace(',', '.').replace("，", ".").trim().toDoubleOrNull()?.takeIf { it.isFinite() }
 

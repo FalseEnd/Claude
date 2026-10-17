@@ -211,7 +211,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         ).sortedByDescending { it.time }
 
         return AppState(
-            loaded = true, demo = true, connected = true,
+            loaded = true, demo = true, connected = true, memosLoaded = true,
             me = Profile(ME, "阿哲", email = "azhe@example.com", birthday = myBirthday.toString(), info = ProfileInfo.build(mapOf(
                 ProfileInfo.HEIGHT to "176", ProfileInfo.WEIGHT to "68", ProfileInfo.PHONE to "0987-654-321", ProfileInfo.BLOOD_TYPE to "A",
                 ProfileInfo.MBTI to "ISTJ", ProfileInfo.JOB to "軟體工程師", ProfileInfo.HOBBIES to "打籃球、手沖咖啡、露營",

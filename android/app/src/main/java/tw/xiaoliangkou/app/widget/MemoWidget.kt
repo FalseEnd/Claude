@@ -224,6 +224,9 @@ class MemoWidget : AppWidgetProvider() {
             AppWidgetManager.getInstance(context)?.getAppWidgetIds(ComponentName(context, MemoWidget::class.java))
         }.getOrNull() ?: IntArray(0)
 
+        /** 桌面上有沒有放這個小工具（沒有的話，備忘錄打開「放在桌面」也看不到） */
+        fun isPlaced(context: Context): Boolean = widgetIds(context).isNotEmpty()
+
         fun updateAll(context: Context, snap: MemoWidgetSnapshot = load(context)) {
             val manager = AppWidgetManager.getInstance(context) ?: return
             update(context, manager, widgetIds(context), snap)
@@ -298,8 +301,10 @@ class MemoWidget : AppWidgetProvider() {
 
         private fun px(context: Context, dp: Float) = (dp * context.resources.displayMetrics.density).toInt()
 
-        private fun openMemos(context: Context): PendingIntent {
+        internal fun openMemos(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {
+                // 自己的 action：通知的 PendingIntent 編號剛好也是 7100 時，才不會被當成同一個、互相蓋掉要打開的畫面
+                action = Widgets.ACTION_OPEN_PREFIX + "memos"
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra(Notifier.EXTRA_ROUTE, "memos")
             }

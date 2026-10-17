@@ -18,11 +18,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -31,10 +33,12 @@ import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.LinkOff
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.StickyNote2
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.Widgets
@@ -57,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
@@ -67,6 +72,7 @@ import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Dates
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.InviteLink
+import tw.xiaoliangkou.app.data.Supabase
 import tw.xiaoliangkou.app.service.ServiceNotice
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Fmt
@@ -142,10 +148,10 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
             CuteCard {
                 MenuRow(Icons.Rounded.Shield, c.mint, MaterialTheme.colorScheme.secondaryContainer, "分享與隱私", if (s.mySharing?.paused == true) "暫停分享中" else "決定 ${s.partnerName} 能看到什麼") { open("privacy") }
                 MenuRow(Icons.Rounded.Notifications, c.peach, c.peach.copy(alpha = 0.25f), "通知設定", "通知列顯示 ${s.partnerName} 的狀態、想收到哪些通知") { open("notif") }
-                MenuRow(Icons.Rounded.Widgets, c.butter, c.butter.copy(alpha = 0.25f), "桌面小工具", "在桌面看在一起的天數、${s.partnerName} 的狀態") { open("widgets") }
+                MenuRow(Icons.Rounded.Widgets, c.butter, c.butter.copy(alpha = 0.25f), "桌面小工具", "在桌面看在一起的天數、${s.partnerName} 的狀態、備忘錄") { open("widgets") }
                 if (!s.demo) {
                     MenuRow(Icons.Rounded.Tune, c.me, c.meSoft, "權限與背景執行", "位置、通知、省電、自動記帳") { open("permissions") }
-                    MenuRow(Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號", "連線、邀請另一半、改密碼、登出") { open("account") }
+                    MenuRow(Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號", if (s.schemaOutdated) "資料庫需要更新，點這裡看怎麼做 🛠️" else "連線、邀請另一半、改密碼、登出") { open("account") }
                 } else {
                     MenuRow(Icons.Rounded.Science, c.lavender, c.fertileSoft, "示範控制台", "扮演 ${s.partnerName}，看看會跳出什麼通知") { open("demo") }
                 }
@@ -256,12 +262,19 @@ fun NotificationScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
         item {
             CuteCard {
                 Text("要收到哪些通知", style = MaterialTheme.typography.titleMedium)
-                kinds.forEach { (k, l, e) -> ToggleRow(l, s.notifPrefs[k] != false, emoji = e) { v -> vm.act { it.setNotifPref(k, v) } } }
+                kinds.forEach { (k, l, e) ->
+                    // 舊的資料庫不認得這兩種通知：先提醒；按了的話 setNotifPref 會說要更新資料庫（更新好就能直接設定，不用等重新檢查）
+                    val hint = if (s.schemaOutdated && k in V2_NOTIF_KINDS) "資料庫更新後才能設定" else null
+                    ToggleRow(l, s.notifPrefs[k] != false, hint, e) { v -> vm.act { it.setNotifPref(k, v) } }
+                }
             }
         }
         item { Note("「對方新增會偵測你的標點」與「分享設定變更」的通知不能關閉，讓兩個人都知道自己分享了什麼。也可以在系統設定裡分別調整每種通知的聲音。", "🔔") }
     }
 }
+
+/** upgrade-v2.sql 才有的通知種類 */
+private val V2_NOTIF_KINDS = setOf("diary", "memo")
 
 /** 常駐通知顯示對方的狀態：開關、要顯示哪些項目、預覽 */
 @OptIn(ExperimentalLayoutApi::class)
@@ -366,6 +379,7 @@ fun AccountScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenHeader("Supabase 與帳號", onBack = back) }
+        if (s.schemaOutdated) item { SchemaUpgradeCard(prefs?.supabaseUrl, vm) }
         item {
             CuteCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -433,6 +447,54 @@ fun AccountScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     }
 }
 
+/** 資料庫還是 0.1 版：一步一步教怎麼執行 upgrade-v2.sql，更新好再檢查一次（其他畫面的「資料庫需要更新」都指到這裡） */
+@Composable
+private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel) {
+    val uriHandler = LocalUriHandler.current
+    fun open(url: String) { runCatching { uriHandler.openUri(url) }.onFailure { vm.toast("打不開瀏覽器，請到說明文件找「更新資料庫」那一節") } }
+    val editor = Supabase.sqlEditorUrl(projectUrl)
+    val steps = listOf(
+        "按下面的「upgrade-v2.sql」打開更新檔，按「Raw」，從純文字頁面全選、複製",
+        if (editor != null) "按「SQL Editor」打開你們專案的 SQL Editor，貼上後按「Run」"
+        else "到 Supabase 後台的 SQL Editor，按左上角的「＋」›「Create a new snippet」，貼上後按「Run」",
+        "跳出「Potential issue detected」的話，按「Run query」繼續",
+        "下方出現「更新完成 🎉」就好了，回來按「重新檢查」",
+    )
+    CuteCard(color = Cute.colors.butter.copy(alpha = 0.3f)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            EmojiBubble("🛠️", Cute.colors.card, 44.dp)
+            Column(Modifier.weight(1f)) {
+                Text("資料庫需要更新", style = MaterialTheme.typography.titleMedium)
+                Text("個人資料、備註、日曆的生活紀錄和備忘錄，要先更新資料庫才能用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        steps.forEachIndexed { i, t ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.size(22.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+                    Text("${i + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimary)
+                }
+                Text(t, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SoftButton("upgrade-v2.sql", Modifier.weight(1f), icon = Icons.Rounded.Description, small = true) { open(Supabase.UPGRADE_SQL_URL) }
+            if (editor != null) SoftButton("SQL Editor", Modifier.weight(1f), icon = Icons.Rounded.Terminal, small = true) { open(editor) }
+            else SoftButton("完整說明", Modifier.weight(1f), icon = Icons.AutoMirrored.Rounded.MenuBook, small = true) { open(Supabase.GUIDE_URL) }
+        }
+        if (editor != null) SoftButton("看完整說明", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.MenuBook, small = true) { open(Supabase.GUIDE_URL) }
+        CuteButton("我更新好了，重新檢查", Modifier.fillMaxWidth(), icon = Icons.Rounded.Refresh, enabled = !vm.busy) {
+            vm.act { r ->
+                r.refreshAll()
+                vm.toast(
+                    if (r.state.value.schemaOutdated) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
+                    else "資料庫更新好了，新功能都可以用了 🎉",
+                )
+            }
+        }
+        Text("只要執行一次，兩個人其中一個做就好。已經存的資料不會受影響，不小心多跑一次也沒關係。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 @Composable
 fun DemoConsole(s: AppState, vm: AppViewModel, back: () -> Unit) {
     val demo = vm.demo
@@ -463,6 +525,7 @@ fun DemoConsole(s: AppState, vm: AppViewModel, back: () -> Unit) {
                 listOf(
                     "sad" to "😢 心情不好", "happy" to "🥰 心情很好", "hug" to "🤗 給你抱抱", "battery" to "🔋 電量剩 19%",
                     "spend" to "💳 刷卡消費", "invite" to "💌 約你出去", "pause" to "🙈 暫停／恢復分享", "guess" to "💰 猜你的花費",
+                    "diary" to "📔 記錄今天的生活", "memo" to "📝 新增共同備忘錄",
                 ).chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { (k, l) -> SoftButton(l, Modifier.weight(1f), small = true) { demo?.demoAction(k); vm.toast("${s.partnerName}：$l") } }

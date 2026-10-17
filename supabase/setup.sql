@@ -1716,11 +1716,12 @@ end $$;
 create table if not exists public.partner_notes (
   id          uuid primary key default gen_random_uuid(),
   owner_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  about_user  uuid references auth.users(id) on delete set null,
+  about_user  uuid,
   body        text not null check (char_length(body) between 1 and 2000),
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
+alter table public.partner_notes drop constraint if exists partner_notes_about_user_fkey;
 create index if not exists partner_notes_owner on public.partner_notes (owner_id, created_at desc);
 create table if not exists public.day_entries (
   id          uuid primary key default gen_random_uuid(),
@@ -1802,7 +1803,8 @@ create or replace function public.tg_memo_inserted() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   if new.shared and new.couple_id is not null then
-    perform enqueue_notification(partner_of(new.user_id), 'memo', display_name_of(new.user_id) || ' 新增了共同備忘錄',
+    perform enqueue_notification(partner_of(new.user_id), 'memo',
+      display_name_of(new.user_id) || case when tg_op = 'INSERT' then ' 新增了共同備忘錄' else ' 分享了一則備忘錄' end,
       coalesce(nullif(new.title, ''), nullif(left(btrim(new.body), 40), ''), nullif(media_summary(new.media), ''), '打開看看吧'),
       jsonb_build_object('id', new.id));
   end if;
@@ -1810,6 +1812,9 @@ begin
 end $$;
 create or replace trigger memo_inserted after insert on public.memos
   for each row execute function public.tg_memo_inserted();
+create or replace trigger memo_shared after update of shared, couple_id on public.memos
+  for each row when (new.shared and new.couple_id is not null and not (old.shared and old.couple_id is not distinct from new.couple_id))
+  execute function public.tg_memo_inserted();
 create or replace function public.tg_changed_memo() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare

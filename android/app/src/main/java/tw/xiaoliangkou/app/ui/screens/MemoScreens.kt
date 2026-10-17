@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -63,6 +64,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.Errors
 import tw.xiaoliangkou.app.data.Limits
@@ -83,8 +87,10 @@ import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.ToggleRow
+import tw.xiaoliangkou.app.ui.components.VoiceDraft
 import tw.xiaoliangkou.app.ui.components.bouncyClick
 import tw.xiaoliangkou.app.ui.components.formatDuration
+import tw.xiaoliangkou.app.ui.components.rememberUploads
 import tw.xiaoliangkou.app.ui.theme.Cute
 import tw.xiaoliangkou.app.widget.MemoWidget
 import tw.xiaoliangkou.app.widget.MemoWidgetSnapshot
@@ -114,6 +120,10 @@ private fun noteColor(key: String): Color {
 
 @Composable
 fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSpec) -> Unit) {
+    val context = LocalContext.current
+    // 資料庫還沒更新：存不了，先不能新增（跟日曆、備註一樣），也先不用提小工具
+    val canAdd = !s.schemaOutdated
+    val offerWidget = !rememberMemoWidgetPlaced() && canAdd
     val pinned = s.pinnedMemos
     val others = s.memos.filterNot { it.pinned }
     val full = StaggeredGridItemSpan.FullLine
@@ -127,7 +137,7 @@ fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
     ) {
         item(span = full) {
             ScreenHeader("備忘錄", onBack = back) {
-                CuteButton("新增備忘錄", icon = Icons.Rounded.Add, small = true) { sheet(SheetSpec.MemoEdit(null)) }
+                CuteButton("新增備忘錄", icon = Icons.Rounded.Add, small = true, enabled = canAdd) { sheet(SheetSpec.MemoEdit(null)) }
             }
         }
         // 資料庫還沒更新：先說清楚，不要等按了儲存才跳錯誤
@@ -135,7 +145,7 @@ fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
         if (s.memos.isEmpty()) item(span = full) {
             CuteCard {
                 EmptyState("還沒有備忘錄\n採買清單、想去的地方、${if (s.paired) "給 ${s.partnerName} 的小紙條" else "給自己的小提醒"}\n都可以記在這裡", "📝")
-                CuteButton("新增第一則備忘錄", Modifier.fillMaxWidth(), icon = Icons.Rounded.Add) { sheet(SheetSpec.MemoEdit(null)) }
+                CuteButton("新增第一則備忘錄", Modifier.fillMaxWidth(), icon = Icons.Rounded.Add, enabled = canAdd) { sheet(SheetSpec.MemoEdit(null)) }
             }
         }
         if (pinned.isNotEmpty()) {
@@ -149,11 +159,16 @@ fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
             items(others, key = { it.id }) { MemoCard(it, s, vm) { open(it) } }
         }
         item(span = full) {
-            Note(
-                (if (s.paired) "共用的備忘錄 ${s.partnerName} 也看得到、也能一起改。" else "配對後就可以和另一半共用備忘錄。") +
-                    "\n打開「放在桌面」，就會出現在桌面的小工具上。",
-                "📌",
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Note(
+                    (if (s.paired) "共用的備忘錄 ${s.partnerName} 也看得到、也能一起改。" else "配對後就可以和另一半共用備忘錄。") +
+                        if (!offerWidget) "\n打開「放在桌面」，就會出現在桌面的小工具上。"
+                        else "\n打開「放在桌面」的備忘錄會顯示在「備忘錄」小工具上，桌面上還沒有這個小工具，先把它加到桌面吧。",
+                    "📌",
+                )
+                // 桌面上還沒有備忘錄小工具：「放在桌面」打開了也看不到，直接在這裡加
+                if (offerWidget) PinMemoWidgetButton(vm, context)
+            }
         }
     }
 }
@@ -270,11 +285,18 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
     var pinned by remember(id) { mutableStateOf(original?.pinned ?: false) }
     var media by remember(id) { mutableStateOf(original?.media ?: emptyList()) }
     var confirmDelete by remember(id) { mutableStateOf(false) }
-    var recording by remember(id) { mutableStateOf(false) }
+    var voice by remember(id) { mutableStateOf(VoiceDraft.NONE) }
+    val recording = voice != VoiceDraft.NONE
+    // 這次上傳了沒存的照片、語音：面板關掉時刪掉（不然留在 Storage 裡，共用的對方還列得出來）
+    val uploads = rememberUploads(vm, id)
+    val widgetPlaced = rememberMemoWidgetPlaced()
+    val context = LocalContext.current
     // 實際上存成共用還是私人：沒配對只能私人，對方的一定是共用。新上傳的照片、語音也跟著放到對的地方
     val nowShared = if (mine) shared && canShare else true
     val partner = s.partnerName
     val hasContent = title.isNotBlank() || body.isNotBlank() || media.isNotEmpty()
+    // 寫了還沒儲存（或正在錄音）：滑掉面板、按返回前先問
+    tw.xiaoliangkou.app.ui.SheetDraftGuard(recording || title != (original?.title ?: "") || body != (original?.body ?: "") || media != original?.media.orEmpty())
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -310,7 +332,10 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("照片和語音", style = MaterialTheme.typography.labelLarge)
-            MediaPickerRow(vm, shared = nowShared, onAdded = { media = media + it }, remaining = Limits.MEDIA - media.size, onRecordingChange = { recording = it })
+            MediaPickerRow(
+                vm, shared = nowShared, onAdded = { uploads.added += it; media = media + it }, remaining = Limits.MEDIA - media.size,
+                onVoiceChange = { voice = it },
+            )
             MediaThumbs(media, vm, size = 76.dp, onRemove = { r -> media = media - r })
         }
 
@@ -339,10 +364,15 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
             subtitle = if (nowShared && s.couple != null) "兩個人桌面上的「備忘錄」小工具都會顯示" else "桌面上的「備忘錄」小工具會顯示這則",
             emoji = "📌",
         ) { pinned = it }
+        // 桌面上還沒有備忘錄小工具：放在桌面也看不到，順便加
+        if (pinned && !widgetPlaced) PinMemoWidgetButton(vm, context)
 
-        CuteButton(if (recording) "先停止錄音再儲存" else "儲存", Modifier.fillMaxWidth(), enabled = hasContent && !recording && !vm.busy) {
+        CuteButton(voice.saveLabel ?: "儲存", Modifier.fillMaxWidth(), enabled = hasContent && !recording && !vm.busy) {
+            val list = media
+            // 送出儲存的就不能刪了（可能已經存進資料庫）
+            uploads.kept += list.map { it.path }
             vm.act(if (original == null) "已新增備忘錄 📝" else "已儲存 📝", hearts = original == null && nowShared, onDone = close) {
-                it.saveMemo(id, title.trim(), body.trim(), media, nowShared, pinned, color)
+                it.saveMemo(id, title.trim(), body.trim(), list, nowShared, pinned, color)
             }
         }
         if (mine && original != null) {
@@ -399,6 +429,32 @@ private fun MemoColorPicker(selected: String, onPick: (String) -> Unit) {
     }
 }
 
+// ---------------------------------------------------------------- 桌面小工具
+
+/** 桌面上有沒有放「備忘錄」小工具：回到 App 時再看一次（可能剛去桌面加好） */
+@Composable
+private fun rememberMemoWidgetPlaced(): Boolean {
+    val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var placed by remember { mutableStateOf(MemoWidget.isPlaced(context)) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) placed = MemoWidget.isPlaced(context) }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    return placed
+}
+
+/** 把「備忘錄」小工具加到桌面（桌面不支援直接加入時，說明怎麼手動加） */
+private fun pinMemoWidget(vm: AppViewModel, context: android.content.Context) {
+    if (Widgets.pin(context, MemoWidget::class.java)) vm.toast("跟著畫面上的提示放到桌面就好了 ✨")
+    else vm.toast("這個桌面不能直接加入，請長按桌面空白處 › 小工具 › 小倆口")
+}
+
+@Composable
+private fun PinMemoWidgetButton(vm: AppViewModel, context: android.content.Context) =
+    SoftButton("把備忘錄小工具加到桌面", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.AddToHomeScreen) { pinMemoWidget(vm, context) }
+
 // ---------------------------------------------------------------- 桌面小工具頁的預覽
 
 /** 「桌面小工具」頁：備忘錄小工具的預覽（用真的小工具版面）和「加到桌面」 */
@@ -424,10 +480,7 @@ fun MemoWidgetCard(s: AppState, vm: AppViewModel) {
                 modifier = Modifier.width(PREVIEW_W.dp).height(PREVIEW_H.dp),
             )
         }
-        CuteButton("加到桌面", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.AddToHomeScreen) {
-            if (Widgets.pin(context, MemoWidget::class.java)) vm.toast("跟著畫面上的提示放到桌面就好了 ✨")
-            else vm.toast("這個桌面不能直接加入，請長按桌面空白處 › 小工具 › 小倆口")
-        }
+        CuteButton("加到桌面", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.AddToHomeScreen) { pinMemoWidget(vm, context) }
     }
 }
 

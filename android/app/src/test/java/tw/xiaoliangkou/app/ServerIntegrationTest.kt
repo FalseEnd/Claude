@@ -238,7 +238,10 @@ class ServerIntegrationTest {
         fails("對方讀改成私人前的照片") { yu.repo.downloadMedia(draft.path) }
         zhe.repo.deleteMemo(hidden.id)
         assertTrue(zhe.repo.state.value.memo(memo.id)!!.pinned)
-        return V2Files(photo, photoBytes, secret, secretBytes)
+        // 上面的 secret 改成共用時已經搬走、原始檔刪掉了：解除配對後要檢查的私人檔案，用一張還放在私人備忘錄裡的
+        val kept = zhe.repo.uploadMedia(secretBytes, "image/png", MediaItem.PHOTO, shared = false)
+        zhe.repo.saveMemo(null, "自己留著", "", listOf(kept), shared = false, pinned = false, color = "mint")
+        return V2Files(photo, photoBytes, kept, secretBytes)
     }
 
     /** 解除配對後：原本共用的檔案對方讀不到了，自己的私人檔案還在；沒配對不能寫日曆，備忘錄只能私人 */
@@ -426,6 +429,10 @@ class ServerIntegrationTest {
             // 解除配對
             yu.repo.unpair()
             eventually("解除後看不到對方") { !zhe.repo.state.value.paired && zhe.repo.state.value.partnerStatus.device == null }
+            // 被解除的那一邊只收到 couple_members 變了：日曆（對方的語音紀錄）、寫給對方的備註也要跟著拿掉，不用等重新整理
+            eventually("解除後日曆、備註跟著拿掉") {
+                zhe.repo.state.value.dayEntries.isEmpty() && zhe.repo.state.value.notes.none { it.aboutUser == yu.userId }
+            }
             assertNotNull(zhe.repo.state.value.me)
             afterUnpair(zhe, yu, v2)
             zhe.realtime.stop(); yu.realtime.stop()
