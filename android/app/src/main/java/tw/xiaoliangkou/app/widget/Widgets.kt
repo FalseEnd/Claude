@@ -134,8 +134,12 @@ object Widgets {
     private fun days(snap: WidgetSnapshot, today: LocalDate): Int? =
         snap.togetherSince?.let { runCatching { Dates.daysTogether(LocalDate.parse(it), today) }.getOrNull() }
 
-    private fun openApp(context: Context, route: String): PendingIntent {
+    /** 小工具打開 App 用的 action（MainActivity 只看 route，不看 action）：跟通知的 PendingIntent 分開，不會互相蓋掉 */
+    const val ACTION_OPEN_PREFIX = "tw.xiaoliangkou.app.action.WIDGET_"
+
+    internal fun openApp(context: Context, route: String): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
+            action = ACTION_OPEN_PREFIX + route
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(Notifier.EXTRA_ROUTE, route)
         }

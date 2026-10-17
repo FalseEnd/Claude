@@ -141,7 +141,8 @@ class AppContainer(private val app: Application) {
         scope.launch {
             _prefs.first { it != null }
             _repo.flatMapLatest { r -> r?.state ?: flowOf(null) }
-                .filter { it == null || it.loaded }
+                // 備忘錄還沒載入（或載入失敗）時不要畫：不然小工具會先變成「沒有放在桌面的備忘錄」、縮圖也被刪掉
+                .filter { it == null || (it.loaded && it.memosLoaded) }
                 .map { MemoWidgetSnapshot.of(it) }
                 .distinctUntilChanged()
                 .collectLatest { snap ->

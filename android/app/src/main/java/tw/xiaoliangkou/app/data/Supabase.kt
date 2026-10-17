@@ -48,6 +48,17 @@ object Supabase {
     /** 設定教學（說明文件） */
     const val GUIDE_URL = "https://github.com/FalseEnd/Claude/blob/claude/couples-app-design-bg9e2n/docs/SUPABASE_SETUP.md"
 
+    /** 0.1 版的資料庫要執行的更新檔（說明文件「更新資料庫」那一節） */
+    const val UPGRADE_SQL_URL = "https://github.com/FalseEnd/Claude/blob/claude/couples-app-design-bg9e2n/supabase/upgrade-v2.sql"
+
+    /** 官方雲端專案的後台 SQL Editor（開一個空白的編輯區）；自架的 Supabase 沒有這個後台，回傳 null */
+    fun sqlEditorUrl(projectUrl: String?): String? {
+        val host = hostOf(projectUrl ?: return null)
+        if (!host.endsWith(".supabase.co")) return null
+        val ref = host.removeSuffix(".supabase.co")
+        return if (ref.matches(Regex("[a-z0-9]{6,40}"))) "https://supabase.com/dashboard/project/$ref/sql/new" else null
+    }
+
     /** 瀏覽器網址列的後台網址：supabase.com/dashboard/project/<ref>（舊版是 app.supabase.com/project/<ref>） */
     private val DASHBOARD = Regex("""^(?:https?://)?(?:www\.|app\.)?supabase\.com/(?:dashboard/)?project/([a-z0-9]{6,40})(?:[/?#].*)?$""", RegexOption.IGNORE_CASE)
 

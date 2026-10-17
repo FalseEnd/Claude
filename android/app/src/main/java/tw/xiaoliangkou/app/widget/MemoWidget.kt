@@ -298,8 +298,10 @@ class MemoWidget : AppWidgetProvider() {
 
         private fun px(context: Context, dp: Float) = (dp * context.resources.displayMetrics.density).toInt()
 
-        private fun openMemos(context: Context): PendingIntent {
+        internal fun openMemos(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {
+                // 自己的 action：通知的 PendingIntent 編號剛好也是 7100 時，才不會被當成同一個、互相蓋掉要打開的畫面
+                action = Widgets.ACTION_OPEN_PREFIX + "memos"
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra(Notifier.EXTRA_ROUTE, "memos")
             }

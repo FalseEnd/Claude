@@ -129,7 +129,16 @@ class RemoteRepository(
     }
     private suspend fun loadPrefs() { val p = apiCall { api.notificationPrefs() }; _state.update { it.copy(notifPrefs = p) } }
     private suspend fun loadNotes() { val n = v2 { api.notes() }; _state.update { it.copy(notes = n) } }
-    private suspend fun loadMemos() { val m = v2 { api.memos() }; _state.update { it.copy(memos = m) } }
+    private suspend fun loadMemos() {
+        val m = try {
+            v2 { api.memos() }
+        } catch (e: AppException) {
+            // 舊的資料庫沒有備忘錄：確定是空的，小工具不用再等
+            if (e.code == Errors.SCHEMA_OUTDATED_CODE) _state.update { it.copy(memos = emptyList(), memosLoaded = true) }
+            throw e
+        }
+        _state.update { it.copy(memos = m, memosLoaded = true) }
+    }
     private suspend fun loadCurrentDays() { dayWindows(defaultDayRange(), browsing).forEach { (from, to) -> loadDays(from, to) } }
 
     /** 載入 [from]～[to] 的生活紀錄，取代 state 裡這段期間的舊資料（沒配對就沒有紀錄） */
