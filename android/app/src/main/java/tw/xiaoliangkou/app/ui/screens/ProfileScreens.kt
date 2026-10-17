@@ -786,6 +786,8 @@ fun NoteSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
     }
     var body by rememberSaveable(id, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(note?.body.orEmpty())) }
     val text = body.text.trim()
+    // 寫了還沒儲存：滑掉面板、按返回前先問
+    tw.xiaoliangkou.app.ui.SheetDraftGuard(text != (note?.body ?: "").trim())
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(if (note == null) "寫一則備註 📝" else "編輯備註 📝", style = MaterialTheme.typography.titleLarge)
         Note("只有你看得到，${s.partnerName} 看不到，也不會收到通知 🤫", "🔒", noteTint(strong = true))

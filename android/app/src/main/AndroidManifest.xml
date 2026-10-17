@@ -29,8 +29,11 @@
         android:theme="@style/Theme.XiaoLiangKou"
         tools:targetApi="35">
 
+        <!-- 轉橫向、分割畫面、切換深色模式時不要重建畫面：寫到一半的紀錄、備忘錄和剛上傳的照片、語音才不會不見
+             （畫面全是 Compose，會自己跟著重新排版） -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|density|uiMode"
             android:exported="true"
             android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
