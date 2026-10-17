@@ -278,6 +278,11 @@ class RemoteRepository(
     override suspend fun setNotifPref(kind: String, enabled: Boolean) {
         apiCall { api.setNotificationPrefs(buildJsonObject { put(kind, enabled) }) }
         loadPrefs()
+        // 舊的資料庫不認得新的通知種類（生活紀錄、備忘錄）：存的時候直接略過、也不會回傳，開關只會默默彈回去
+        if (kind !in _state.value.notifPrefs) {
+            _state.update { it.copy(schemaOutdated = true) }
+            throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
+        }
     }
 
     // ---------------------------------------------------------------- 個人資料、備註

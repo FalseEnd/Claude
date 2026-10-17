@@ -9,8 +9,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -130,9 +130,11 @@ class ReviewFix1ScreensTest {
     }
 
     @Test fun newNotificationKindsWaitForUpgrade() {
+        // 還沒更新：先提醒，但還是可以按（按了會說要更新資料庫；已經更新、只是還沒重新檢查的話就直接存好）
         shot("33b_notification_settings_outdated") { NotificationScreen(s.copy(schemaOutdated = true), vm) {} }
-        compose.onNodeWithText("對方記錄那天的生活").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("新的共同備忘錄").assertIsNotEnabled()
+        compose.onNodeWithText("對方記錄那天的生活").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("新的共同備忘錄").assertIsEnabled()
+        assertEquals(2, compose.onAllNodesWithText("資料庫更新後才能設定").fetchSemanticsNodes().size)
         compose.onNodeWithText("抱抱與悄悄話").assertIsEnabled()
     }
 

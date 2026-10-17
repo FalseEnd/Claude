@@ -263,9 +263,9 @@ fun NotificationScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
             CuteCard {
                 Text("要收到哪些通知", style = MaterialTheme.typography.titleMedium)
                 kinds.forEach { (k, l, e) ->
-                    // 舊的資料庫不認得這兩種通知：存了也不會變，先不給按
-                    val locked = s.schemaOutdated && k in V2_NOTIF_KINDS
-                    ToggleRow(l, s.notifPrefs[k] != false, if (locked) "資料庫更新後才能設定" else null, e, enabled = !locked) { v -> vm.act { it.setNotifPref(k, v) } }
+                    // 舊的資料庫不認得這兩種通知：先提醒；按了的話 setNotifPref 會說要更新資料庫（更新好就能直接設定，不用等重新檢查）
+                    val hint = if (s.schemaOutdated && k in V2_NOTIF_KINDS) "資料庫更新後才能設定" else null
+                    ToggleRow(l, s.notifPrefs[k] != false, hint, e) { v -> vm.act { it.setNotifPref(k, v) } }
                 }
             }
         }
