@@ -50,6 +50,8 @@ class SettingsStore(private val context: Context) {
         val insidePlaces = stringSetPreferencesKey("inside_places")
         val stepDay = longPreferencesKey("step_day")
         val stepBase = longPreferencesKey("step_base")
+        val stepLast = longPreferencesKey("step_last")
+        val stepCarry = longPreferencesKey("step_carry")
         // 舊版留下的設定，登出時順便清掉
         val legacy = listOf(stringPreferencesKey("server_url"), stringPreferencesKey("token"))
     }
@@ -121,17 +123,30 @@ class SettingsStore(private val context: Context) {
 
     /** 計步感測器是開機後的累計值：記住每天第一次讀到的數字當作基準 */
     suspend fun stepsToday(dayNumber: Long, sensorTotal: Long): Int {
-        var base = sensorTotal
+        var steps = 0L
         context.dataStore.edit {
             val day = it[K.stepDay]
-            val saved = it[K.stepBase]
-            if (day == dayNumber && saved != null && saved <= sensorTotal) {
-                base = saved
-            } else {
-                it[K.stepDay] = dayNumber
-                it[K.stepBase] = sensorTotal
+            val last = it[K.stepLast]
+            var base = it[K.stepBase] ?: sensorTotal
+            var carry = it[K.stepCarry] ?: 0L
+            when {
+                day != dayNumber -> {
+                    // 新的一天：從昨天最後看到的數字算起（服務晚一點才啟動也不會少算早上的步數）
+                    base = if (day == dayNumber - 1 && last != null && last <= sensorTotal) last else sensorTotal
+                    carry = 0
+                }
+                // 計步器歸零了（重新開機、服務重新啟動）：今天已經走的先存起來
+                last != null && sensorTotal < last -> {
+                    carry += (last - base).coerceAtLeast(0)
+                    base = 0
+                }
             }
+            it[K.stepDay] = dayNumber
+            it[K.stepBase] = base
+            it[K.stepCarry] = carry
+            it[K.stepLast] = sensorTotal
+            steps = carry + (sensorTotal - base).coerceAtLeast(0)
         }
-        return (sensorTotal - base).toInt()
+        return steps.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }
 }

@@ -1,12 +1,17 @@
 package tw.xiaoliangkou.app.ui.screens
 
+import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.drawable.BitmapDrawable
+import android.provider.Settings
 import android.view.MotionEvent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -67,6 +72,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -93,6 +99,8 @@ import tw.xiaoliangkou.app.data.Place
 import tw.xiaoliangkou.app.data.PlaceHit
 import tw.xiaoliangkou.app.data.PlaceSearcher
 import tw.xiaoliangkou.app.data.toInstantOrNull
+import tw.xiaoliangkou.app.service.Locator
+import tw.xiaoliangkou.app.service.ShareService
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Derived
 import tw.xiaoliangkou.app.ui.Fmt
@@ -105,6 +113,8 @@ import tw.xiaoliangkou.app.ui.components.Pill
 import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.bouncyClick
+import tw.xiaoliangkou.app.ui.components.findActivity
+import tw.xiaoliangkou.app.ui.components.openAppSettings
 import tw.xiaoliangkou.app.ui.theme.Cute
 
 fun placeEmoji(icon: String) = when (icon) {
@@ -148,6 +158,59 @@ fun MapScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, searche
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+    var locating by remember { mutableStateOf(false) }
+
+    /**
+     * 我的位置：直接問手機（不用打開位置分享，也不會上傳）。
+     * 沒權限就請使用者允許、定位關著就帶去設定；[quiet] 是打開地圖時自己抓一次，失敗也不打擾。
+     */
+    fun locateMe(quiet: Boolean = false, ask: () -> Unit = {}) {
+        if (vm.demo != null) {
+            s.myLocation?.let { if (!quiet) flyTo = FlyTo(it.lat, it.lng, 16.0) }
+            return
+        }
+        when (Locator.status(context)) {
+            Locator.Status.NO_PERMISSION -> if (!quiet) ask()
+            Locator.Status.OFF -> if (!quiet) {
+                vm.toast("手機的「定位」沒有打開，打開後再按一次 📍")
+                runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+            }
+            Locator.Status.OK -> if (!locating) {
+                locating = true
+                scope.launch {
+                    try {
+                        val loc = Locator.current(context)
+                        if (loc != null) {
+                            vm.repo.value?.setMyLocation(loc.latitude, loc.longitude)
+                            if (!quiet) flyTo = FlyTo(loc.latitude, loc.longitude, 16.0)
+                        } else if (!quiet) vm.toast("暫時抓不到位置，到窗邊或戶外再試一次")
+                    } finally {
+                        locating = false
+                    }
+                }
+            }
+        }
+    }
+
+    val askLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.any { it }) {
+            // 服務要重新以「定位」類型啟動，位置分享才會在背景繼續
+            ShareService.start(context)
+            locateMe()
+        } else {
+            val activity = context.findActivity()
+            if (activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_FINE_LOCATION)) {
+                vm.toast("定位權限被關掉了，請在設定的「權限 › 位置」允許小倆口")
+                openAppSettings(context)
+            } else vm.toast("沒有定位權限，地圖找不到你在哪裡")
+        }
+    }
+    val requestLocation = { askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }
+
+    // 打開地圖時還不知道你在哪：有權限就安靜地抓一次，地圖會自動對準
+    LaunchedEffect(Unit) { if (s.myLocation == null) locateMe(quiet = true) }
+
     // 地圖佔畫面一半多一點，留位置給下面的標點清單
     val mapHeight = (LocalConfiguration.current.screenHeightDp * 0.56f).coerceIn(360f, 520f).dp
 
@@ -205,12 +268,12 @@ fun MapScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, searche
                         containerColor = Cute.colors.card,
                     ) { Text("💗") }
                     SmallFloatingActionButton(
-                        onClick = {
-                            val me = s.myLocation
-                            if (me != null) flyTo = FlyTo(me.lat, me.lng, 16.0) else vm.toast("還沒有你的位置，請確認定位權限和位置分享有打開")
-                        },
+                        onClick = { locateMe(ask = requestLocation) },
                         containerColor = Cute.colors.card,
-                    ) { Icon(Icons.Rounded.MyLocation, "我的位置", tint = Cute.colors.me) }
+                    ) {
+                        if (locating) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Cute.colors.me)
+                        else Icon(Icons.Rounded.MyLocation, "我的位置", tint = Cute.colors.me)
+                    }
                     FloatingActionButton(
                         onClick = {
                             val c = s.myLocation ?: s.partnerStatus.location?.let { LatLng(it.lat, it.lng) }

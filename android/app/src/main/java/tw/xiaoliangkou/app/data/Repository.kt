@@ -211,6 +211,8 @@ interface CoupleRepository {
     // 背景服務回報（示範模式不做事）
     suspend fun reportDevice(body: JsonObject) {}
     suspend fun reportLocation(lat: Double, lng: Double, accuracy: Float?, speed: Float?) {}
+    /** 地圖上「我」的位置：只存在這支手機，不會上傳（要分享位置才會用 [reportLocation] 回報） */
+    fun setMyLocation(lat: Double, lng: Double) {}
     suspend fun reportPlaceEvent(placeId: String, arrive: Boolean) {}
     /** 回傳新記帳的 id；同一筆已經記過就是 null */
     suspend fun addAutoExpense(parsed: PaymentParser.Parsed, dedupeKey: String): String? = null

@@ -41,7 +41,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import tw.xiaoliangkou.app.container
@@ -70,16 +69,19 @@ class ShareService : LifecycleService() {
             context.stopService(Intent(context, ShareService::class.java))
         }
 
-        fun hasLocationPermission(context: Context) =
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        fun hasLocationPermission(context: Context) = Locator.hasPermission(context)
     }
 
     private lateinit var fused: FusedLocationProviderClient
     private var locationOn = false
+    /** 使用者有打開位置分享（權限晚一點才給也要記得，給了就開始定位） */
+    private var wantLocation = false
     private var lastSent: Location? = null
     private var lastSentAt = 0L
     private var stepTotal: Long? = null
+    private var stepsRegistered = false
+    /** 沒有計步器、只有「偵測到一步」的手機：自己數 */
+    private var detectedSteps = 0L
     private var deviceJob: Job? = null
     /** 目前常駐通知的內容；服務被重新啟動時沿用，不要又變回「連線中」 */
     private var notice: ServiceNotice? = null
@@ -96,7 +98,9 @@ class ShareService : LifecycleService() {
     }
 
     private val stepListener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent) { stepTotal = event.values[0].toLong() }
+        override fun onSensorChanged(event: SensorEvent) {
+            stepTotal = if (event.sensor.type == Sensor.TYPE_STEP_DETECTOR) ++detectedSteps else event.values[0].toLong()
+        }
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
     }
 
@@ -123,6 +127,7 @@ class ShareService : LifecycleService() {
                         repo.state.map { it.connected to (it.mySharing?.locationLive == true) }
                             .distinctUntilChanged()
                             .collect { (connected, sharingLocation) ->
+                                wantLocation = sharingLocation
                                 if (sharingLocation) startLocation() else stopLocation()
                                 if (connected) scheduleDeviceReport(1_000)
                             }
@@ -162,6 +167,9 @@ class ShareService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         goForeground(null)
+        // 剛允許定位、體能活動權限時會再呼叫一次 start：這時才開始定位、計步
+        if (wantLocation) startLocation()
+        if (receiversRegistered) registerSteps()
         return START_STICKY
     }
 
@@ -202,12 +210,20 @@ class ShareService : LifecycleService() {
         }
         ContextCompat.registerReceiver(this, changeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         getSystemService(ConnectivityManager::class.java)?.registerDefaultNetworkCallback(networkCallback)
+        registerSteps()
+    }
+
+    /** 計步：「體能活動」權限常常是之後才允許的，每次服務被叫起來都再檢查一次 */
+    private fun registerSteps() {
+        if (stepsRegistered) return
         val activityOk = Build.VERSION.SDK_INT < 29 ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
-        if (activityOk) {
-            val sm = getSystemService(SensorManager::class.java)
-            sm?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.let { sm.registerListener(stepListener, it, SensorManager.SENSOR_DELAY_NORMAL) }
-        }
+        if (!activityOk) return
+        val sm = getSystemService(SensorManager::class.java) ?: return
+        // 有些手機（例如部分 OPPO）沒有開放計步器，只有「偵測到一步」
+        val sensor = sm.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) ?: sm.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) ?: return
+        stepsRegistered = sm.registerListener(stepListener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+        if (stepsRegistered) scheduleDeviceReport(20_000)
     }
 
     // ---------------------------------------------------------------- 手機狀態
@@ -239,7 +255,7 @@ class ShareService : LifecycleService() {
             else -> "cellular"
         }
         // Wi-Fi 名稱不上傳：連 Wi-Fi 時用「目前所在的標點」當作名稱（例如「家裡」）
-        val here = st.myLocation?.let { loc ->
+        val here = st.myLocation?.takeIf { st.mySharing?.locationLive == true }?.let { loc ->
             st.places.filter { it.watchUser == null || it.watchUser == st.myId }
                 .firstOrNull { Geo.distance(it.lat, it.lng, loc.lat, loc.lng) <= it.radiusM }?.name
         }
@@ -252,12 +268,23 @@ class ShareService : LifecycleService() {
                 if (level != null) put("batteryLevel", level)
                 put("isCharging", charging)
                 put("network", network)
-                if (network == "wifi" && here != null) put("networkLabel", here)
+                // Wi-Fi 在標點裡顯示標點名稱，其他時候顯示網速（系統估計的下載速度，行動網路也有）
+                val label = if (network == "wifi" && here != null) here else caps?.let { Net.speedLabel(it.linkDownstreamBandwidthKbps) }
+                if (label != null) put("networkLabel", label)
                 put("notificationsSilenced", silenced)
                 if (steps != null) put("stepsToday", steps)
                 if (interactive) put("lastActiveAt", Instant.now().toString())
                 put("deviceModel", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
             })
+        }
+    }
+
+    /** 網路速度的文字 */
+    object Net {
+        fun speedLabel(kbps: Int): String? = when {
+            kbps <= 0 -> null
+            kbps >= 1000 -> "約 ${(kbps + 500) / 1000} Mbps"
+            else -> "約 $kbps Kbps"
         }
     }
 
@@ -274,6 +301,8 @@ class ShareService : LifecycleService() {
             fused.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
             locationOn = true
         }
+        // 定期更新可能要等好幾分鐘（或手機沒有 Google 服務根本不會來）：先馬上抓一次
+        lifecycleScope.launch { Locator.current(this@ShareService)?.let { handleLocation(it, force = true) } }
     }
 
     private fun stopLocation() {
@@ -282,19 +311,16 @@ class ShareService : LifecycleService() {
         locationOn = false
     }
 
-    @SuppressLint("MissingPermission")
     private suspend fun locateNow() {
-        if (!hasLocationPermission(this)) return
-        val loc = runCatching { fused.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await() }.getOrNull()
-        if (loc != null) handleLocation(loc, force = true)
+        Locator.current(this)?.let { handleLocation(it, force = true) }
         reportDevice()
     }
 
     private suspend fun handleLocation(loc: Location, force: Boolean) {
         val repo = container.repo.value as? RemoteRepository ?: return
+        repo.setMyLocation(loc.latitude, loc.longitude)
         val st = repo.state.value
         if (st.mySharing?.locationLive != true || !st.paired) return
-        repo.setMyLocation(loc.latitude, loc.longitude)
         val now = System.currentTimeMillis()
         val moved = lastSent?.distanceTo(loc) ?: Float.MAX_VALUE
         if (force || moved > 25f || now - lastSentAt > 4 * 60_000L) {
@@ -319,7 +345,7 @@ class ShareService : LifecycleService() {
         if (receiversRegistered) {
             runCatching { unregisterReceiver(changeReceiver) }
             runCatching { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(networkCallback) }
-            runCatching { getSystemService(SensorManager::class.java)?.unregisterListener(stepListener) }
+            if (stepsRegistered) runCatching { getSystemService(SensorManager::class.java)?.unregisterListener(stepListener) }
         }
         super.onDestroy()
     }

@@ -75,7 +75,7 @@ object StatusText {
                 }
                 when (d.network) {
                     "wifi" -> add(Item(NETWORK, "📶", "Wi-Fi" + d.networkLabel?.let { "（$it）" }.orEmpty()))
-                    "cellular" -> add(Item(NETWORK, "📶", "行動網路"))
+                    "cellular" -> add(Item(NETWORK, "📶", "行動網路" + d.networkLabel?.let { "（$it）" }.orEmpty()))
                     "offline" -> add(Item(NETWORK, "📵", "沒有網路"))
                 }
                 d.stepsToday?.let { add(Item(STEPS, "👣", "${Fmt.int(it)} 步")) }

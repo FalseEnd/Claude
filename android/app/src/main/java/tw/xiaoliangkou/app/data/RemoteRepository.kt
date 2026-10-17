@@ -526,7 +526,7 @@ class RemoteRepository(
         return (row["id"] as? JsonPrimitive)?.contentOrNull
     }
 
-    fun setMyLocation(lat: Double, lng: Double) = _state.update { it.copy(myLocation = LatLng(lat, lng)) }
+    override fun setMyLocation(lat: Double, lng: Double) = _state.update { it.copy(myLocation = LatLng(lat, lng)) }
 
     companion object {
         /** 這版 App 需要的資料庫版本（app_health 的 schema） */

@@ -162,6 +162,8 @@ class AppContainer(private val app: Application) {
         // 資料庫還是舊的話再檢查一次：使用者常常是到電腦跑完 upgrade-v2.sql 再回來（背景服務讓 App 一直活著，不會重新載入）
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_START && supabase != null) {
+                // 定位權限可能是在系統設定裡剛打開的：讓背景服務重新檢查、開始定位
+                ShareService.start(app)
                 realtime.reconnectNow()
                 realtime.pollIfDisconnected()
                 (_repo.value as? RemoteRepository)?.recheckSchema()
