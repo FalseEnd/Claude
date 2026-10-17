@@ -4,9 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,11 +35,16 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Cycle
@@ -59,7 +67,9 @@ import tw.xiaoliangkou.app.ui.components.Pill
 import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.StatTile
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.bouncyClick
+import tw.xiaoliangkou.app.ui.components.unscaled
 import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.LocalDate
 
@@ -135,8 +145,8 @@ private fun Banner(emoji: String, text: String, color: Color, action: @Composabl
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(emoji, style = MaterialTheme.typography.titleLarge)
-        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(emoji, style = MaterialTheme.typography.titleLarge.unscaled())
+        TidyText(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         action()
     }
 }
@@ -151,8 +161,16 @@ private fun PartnerPhone(s: AppState, vm: AppViewModel) {
                 Avatar(s.partnerName, Cute.colors.partner, 34.dp, image = s.partner?.avatarUrl)
                 if (s.partnerOnline) Box(Modifier.align(Alignment.BottomEnd).offset(2.dp, 2.dp).size(12.dp).clip(CircleShape).background(Cute.colors.card).padding(2.dp).clip(CircleShape).background(Cute.colors.good))
             }
-            Text("${s.partnerName} 的手機", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            d?.deviceModel?.let { Pill(it, icon = Icons.Rounded.PhoneAndroid) }
+            // 手機型號放在標題下面：不跟標題搶寬度，名字長、字放大也不會把標題擠成好幾行
+            Column(Modifier.weight(1f)) {
+                TidyText("${s.partnerName} 的手機", style = MaterialTheme.typography.titleMedium)
+                d?.deviceModel?.let {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Rounded.PhoneAndroid, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                        Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
         }
         if (ps?.deviceLive != true || d == null) {
             Text(
@@ -169,33 +187,39 @@ private fun PartnerPhone(s: AppState, vm: AppViewModel) {
         val charging = d.isCharging == true
         val lastActive = d.lastActiveAt?.toInstantOrNull()
         val screenOn = lastActive != null && java.time.Duration.between(lastActive, java.time.Instant.now()).seconds < 120
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile("電量", "$level%", Modifier.weight(1f), sub = if (charging) "充電中 ⚡" else if (level <= 20) "電量偏低 🔋" else "未充電", extra = { BatteryPill(level, charging) })
+        // 圖示放在小標題旁，數值用整個寬度；同一排的卡片一樣高（字放大時數值會換成兩行）
+        val tile = Modifier.fillMaxHeight()
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatTile("電量", "$level%", tile.weight(1f), sub = if (charging) "充電中 ⚡" else if (level <= 20) "電量偏低 🔋" else "未充電", extra = { BatteryPill(level, charging) })
             StatTile(
-                "網路", when (d.network) { "wifi" -> "Wi-Fi"; "cellular" -> "行動網路"; else -> "離線" }, Modifier.weight(1f),
+                "網路", when (d.network) { "wifi" -> "Wi-Fi"; "cellular" -> "行動網路"; else -> "離線" }, tile.weight(1f),
                 sub = d.networkLabel ?: if (d.network == "wifi") "已連線" else "—",
-                icon = { Icon(when (d.network) { "wifi" -> Icons.Rounded.Wifi; "cellular" -> Icons.Rounded.SignalCellularAlt; else -> Icons.Rounded.WifiOff }, null, tint = Cute.colors.me, modifier = Modifier.size(18.dp)) },
+                labelIcon = { Icon(when (d.network) { "wifi" -> Icons.Rounded.Wifi; "cellular" -> Icons.Rounded.SignalCellularAlt; else -> Icons.Rounded.WifiOff }, null, tint = Cute.colors.me, modifier = Modifier.size(14.dp)) },
             )
             StatTile(
-                "螢幕", if (screenOn) "使用中" else "休息中", Modifier.weight(1f),
+                "螢幕", if (screenOn) "使用中" else "休息中", tile.weight(1f),
                 sub = if (d.notificationsSilenced == true) "勿擾中 🔕" else Fmt.rel(lastActive),
-                icon = { Icon(if (d.notificationsSilenced == true) Icons.Rounded.DoNotDisturbOn else if (screenOn) Icons.Rounded.PhoneAndroid else Icons.Rounded.Bedtime, null, tint = Cute.colors.lavender, modifier = Modifier.size(18.dp)) },
+                labelIcon = { Icon(if (d.notificationsSilenced == true) Icons.Rounded.DoNotDisturbOn else if (screenOn) Icons.Rounded.PhoneAndroid else Icons.Rounded.Bedtime, null, tint = Cute.colors.lavender, modifier = Modifier.size(14.dp)) },
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val act = s.partnerStatus.location?.activity
             StatTile(
-                "位置", if (ps.locationLive) Derived.partnerWhere(s) else "沒有分享位置", Modifier.weight(2f),
+                "位置", if (ps.locationLive) Derived.partnerWhere(s) else "沒有分享位置", tile.weight(2f),
                 sub = Derived.distanceToPartner(s)?.let { "距離你 ${Fmt.distance(it)}" } ?: "—",
-                icon = { Icon(when (act) { "walking", "running" -> Icons.AutoMirrored.Rounded.DirectionsWalk; "transit" -> Icons.Rounded.Train; else -> Icons.Rounded.LocationOn }, null, tint = Cute.colors.partner, modifier = Modifier.size(18.dp)) },
+                labelIcon = { Icon(when (act) { "walking", "running" -> Icons.AutoMirrored.Rounded.DirectionsWalk; "transit" -> Icons.Rounded.Train; else -> Icons.Rounded.LocationOn }, null, tint = Cute.colors.partner, modifier = Modifier.size(14.dp)) },
             )
-            StatTile("今日步數", d.stepsToday?.let { Fmt.int(it) } ?: "—", Modifier.weight(1f), sub = "👣 步")
+            // 沒有步數（手機沒有計步器、沒給權限，或今天還沒回報）：說清楚，不要只寫「— 步」
+            StatTile("今日步數", d.stepsToday?.let { Fmt.int(it) } ?: "—", tile.weight(1f), sub = if (d.stepsToday != null) "👣 步" else "手機沒回報")
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("更新於 ${Fmt.rel(d.updatedAt?.toInstantOrNull())} · 只顯示對方選擇分享的項目", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            if (ps.locationLive) SoftButton("現在在哪？", icon = Icons.Rounded.MyLocation, small = true) {
-                vm.act { r -> vm.toast(if (r.locatePartner()) "已請 ${s.partnerName} 的手機回報位置 📍" else "${s.partnerName} 的手機目前不在線上") }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TidyText("更新於 ${Fmt.rel(d.updatedAt?.toInstantOrNull())}", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (ps.locationLive) SoftButton("現在在哪？", icon = Icons.Rounded.MyLocation, small = true) {
+                    vm.act { r -> vm.toast(if (r.locatePartner()) "已請 ${s.partnerName} 的手機回報位置 📍" else "${s.partnerName} 的手機目前不在線上") }
+                }
             }
+            TidyText("只顯示對方選擇分享的項目", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -236,7 +260,7 @@ private fun MoodHalf(name: String, color: Color, avatar: String?, mood: String?,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Avatar(name, color, 18.dp, image = avatar)
-            Text(name + (at?.toInstantOrNull()?.let { " · ${Fmt.time(it)}" } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            NameAndTime(name, at?.toInstantOrNull()?.let { Fmt.time(it) })
         }
         if (m != null) {
             HeartBeat { Text(m.emoji, style = MaterialTheme.typography.headlineLarge) }
@@ -247,6 +271,17 @@ private fun MoodHalf(name: String, color: Color, avatar: String?, mood: String?,
             Text(empty, style = MaterialTheme.typography.titleSmall)
         }
     }
+}
+
+/** 「小雨 · 09:10」；一行放不下時名字和時間各一行，不會留一個「·」掛在行尾 */
+@Composable
+private fun NameAndTime(name: String, time: String?) {
+    var stacked by remember(name, time) { mutableStateOf(false) }
+    Text(
+        when { time == null -> name; stacked -> "$name\n$time"; else -> "$name · $time" },
+        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        onTextLayout = { if (!stacked && time != null && it.lineCount > 1) stacked = true },
+    )
 }
 
 @Composable
@@ -296,8 +331,9 @@ private fun Upcoming(s: AppState, open: (String) -> Unit) {
             ) {
                 EmojiBubble(u.emoji, MaterialTheme.colorScheme.primaryContainer)
                 Column(Modifier.weight(1f)) {
-                    Text(u.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-                    Text(u.sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    // 字放大時換成兩行，「（等你回覆）」和地點不會不見；再長才用「…」，點進日曆看得到全部
+                    TidyText(u.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    TidyText(u.sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 Pill(Fmt.daysLeft(u.daysLeft), if (u.daysLeft <= 3) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
             }

@@ -283,7 +283,7 @@ fun MapScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, searche
                     ) { Icon(Icons.Rounded.Add, "新增標點", tint = MaterialTheme.colorScheme.onPrimary) }
                 }
                 Box(Modifier.align(Alignment.BottomStart).padding(start = 12.dp, end = 84.dp, bottom = 12.dp)) {
-                    Pill("長按地圖也可以新增標點 📍", Cute.colors.card.copy(alpha = 0.92f))
+                    Pill("長按地圖也能新增標點 📍", Cute.colors.card.copy(alpha = 0.92f), maxLines = 2)
                 }
                 // 搜尋框放最後，蓋在地圖和按鈕上面
                 Column(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp)) {

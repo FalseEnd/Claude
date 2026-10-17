@@ -59,6 +59,7 @@ import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.Avatars
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.components.Avatar
+import tw.xiaoliangkou.app.ui.components.ButtonRow
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.Note
 import tw.xiaoliangkou.app.ui.components.SoftButton
@@ -161,9 +162,9 @@ fun AvatarCropDialog(src: Bitmap, onCancel: () -> Unit, onDone: (Bitmap) -> Unit
             }
             Slider(zoom, { z -> zoom = z; offset = clamp(offset, z) }, valueRange = 1f..5f, colors = cuteSlider())
             Text("兩指縮放、拖曳移動，圓圈裡的部分會變成頭像", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SoftButton("取消", Modifier.weight(1f)) { onCancel() }
-                CuteButton("使用這張", Modifier.weight(1.4f)) {
+            ButtonRow(weights = listOf(1f, 1.4f), spacing = 10.dp) {
+                SoftButton("取消") { onCancel() }
+                CuteButton("使用這張") {
                     onDone(Avatars.crop(src, Avatars.cropOf(src.width, src.height, viewport, zoom, offset.x, offset.y)))
                 }
             }

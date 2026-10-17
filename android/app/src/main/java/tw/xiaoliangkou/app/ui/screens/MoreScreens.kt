@@ -61,7 +61,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
@@ -79,6 +81,7 @@ import tw.xiaoliangkou.app.ui.Fmt
 import tw.xiaoliangkou.app.ui.SheetSpec
 import tw.xiaoliangkou.app.ui.StatusText
 import tw.xiaoliangkou.app.ui.components.Avatar
+import tw.xiaoliangkou.app.ui.components.ButtonRow
 import tw.xiaoliangkou.app.ui.components.ChoiceChip
 import tw.xiaoliangkou.app.ui.components.CoupleMascots
 import tw.xiaoliangkou.app.ui.components.CuteButton
@@ -92,6 +95,7 @@ import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.ToggleRow
 import tw.xiaoliangkou.app.ui.components.cuteSlider
 import tw.xiaoliangkou.app.ui.components.bouncyClick
@@ -118,13 +122,17 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
                         )
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(s.me?.displayName ?: "我", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            if (s.paired) "和 ${s.partnerName} 在一起 ${s.togetherSince?.let { Dates.daysTogether(it, LocalDate.now()) } ?: "—"} 天" else "還沒有配對",
+                        // 「示範」跟在名字後面，下面那行可以用整個寬度
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(s.me?.displayName ?: "我", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            if (s.demo) Pill("示範", MaterialTheme.colorScheme.tertiaryContainer)
+                        }
+                        TidyText(
+                            // 數字和「天」之間是不換行空格：不會只剩「天」在第二行
+                            if (s.paired) "和 ${s.partnerName} 在一起 ${s.togetherSince?.let { Dates.daysTogether(it, LocalDate.now()) } ?: "—"}\u00A0天" else "還沒有配對",
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (s.demo) Pill("示範", MaterialTheme.colorScheme.tertiaryContainer)
                 }
             }
         }
@@ -203,10 +211,11 @@ fun PrivacyScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                 }
                 Text("暫停位置、手機狀態與開銷。${s.partnerName} 會看到「暫停中」與恢復時間，不會以為你失聯。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (sh?.paused == true) CuteButton("立即恢復", Modifier.fillMaxWidth()) { vm.act("已恢復分享") { it.pauseSharing(0) } }
-                else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SoftButton("1 小時", Modifier.weight(1f)) { vm.act("暫停 1 小時") { it.pauseSharing(60) } }
-                    SoftButton("3 小時", Modifier.weight(1f)) { vm.act("暫停 3 小時") { it.pauseSharing(180) } }
-                    SoftButton("到今天結束", Modifier.weight(1f)) {
+                // 放不下三顆並排（字放大的窄手機）時，放不下的換到下一排
+                else ButtonRow {
+                    SoftButton("1 小時") { vm.act("暫停 1 小時") { it.pauseSharing(60) } }
+                    SoftButton("3 小時") { vm.act("暫停 3 小時") { it.pauseSharing(180) } }
+                    SoftButton("到今晚") {
                         val mins = java.time.Duration.between(java.time.LocalDateTime.now(), LocalDate.now().atTime(23, 59)).toMinutes().toInt().coerceIn(1, 1440)
                         vm.act("暫停到今晚") { it.pauseSharing(mins) }
                     }
@@ -238,7 +247,7 @@ fun PrivacyScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                     }
                 }
                 if (ps?.paused == true) Text("${s.partnerName} 暫停分享到 ${Fmt.time(ps.pausedUntilInstant!!)}", style = MaterialTheme.typography.bodyMedium)
-                Text("由 ${s.partnerName} 自己決定，只能在對方的手機上更改。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TidyText("只能由 ${s.partnerName} 在自己的手機上更改。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item { Note("每次更改分享設定，對方都會收到通知。對方新增會偵測你的標點時，你也一定會收到通知。解除配對後所有分享立即停止。", "🛡️") }
@@ -345,7 +354,16 @@ fun HistoryScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { ScreenHeader("歷史紀錄", onBack = back) }
         item {
-            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 往左右多伸 16dp 到螢幕邊：捲動時籤片從螢幕邊緣消失，不會在內容邊界被切一半
+            androidx.compose.foundation.lazy.LazyRow(
+                Modifier.layout { m, c ->
+                    val extra = 32.dp.roundToPx()
+                    val p = m.measure(c.copy(minWidth = c.maxWidth + extra, maxWidth = c.maxWidth + extra))
+                    layout(c.maxWidth, p.height) { p.place(-extra / 2, 0) }
+                },
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 items(filters) { (k, l) -> ChoiceChip(l, filter == k) { filter = k } }
             }
         }
@@ -359,7 +377,7 @@ fun HistoryScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     EmojiBubble(emoji, if (a.actorId == s.myId) Cute.colors.meSoft else Cute.colors.partnerSoft, 38.dp)
-                    Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    TidyText(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Text(Fmt.time(a.time), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -403,12 +421,12 @@ fun AccountScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                         Text("傳一個連結過去，對方點一下就會自動填好 Supabase 網址和金鑰", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SoftButton("複製", Modifier.weight(1f), icon = Icons.Rounded.ContentCopy) {
+                ButtonRow(weights = listOf(1f, 1.4f)) {
+                    SoftButton("複製", icon = Icons.Rounded.ContentCopy) {
                         copyText(context, "小倆口連線邀請", InviteLink.shareText(p.supabaseUrl, p.supabaseKey))
                         vm.toast("已複製連線邀請")
                     }
-                    CuteButton("分享給另一半", Modifier.weight(1.4f), icon = Icons.Rounded.Share) {
+                    CuteButton("分享給另一半", icon = Icons.Rounded.Share) {
                         shareText(context, InviteLink.shareText(p.supabaseUrl, p.supabaseKey), "傳送連線邀請")
                     }
                 }
@@ -476,10 +494,11 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel) {
                 Text(t, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SoftButton("upgrade-v2.sql", Modifier.weight(1f), icon = Icons.Rounded.Description, small = true) { open(Supabase.UPGRADE_SQL_URL) }
-            if (editor != null) SoftButton("SQL Editor", Modifier.weight(1f), icon = Icons.Rounded.Terminal, small = true) { open(editor) }
-            else SoftButton("完整說明", Modifier.weight(1f), icon = Icons.AutoMirrored.Rounded.MenuBook, small = true) { open(Supabase.GUIDE_URL) }
+        // 上面的步驟要按這兩顆：字放大時一顆一排，按鈕上的字一定看得完整
+        ButtonRow {
+            SoftButton("upgrade-v2.sql", icon = Icons.Rounded.Description, small = true) { open(Supabase.UPGRADE_SQL_URL) }
+            if (editor != null) SoftButton("SQL Editor", icon = Icons.Rounded.Terminal, small = true) { open(editor) }
+            else SoftButton("完整說明", icon = Icons.AutoMirrored.Rounded.MenuBook, small = true) { open(Supabase.GUIDE_URL) }
         }
         if (editor != null) SoftButton("看完整說明", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.MenuBook, small = true) { open(Supabase.GUIDE_URL) }
         CuteButton("我更新好了，重新檢查", Modifier.fillMaxWidth(), icon = Icons.Rounded.Refresh, enabled = !vm.busy) {
@@ -522,20 +541,20 @@ fun DemoConsole(s: AppState, vm: AppViewModel, back: () -> Unit) {
         item {
             CuteCard {
                 Text("讓 ${s.partnerName}…", style = MaterialTheme.typography.titleMedium)
-                listOf(
-                    "sad" to "😢 心情不好", "happy" to "🥰 心情很好", "hug" to "🤗 給你抱抱", "battery" to "🔋 電量剩 19%",
-                    "spend" to "💳 刷卡消費", "invite" to "💌 約你出去", "pause" to "🙈 暫停／恢復分享", "guess" to "💰 猜你的花費",
-                    "diary" to "📔 記錄今天的生活", "memo" to "📝 新增共同備忘錄",
-                ).chunked(2).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { (k, l) -> SoftButton(l, Modifier.weight(1f), small = true) { demo?.demoAction(k); vm.toast("${s.partnerName}：$l") } }
-                    }
+                // 兩顆一排；字太長放不下兩顆時自己一排
+                ButtonRow(maxPerRow = 2) {
+                    listOf(
+                        "sad" to "😢 心情不好", "happy" to "🥰 心情很好", "hug" to "🤗 給你抱抱", "battery" to "🔋 電量剩 19%",
+                        "spend" to "💳 刷卡消費", "invite" to "💌 約你出去", "pause" to "🙈 暫停／恢復分享", "guess" to "💰 猜你的花費",
+                        "diary" to "📔 記錄今天的生活", "memo" to "📝 新增共同備忘錄",
+                    ).forEach { (k, l) -> SoftButton(l, small = true) { demo?.demoAction(k); vm.toast("${s.partnerName}：$l") } }
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlaceSheet(s: AppState, vm: AppViewModel, id: String?, lat: Double, lng: Double, presetName: String = "", close: () -> Unit) {
     val p = id?.let { x -> s.places.firstOrNull { it.id == x } }
@@ -548,7 +567,8 @@ fun PlaceSheet(s: AppState, vm: AppViewModel, id: String?, lat: Double, lng: Dou
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(if (p == null) "新增標點 📍" else "編輯標點", style = MaterialTheme.typography.titleLarge)
         CuteField(name, { name = it.take(20) }, "名稱", placeholder = "例如：公司、學校、我家")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // 圖示一排放不下時換行：預設的 💗、📍 不會被擠出畫面
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Catalog.placeIcons.forEach { k ->
                 Text(
                     placeEmoji(k), style = MaterialTheme.typography.titleLarge,

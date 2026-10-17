@@ -498,7 +498,7 @@ class LargeTextScreensTest {
     @Config(qualifiers = TALL)
     @Test fun moreReal() = shot("33_more_real") { MoreScreen(s.copy(demo = false), vm) {} }
 
-    /** 分享與隱私：暫停分享的三個按鈕「1 小時」「3 小時」「到今天結束」 */
+    /** 分享與隱私：暫停分享的三個按鈕「1 小時」「3 小時」「到今晚」 */
     @Config(qualifiers = TALL)
     @Test fun privacy() = shot("34_privacy") { PrivacyScreen(s, vm) {} }
 

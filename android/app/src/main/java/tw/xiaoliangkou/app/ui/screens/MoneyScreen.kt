@@ -56,6 +56,7 @@ import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Derived
 import tw.xiaoliangkou.app.ui.Fmt
 import tw.xiaoliangkou.app.ui.SheetSpec
+import tw.xiaoliangkou.app.ui.components.ButtonRow
 import tw.xiaoliangkou.app.ui.components.CategoryBars
 import tw.xiaoliangkou.app.ui.components.ChoiceChip
 import tw.xiaoliangkou.app.ui.components.Confetti
@@ -95,9 +96,9 @@ fun MoneyScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit) {
         item { Summary(counted, pending.size, mine, s.partnerName) }
         if (!mine) item { GuessCard(s, pending, sheet) }
         else item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CuteButton("記一筆", Modifier.weight(1f), icon = Icons.Rounded.Add) { sheet(SheetSpec.ExpenseEdit(null)) }
-                SoftButton("測試自動記帳", Modifier.weight(1f), icon = Icons.Rounded.NotificationsActive) { sheet(SheetSpec.ParseTest) }
+            ButtonRow(spacing = 10.dp) {
+                CuteButton("記一筆", icon = Icons.Rounded.Add) { sheet(SheetSpec.ExpenseEdit(null)) }
+                SoftButton("測試自動記帳", icon = Icons.Rounded.NotificationsActive) { sheet(SheetSpec.ParseTest) }
             }
         }
         val groups = visible.filter { mine || !it.waitingForGuess }.sortedByDescending { it.time }.groupBy { Fmt.localDate(it.time) }
