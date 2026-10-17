@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -87,6 +88,9 @@ class ReviewFix3Test {
         val session = SessionManager(base, key, Session("a-1", "r-1", System.currentTimeMillis() / 1000 + 3600, "u-1", "azhe@example.com"))
         val r = RemoteRepository(SupabaseClient(base, key, session).api, RealtimeClient(scope), scope) {}
         r.refreshAll()
+        // 建立時 init 也會自己跑一次 refreshAll：等它跑完，不然測試接著換掉的 app_memos 會被它晚到的結果蓋掉
+        var n = -1
+        while (n != seen.size) { n = seen.size; delay(250) }
         return r
     }
 

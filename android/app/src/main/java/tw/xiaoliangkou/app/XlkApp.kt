@@ -158,11 +158,13 @@ class AppContainer(private val app: Application) {
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_START) scope.launch(Dispatchers.IO) { MemoWidget.refresh(app, media) }
         })
-        // 回到前景：即時連線斷了的話馬上重連，也先用 RPC 補抓通知
+        // 回到前景：即時連線斷了的話馬上重連，也先用 RPC 補抓通知。
+        // 資料庫還是舊的話再檢查一次：使用者常常是到電腦跑完 upgrade-v2.sql 再回來（背景服務讓 App 一直活著，不會重新載入）
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_START && supabase != null) {
                 realtime.reconnectNow()
                 realtime.pollIfDisconnected()
+                (_repo.value as? RemoteRepository)?.recheckSchema()
             }
         })
     }

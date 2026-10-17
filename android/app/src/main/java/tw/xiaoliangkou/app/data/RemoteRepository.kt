@@ -1,5 +1,6 @@
 package tw.xiaoliangkou.app.data
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -23,6 +24,8 @@ import tw.xiaoliangkou.app.core.PaymentParser
 import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 連 Supabase 的資料來源。收到 Realtime 的「changed」時只重抓有變動的部分，
@@ -45,6 +48,10 @@ class RemoteRepository(
 
     /** 最近一次換月載入的日曆區間：有變動時跟預設區間（跟著今天走）一起重新載入 */
     @Volatile private var browsing: Pair<LocalDate, LocalDate>? = null
+
+    /** 正在跑 [refreshAll]（裡面會檢查資料庫版本，不用另外再檢查） */
+    private val refreshing = AtomicInteger(0)
+    private val rechecking = AtomicBoolean(false)
 
     init {
         jobs += scope.launch {
@@ -81,7 +88,10 @@ class RemoteRepository(
     }
 
     private fun loadersFor(table: String): List<suspend () -> Unit> = when (table) {
-        "profiles", "couples", "couple_members", "sharing_settings" -> listOf(::loadMe, ::loadPartnerStatus, ::loadPlaces, ::loadHistory)
+        "profiles", "sharing_settings" -> listOf(::loadMe, ::loadPartnerStatus, ::loadPlaces, ::loadHistory)
+        // 配對變了（對方解除配對、接受了我的邀請）：對方的備忘錄、日曆的生活紀錄、寫給對方的備註都要跟著換，全部重新載入。
+        // 不然解除配對後，桌面小工具還會一直顯示前任放在桌面的備忘錄
+        "couples", "couple_members" -> listOf(::refreshAll)
         "device_status", "locations" -> listOf(::loadMe, ::loadPartnerStatus) // 「對方在線上」也跟著更新
         "places", "place_events" -> listOf(::loadPlaces)
         "expenses", "expense_guesses" -> listOf(::loadExpenses)
@@ -103,6 +113,8 @@ class RemoteRepository(
             it.copy(
                 loaded = true, me = me.user, couple = me.couple, partner = me.partner,
                 mySharing = me.mySharing, partnerSharing = me.partnerSharing, partnerOnline = me.partnerOnline,
+                // 換了配對：以前配對的生活紀錄不能再顯示（重新載入時只會換掉載入的那幾個月）
+                dayEntries = if (it.couple?.id == me.couple?.id) it.dayEntries else emptyList(),
             )
         }
     }
@@ -165,24 +177,56 @@ class RemoteRepository(
      * 新功能的 RPC、Storage：資料庫還沒更新的話標記起來，畫面上提醒使用者。
      * 舊功能都能用、只有新函式找不到，就是還沒執行 upgrade-v2.sql。
      */
-    private suspend fun <T> v2(block: suspend () -> T): T = try {
-        apiCall { block() }
-    } catch (e: AppException) {
-        if (e.code == Errors.SCHEMA_OUTDATED_CODE || e.code == "not_setup") {
-            _state.update { it.copy(schemaOutdated = true) }
-            throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE, e.status)
+    private suspend fun <T> v2(block: suspend () -> T): T {
+        val r = try {
+            apiCall { block() }
+        } catch (e: AppException) {
+            if (e.code == Errors.SCHEMA_OUTDATED_CODE || e.code == "not_setup") {
+                _state.update { it.copy(schemaOutdated = true) }
+                throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE, e.status)
+            }
+            throw e
         }
-        throw e
+        // 之前說資料庫要更新，這次新功能卻成功了：大概是剛跑完 upgrade-v2.sql（例如另一半那支手機），再確認一次
+        recheckSchema()
+        return r
+    }
+
+    /**
+     * 標記成「資料庫需要更新」之後，再問一次 app_health（回到 App、新功能的呼叫成功時）。
+     * 使用者跑完 upgrade-v2.sql 回到 App：提醒拿掉，新功能的資料全部重新載入。
+     * 背景服務讓 App 一直活著、即時連線也沒斷，不這樣做的話要等 App 整個重開才會發現。
+     * 還是舊的資料庫的話只多一次 app_health，同時只會有一個在檢查
+     */
+    fun recheckSchema() {
+        if (!_state.value.schemaOutdated || refreshing.get() > 0 || !rechecking.compareAndSet(false, true)) return
+        scope.launch {
+            try {
+                checkSchema()
+                if (!_state.value.schemaOutdated) refreshAll()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 沒網路之類的：下次回到 App 再檢查
+            } finally {
+                rechecking.set(false)
+            }
+        }
     }
 
     override suspend fun refreshAll() {
-        // 即時連線沒在運作的話，通知也順便用 RPC 補抓
-        realtime.pollIfDisconnected()
-        loadMe()
-        coroutineScope {
-            listOf(::loadPartnerStatus, ::loadPlaces, ::loadExpenses, ::loadMoods, ::loadComforts, ::loadAnniversaries,
-                ::loadEvents, ::loadCycle, ::loadHistory, ::loadPrefs, ::checkSchema, ::loadNotes, ::loadCurrentDays, ::loadMemos)
-                .map { async { runCatching { it() } } }.awaitAll()
+        refreshing.incrementAndGet()
+        try {
+            // 即時連線沒在運作的話，通知也順便用 RPC 補抓
+            realtime.pollIfDisconnected()
+            loadMe()
+            coroutineScope {
+                listOf(::loadPartnerStatus, ::loadPlaces, ::loadExpenses, ::loadMoods, ::loadComforts, ::loadAnniversaries,
+                    ::loadEvents, ::loadCycle, ::loadHistory, ::loadPrefs, ::checkSchema, ::loadNotes, ::loadCurrentDays, ::loadMemos)
+                    .map { async { runCatching { it() } } }.awaitAll()
+            }
+        } finally {
+            refreshing.decrementAndGet()
         }
     }
 
@@ -283,29 +327,47 @@ class RemoteRepository(
             _state.update { it.copy(schemaOutdated = true) }
             throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
         }
+        recheckSchema()
     }
 
     // ---------------------------------------------------------------- 個人資料、備註
     override suspend fun updateProfileInfo(displayName: String, birthday: String?, info: JsonObject) {
         val name = displayName.trim()
         Limits.profile(name, birthday, info)
+        val prev = _state.value.me
         val row = apiCall {
             api.updateProfileRaw(buildJsonObject { put("displayName", name); put("birthday", birthday); put("info", info) })
         }
         loadMe()
-        // 舊的資料庫不認得 info：暱稱、生日存好了，個人資料沒存到
-        if ("info" !in row) {
-            _state.update { it.copy(schemaOutdated = true) }
-            throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
-        }
+        if ("info" in row) { recheckSchema(); return }
+        // 舊的資料庫不認得 info：暱稱、生日存好了，個人資料沒存到。
+        // 沒有填其他資料（只改暱稱、生日）就是全部存好了，不要跳「資料庫需要更新」
+        _state.update { it.copy(schemaOutdated = true) }
+        if (info.isEmpty()) return
+        val savedBasics = prev != null && (prev.displayName != name || prev.birthday != birthday)
+        throw AppException(if (savedBasics) PROFILE_INFO_OUTDATED else Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
     }
 
+    // 存好之後先把回傳的那筆放進畫面，再重新整理一次：重新整理失敗（網路不穩）也不會說沒存到，害使用者再按一次、存成兩筆
     override suspend fun saveNote(id: String?, body: String) {
         Limits.note(body)
-        v2 { api.saveNote(buildJsonObject { if (id != null) put("id", id); put("body", body) }) }
-        loadNotes()
+        val n = v2 { api.saveNote(buildJsonObject { if (id != null) put("id", id); put("body", body) }) }
+        // 跟 app_notes 一樣新寫的在最上面，改過的留在原本的位置
+        _state.update { st ->
+            st.copy(notes = if (st.notes.any { it.id == n.id }) st.notes.map { if (it.id == n.id) n else it } else listOf(n) + st.notes)
+        }
+        reloadQuietly(::loadNotes)
     }
-    override suspend fun deleteNote(id: String) { v2 { api.deleteNote(id) }; loadNotes() }
+    override suspend fun deleteNote(id: String) {
+        v2 { api.deleteNote(id) }
+        _state.update { st -> st.copy(notes = st.notes.filterNot { it.id == id }) }
+        reloadQuietly(::loadNotes)
+    }
+
+    /** 已經存好了，重新整理只是順便：失敗的話等即時連線的變動或下次重新整理 */
+    private suspend fun reloadQuietly(load: suspend () -> Unit) {
+        try { load() } catch (e: AppException) { }
+    }
 
     // ---------------------------------------------------------------- 日曆的生活紀錄
     override suspend fun loadDayEntries(from: LocalDate, to: LocalDate) {
@@ -348,7 +410,7 @@ class RemoteRepository(
         val theirs = old != null && old.userId != st.myId
         val nowShared = old?.takeIf { theirs }?.shared ?: (shared && st.couple != null)
         val moved = relocate(media, nowShared)
-        v2 {
+        val row = v2 {
             api.saveMemo(buildJsonObject {
                 if (id != null) put("id", id)
                 put("title", title); put("body", body); put("media", Api.mediaJson(moved.media))
@@ -356,11 +418,12 @@ class RemoteRepository(
                 put("pinned", pinned); put("color", color)
             })
         }
+        _state.update { s -> s.copy(memos = (s.memos.filterNot { it.id == row.id } + row).sortedWith(Memo.ORDER)) }
         // 這次拿掉的照片、語音，和搬走的原始檔（改成只有自己時在共用資料夾、改成共用時在自己的資料夾）：
         // 沒有其他地方用到就刪掉。共用資料夾裡的不刪，對方還是列得出來、讀得到
         val keep = moved.media.mapTo(HashSet()) { it.path }
-        deleteUnused((old?.media.orEmpty().map { it.path } + moved.from).filter { it !in keep }.distinct(), exceptMemo = id)
-        loadMemos()
+        deleteUnused((old?.media.orEmpty().map { it.path } + moved.from).filter { it !in keep }.distinct(), exceptMemo = row.id)
+        reloadQuietly(::loadMemos)
     }
 
     /** 搬好的 media，和搬走的原始檔 */
@@ -419,9 +482,10 @@ class RemoteRepository(
     override suspend fun deleteMemo(id: String) {
         val old = _state.value.memo(id)
         v2 { api.deleteMemo(id) }
+        _state.update { s -> s.copy(memos = s.memos.filterNot { it.id == id }) }
         // 它的照片、語音也刪掉（日曆或別的備忘錄還在用的留著）
         if (old != null) deleteUnused(old.media.map { it.path }, exceptMemo = id)
-        loadMemos()
+        reloadQuietly(::loadMemos)
     }
 
     // ---------------------------------------------------------------- 照片、語音
@@ -467,6 +531,9 @@ class RemoteRepository(
     companion object {
         /** 這版 App 需要的資料庫版本（app_health 的 schema） */
         const val SCHEMA = 2
+
+        /** 舊的資料庫：暱稱、生日存好了，身高、星座這些還存不進去 */
+        const val PROFILE_INFO_OUTDATED = "暱稱和生日存好了；其他資料要等資料庫更新才存得進去（說明在「我的 › Supabase 與帳號」）"
 
         fun defaultDayRange(today: LocalDate = LocalDate.now()) = today.minusDays(62) to today.plusDays(31)
 
