@@ -2,14 +2,16 @@
 
 > 一條紅線，牽起兩個人的日常。
 
-小倆口是給已經在一起的兩個人用的 **Android App**，資料存在**你們自己的免費 Supabase 專案**裡。它不取代 LINE，而是補上聊天軟體做不到的部分：**不用開口就知道對方的狀態**（在哪、電量、心情、花了什麼），以及**把在一起的日子記下來**（紀念日、約會、經期、歷史紀錄）。
+小倆口是給已經在一起的兩個人用的 **Android App**，資料存在**你們自己的免費 Supabase 專案**裡。它不取代 LINE，而是補上聊天軟體做不到的部分：**不用開口就知道對方的狀態**（在哪、電量、心情、花了什麼），以及**把在一起的日子記下來**（紀念日、約會、日曆上的生活紀錄、備忘錄、經期、歷史紀錄）。
+
+本文件對應 App 0.2.0（versionCode 2）。
 
 | 文件 | 內容 |
 |---|---|
 | 本文件 | 產品、介面風格、功能規格、隱私原則、系統架構 |
-| [SUPABASE_SETUP.md](SUPABASE_SETUP.md) | 建立 Supabase 專案、執行 setup.sql、在 App 連線、邀請另一半 |
+| [SUPABASE_SETUP.md](SUPABASE_SETUP.md) | 建立 Supabase 專案、執行 setup.sql、在 App 連線、邀請另一半；從 0.1 版更新（upgrade-v2.sql） |
 | [`android/`](../android) | Android App 原始碼（Kotlin + Jetpack Compose） |
-| [`supabase/`](../supabase) | 資料庫結構、權限規則、App 呼叫的資料庫函式、即時通知與排程 |
+| [`supabase/`](../supabase) | 資料庫結構、權限規則、App 呼叫的資料庫函式、即時通知與排程、照片與語音的 Storage 規則 |
 
 ---
 
@@ -23,6 +25,7 @@
 | **有趣，而不是監控** | 開銷包裝成「猜花費」遊戲；對方心情不好時引導「安撫」，而不是質問。 |
 | **資料是你們自己的** | 存在你們自己建立的 Supabase 專案（不是別人的伺服器），權限規則寫在資料庫裡；不用 Firebase，地圖用 OpenStreetMap。 |
 | **資料最少化** | 位置只存最新一筆，不保留軌跡；Wi-Fi 名稱不上傳；經期症狀只有本人看得到。 |
+| **有些話只給自己** | 給對方寫的備註、私人備忘錄和它的照片語音只有自己看得到，對方連有沒有寫都不會知道。 |
 
 ---
 
@@ -205,18 +208,18 @@
 | 約會邀請、答應、提醒；紀念日；經期關懷 | 對方或兩人 | 可 |
 | 對方記錄那天的生活、新的共同備忘錄 | 對方 | 可 |
 
-App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「抱抱與心情」「抵達與離開」「約會與紀念日」三個頻道，可在系統設定分別調整聲音）。
+App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「抱抱、心情與悄悄話」「抵達與離開」「約會與紀念日」「日曆紀錄與備忘錄」四個頻道，可在系統設定分別調整聲音）。
 
 ### 4.10 個人資料與私人備註
 
 - 我的資料：暱稱、生日（自動算年齡和星座）、身高、體重、電話、血型、MBTI、工作、興趣、喜歡的、不喜歡的、過敏、衣服與鞋子尺寸、自我介紹。存在 `profiles.info`（JSON，最多 4000 bytes），對方本來就讀得到 profiles，所以互相看得到。
 - 對方的資料：只顯示有填的欄位，電話可以直接撥，生日倒數。
-- 只有我看得到的備註（`partner_notes`）：RLS 只給寫的人，對方讀不到，也不會從 Realtime 或通知知道有沒有寫、什麼時候寫。
+- 只有我看得到的備註（`partner_notes`，每則最多 2000 字）：RLS 只給寫的人，對方讀不到，也不會從 Realtime、通知或歷史紀錄知道有沒有寫、什麼時候寫。只列出寫給目前這位對方（或沒配對時寫）的備註，換了對象不會看到寫給上一位的。
 
 ### 4.11 日曆：記錄那天的生活
 
 - 當天詳情在約會下面列出兩個人那天的紀錄（`day_entries`）：文字最多 5000 字，照片和語音最多 12 個。自己的可以編輯、刪除，對方的只能看；新增時通知對方。
-- 照片縮到最長邊 1600 像素的 JPEG；語音是 AAC（.m4a），最長 3 分鐘。
+- 照片用系統的相片挑選器一次最多選 9 張（不需要讀取相簿的權限），縮到最長邊 1600 像素的 JPEG；語音是 AAC（.m4a），最長 3 分鐘，需要麥克風權限。
 - 月曆上有紀錄的日子顯示小圖示。一開始載入前兩個月到下個月的紀錄，換到更早或更晚的月份時再載入那個月。
 
 ### 4.12 備忘錄
@@ -224,15 +227,23 @@ App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「�
 - 文字、照片、語音，六種便利貼顏色。可以「只有我」或和另一半「共用」（沒配對時只能私人）；對方共用的可以一起改，但只有建立的人能刪除或改成私人。
 - 「放在桌面」的備忘錄排在前面，也會出現在「備忘錄」小工具。
 - 私人備忘錄的變動不會通知對方（Realtime 只送給看得到的人）；新增共用備忘錄時通知對方。
+- 解除配對後，和上一段配對共用的備忘錄只剩建立的人看得到（當成私人的），留在舊配對資料夾的照片語音已經讀不到，存檔時拿掉。
 
 ### 4.13 星座運勢與御神籤
 
 - 星座運勢：依生日算出兩人的星座（沒填生日可以先手動選），今天或明天的綜合、愛情、工作、財運、健康、幸運色、幸運數字和一句話，加上兩人的速配指數。用星座和日期決定，同一天結果固定，標示「僅供娛樂」；「看更多」連到科技紫微網。
-- 御神籤：東京淺草觀音寺一百籤（元三大師觀音百籤），按按鈕或搖手機抽籤，顯示第幾籤、吉凶和四句籤詩，「看完整解籤」連到台灣好廟網。今天抽過的籤記在手機裡。App 只放籤詩原文，解籤看網站。
+- 御神籤：東京淺草觀音寺一百籤（元三大師觀音百籤），按按鈕或搖手機抽籤，顯示第幾籤、吉凶（大吉 17、吉 35、半吉 5、小吉 4、末小吉 3、末吉 6、凶 30）和四句籤詩，「看完整解籤」用瀏覽器打開台灣好廟網那一籤的頁面。抽過的籤（最近 10 支）記在手機裡、跟著帳號，畫面列出今天抽到的。
+- 來源：籤詩是古籍（公有領域），App 只收錄籤號、吉凶和四句原文；網站的解說、語譯不放進 App，用連結看。畫面下方標示「籤詩：元三大師觀音百籤（淺草寺）；解籤：台灣好廟網」。星座運勢的句子是 App 內建的，「看更多」連到科技紫微網那個星座的今日運勢。
 
 ### 4.14 照片與語音的存放
 
-存在 Supabase Storage 不公開的 `media` 空間（單檔 10 MB 以內）：日曆和共用備忘錄放在 `c/<配對>/`，只有目前配對的兩個人讀得到；私人備忘錄放在 `u/<自己>/`，只有自己讀得到。改成共用或私人時 App 會把檔案搬到對的地方。解除配對後，原本共用的檔案雙方都讀不到。
+存在 Supabase Storage 不公開的 `media` 空間（單檔 10 MB 以內，只收 JPEG、PNG、WebP 和常見的語音格式）：日曆和共用備忘錄放在 `c/<配對>/`，只有目前配對的兩個人讀得到、傳得上去；私人備忘錄放在 `u/<自己>/`，只有自己讀得到。
+
+- 檔名都是新的 UUID，不能覆寫；只有上傳的人刪得掉。
+- 資料庫用觸發程序檢查 `media` 裡的路徑：日曆紀錄只能指到 `c/<這對>/`，備忘錄依共用或私人只能指到 `c/<這對>/` 或 `u/<自己>/`，不能指到別人的檔案。
+- 改成共用或私人時，App 會下載再上傳到對的資料夾；改成私人時，共用資料夾裡的原始檔會刪掉，對方就讀不到了（對方傳的照片本來就是對方的，刪不掉也沒關係）。從日曆紀錄拿掉的照片語音、刪掉的紀錄裡的照片語音，沒有別的地方用到就順手刪掉。
+- 解除配對後，原本共用的檔案雙方都讀不到；檔案不會自動刪除，要到 Supabase 後台的 Storage 手動清。
+- App 把下載過的檔案快取在手機裡（cache 資料夾，太大就從最舊的刪），登出時清掉。
 
 ### 4.15 資料庫更新（0.1 → 0.2）
 
@@ -263,12 +274,15 @@ flowchart LR
     API[PostgREST：app_* 資料庫函式]
     DB[(PostgreSQL：Row Level Security、trigger、pg_cron 排程)]
     RT[Realtime：新通知、資料變動、請回報位置]
+    STO[Storage：照片與語音（不公開的 media 空間）]
   end
   SVC -- HTTPS：登入、權杖更新 --> AUTH
   SVC -- HTTPS：呼叫 app_* 函式（以登入者身分） --> API
   API --> DB
   DB -- notification_outbox、realtime_events --> RT
   RT -- WebSocket --> SVC
+  UI -- HTTPS：上傳、下載照片與語音（以登入者身分） --> STO
+  STO -. 權限規則查配對 .-> DB
   UI -- OpenStreetMap 圖磚、地址搜尋（Nominatim） --> OSM[(openstreetmap.org)]
   UI -- 地址搜尋（手機內建 Geocoder） --> GEO[(Google 地址服務)]
 ```
@@ -280,8 +294,9 @@ flowchart LR
 | 定位 | Google Play 服務 Fused Location | 省電、室內也準 |
 | 地圖 | osmdroid（OpenStreetMap） | 免 API 金鑰、免費 |
 | 地址搜尋 | Android Geocoder，備援 OpenStreetMap Nominatim | 免 API 金鑰；有 Google 服務的手機台灣門牌最準，沒有的手機也能用 |
-| 本機設定 | DataStore | Supabase 網址與金鑰、登入權杖、標點進出狀態、步數基準 |
-| 後端 | Supabase 免費方案（Auth、PostgREST、Realtime、PostgreSQL、pg_cron） | 不用自己架伺服器；兩個人用遠低於免費額度 |
+| 本機設定 | DataStore | Supabase 網址與金鑰、登入權杖、標點進出狀態、步數基準（抽過的籤、手動選的星座只是小東西，放在 SharedPreferences） |
+| 照片與語音 | 系統相片挑選器、MediaRecorder（AAC）、Supabase Storage | 選照片不需要讀取相簿的權限；檔案的權限規則跟資料表一樣寫在 SQL 裡 |
+| 後端 | Supabase 免費方案（Auth、PostgREST、Realtime、PostgreSQL、pg_cron、Storage） | 不用自己架伺服器；兩個人用遠低於免費額度 |
 | 資料存取 | 每個功能一個 `app_*` 資料庫函式（以登入者身分執行，受 RLS 保護），回傳 camelCase JSON | 權限與商業邏輯都在資料庫裡，App 不能繞過 |
 | 通知 | trigger 寫入 `notification_outbox` → Realtime 推給 App → App 回報已收到；離線期間的通知在重新連線時補送 | 不需要 Firebase |
 | 資料變動 | trigger 寫入 `realtime_events` → Realtime → App 重新抓對應的資料 | |
@@ -298,9 +313,10 @@ flowchart LR
 | 測試 | 指令 | 內容 |
 |---|---|---|
 | App 核心邏輯 | `cd android && ./gradlew testDebugUnitTest` | 經期預測、地理圍欄、猜花費、付款通知解析、紀念日（與 JS 版相同案例）；地址搜尋（Geocoder → Nominatim 的順序、台灣地址改寫、找不到與連不上）；在地圖上拖曳時頁面不會搶走觸控；頭像的裁切與壓縮、常駐通知的對方狀態、桌面小工具的內容；自動記帳（LINE錢包的付款訊息、儲值和廣告不記、聊天不記、同一筆消費的好幾則通知只記一筆並補上店名） |
-| App 畫面 | `./gradlew recordRoborazziDebug` | 不需模擬器，把每個畫面（含深色模式）畫成圖片 |
-| App ↔ Supabase | `XLK_TEST_SUPABASE_URL=… XLK_TEST_SUPABASE_KEY=… ./gradlew testDebugUnitTest` | App 的資料層對真的 Supabase（本機啟動）走完註冊、配對、頭像同步、狀態、通知、標點、記帳、猜花費、約會、經期、解除配對 |
-| 資料庫 | `npm run test:db` | 在本機 Supabase 上跑權限測試、`app_*` 函式、即時通知、排程，以及 setup.sql 的一致性 |
+| 0.2 新功能 | `./gradlew testDebugUnitTest --tests '*MemoScreensTest*'`（換成要跑的類別） | `ProfileScreensTest` 我的資料、對方的資料與私人備註；`JournalScreensTest` 日曆的生活紀錄；`MemoScreensTest`、`MemoWidgetTest` 備忘錄與備忘錄小工具在各種大小、大字時的排版；`WidgetRowScreensTest`、`StatusWidgetTest` 一格高的小工具和拉高後的大版面；`FortuneScreensTest`、`HoroscopeTest`、`OmikujiTest` 星座運勢與御神籤（日期邊界、同一天結果固定、78 組速配、100 籤四句五言、吉凶分布）；`MediaUiTest` 照片縮圖、看大圖、語音；`DataV2Test` 示範模式的新資料與照片快取；`RemoteV2Test` 用假的 Supabase 檢查呼叫的函式、Storage 網址、資料庫還沒更新時的提醒 |
+| App 畫面 | `./gradlew recordRoborazziDebug` | 不需模擬器，把每個畫面（含深色模式、大字）畫成圖片，放在 `app/build/screens/`；加 `--tests '*FortuneScreensTest*'` 只畫一部分 |
+| App ↔ Supabase | `XLK_TEST_SUPABASE_URL=… XLK_TEST_SUPABASE_KEY=… ./gradlew testDebugUnitTest` | App 的資料層對真的 Supabase（本機啟動、還沒有帳號）走完註冊、配對、頭像同步、狀態、通知、標點、記帳、猜花費、約會、經期、個人資料、備註、日曆紀錄、備忘錄、照片的搬移與權限、解除配對 |
+| 資料庫 | `npm run test:db` | 在本機 Supabase（包含 Storage）上跑權限測試、`app_*` 函式、即時通知、排程、照片與語音的上傳下載和權限；setup.sql、upgrade-v2.sql 與 migrations 的一致性；0.1 版資料庫執行 upgrade-v2.sql（兩次）和空資料庫執行 setup.sql 都要通過冒煙測試 |
 | 共用邏輯（JS） | `npm test` | 17 項 |
 
 ---
