@@ -234,7 +234,7 @@ fun PrivacyScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                         }
                     }
                 }
-                Text("選取的類別不會出現在 ${s.partnerName} 的帳本裡。單筆也可以設成「不給看」或「禮物模式」。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TidyText("選取的類別不會出現在 ${s.partnerName} 的帳本裡。單筆也可以設成「不給看」或「禮物模式」。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item { SectionTitle("${s.partnerName} 分享給我") }
@@ -587,7 +587,7 @@ fun PlaceSheet(s: AppState, vm: AppViewModel, id: String?, lat: Double, lng: Dou
             ToggleRow("抵達時通知", arrive, emoji = "🏁") { arrive = it }
             ToggleRow("離開時通知", leave, emoji = "👋") { leave = it }
         }
-        Text(
+        TidyText(
             if (watch == "me") "你進出這裡時 ${s.partnerName} 會收到通知。" else "${s.partnerName} 會收到「你新增了這個標點」的通知，看得到範圍與通知設定。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

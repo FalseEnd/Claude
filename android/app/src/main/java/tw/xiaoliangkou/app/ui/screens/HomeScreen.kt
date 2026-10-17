@@ -44,7 +44,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Cycle
@@ -140,14 +142,30 @@ private fun Hero(s: AppState) {
 
 @Composable
 private fun Banner(emoji: String, text: String, color: Color, action: @Composable () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(color).padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text(emoji, style = MaterialTheme.typography.titleLarge.unscaled())
-        TidyText(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        action()
+    // 表情、一段話、右邊的按鈕排一排；字放大時話被按鈕擠到四行以上，就把按鈕移到話的下面（靠右），話用整個寬度
+    Layout(
+        content = {
+            Text(emoji, style = MaterialTheme.typography.titleLarge.unscaled())
+            TidyText(text, style = MaterialTheme.typography.bodyMedium)
+            Box { action() }
+        },
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(color).padding(14.dp),
+    ) { (emojiM, textM, actionM), c ->
+        val gap = 10.dp.roundToPx()
+        val w = c.maxWidth
+        val e = emojiM.measure(Constraints())
+        val a = actionM.measure(Constraints(maxWidth = w))
+        val beside = (w - e.width - a.width - gap * 2).coerceAtLeast(0)
+        val oneLine = textM.minIntrinsicHeight(Constraints.Infinity).coerceAtLeast(1)
+        val stack = textM.minIntrinsicHeight(beside) > oneLine * 3
+        val t = textM.measure(Constraints(maxWidth = if (stack) (w - e.width - gap).coerceAtLeast(0) else beside))
+        val top = maxOf(e.height, t.height, if (stack) 0 else a.height)
+        val h = if (stack) top + 8.dp.roundToPx() + a.height else top
+        layout(w, h) {
+            e.placeRelative(0, (top - e.height) / 2)
+            t.placeRelative(e.width + gap, (top - t.height) / 2)
+            if (stack) a.placeRelative(w - a.width, h - a.height) else a.placeRelative(w - a.width, (top - a.height) / 2)
+        }
     }
 }
 
@@ -243,7 +261,7 @@ private fun MoodCard(s: AppState, open: (String) -> Unit, sheet: (SheetSpec) -> 
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Cute.colors.partnerSoft).padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("${s.partnerName} 覺得${m.label}，要不要安撫一下？", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                TidyText("${s.partnerName} 覺得${m.label}，要不要安撫一下？", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 CuteButton("抱抱", small = true, onClick = { sheet(SheetSpec.Comfort) })
             }
         }
@@ -313,7 +331,8 @@ private fun careBanner(s: AppState): Pair<String, String>? {
     val p = Derived.prediction(s) ?: return null
     return when {
         p.today.phase == Cycle.Phase.PERIOD && !p.today.predicted -> "🌸" to "${s.partnerName} 經期第 ${p.cycleDay} 天，準備熱飲和暖暖包，少讓對方碰冰的吧。"
-        p.lateDays == 0 && p.daysUntilNext in 0..5 -> "☕" to "${s.partnerName} 的經期預計${if (p.daysUntilNext == 0) "今天" else " ${p.daysUntilNext} 天後"}開始，情緒起伏是正常的，多一點耐心和抱抱。"
+        // 數字和「天後」之間是不換行空格：不會變成「…預計 5 / 天後開始」
+        p.lateDays == 0 && p.daysUntilNext in 0..5 -> "☕" to "${s.partnerName} 的經期預計${if (p.daysUntilNext == 0) "今天" else " ${p.daysUntilNext}\u00A0天後"}開始，情緒起伏是正常的，多一點耐心和抱抱。"
         else -> null
     }
 }
@@ -351,7 +370,8 @@ private fun Recent(s: AppState, open: (String) -> Unit) {
             val (emoji, text) = Fmt.history(a, s.myId, s.partnerName)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 EmojiBubble(emoji, if (a.actorId == s.myId) Cute.colors.meSoft else Cute.colors.partnerSoft, 34.dp)
-                Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 2)
+                // 太長時用「…」結尾（全部紀錄裡看得到完整的），不會無聲無息被切掉
+                TidyText(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(Fmt.rel(a.time), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

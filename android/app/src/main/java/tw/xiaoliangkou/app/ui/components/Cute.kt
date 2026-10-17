@@ -37,7 +37,6 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -46,9 +45,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -65,12 +62,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -78,61 +73,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import tw.xiaoliangkou.app.data.Avatars
 import tw.xiaoliangkou.app.ui.theme.Cute
-
-/**
- * 換行時讓每一行差不多長：最後一行不會只剩一個字（「…離開標 / 點」→「…抵 / 達與離開標點」）。
- * 放得下一行的字不受影響；WordBreak.Phrase 在 Android 13 以上的日文、韓文會照詞換行，其他語言沒有作用。
- */
-val BalancedBreak = LineBreak(LineBreak.Strategy.Balanced, LineBreak.Strictness.Strict, LineBreak.WordBreak.Phrase)
-
-/**
- * 一般的 Text，但換行後最後一行只剩一個字（孤字，例如「…選擇分享的項 / 目」）時，改成每行差不多長（[BalancedBreak]）。
- * 沒有孤字就照一般的換法：第一行放滿，常常剛好斷在標點後面（「文字、照片、語音，可以 / 放在桌面」）。
- * 改換法不會改變行數，所以高度不變。
- */
-@Composable
-fun TidyText(
-    text: String,
-    modifier: Modifier = Modifier,
-    style: TextStyle = LocalTextStyle.current,
-    color: Color = Color.Unspecified,
-    textAlign: TextAlign? = null,
-    maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Clip,
-) {
-    var balance by remember(text) { mutableStateOf(false) }
-    Text(
-        text, modifier, color = color, textAlign = textAlign, maxLines = maxLines, overflow = overflow,
-        style = if (balance) style.copy(lineBreak = BalancedBreak) else style,
-        onTextLayout = { if (!balance && it.endsWithOrphan()) balance = true },
-    )
-}
-
-/** 換行後最後一行只剩一個字：一個中日韓文字、一個英文字或數字，或只有表情、標點 */
-internal fun TextLayoutResult.endsWithOrphan(): Boolean {
-    if (lineCount < 2 || hasVisualOverflow) return false
-    val last = lineCount - 1
-    return wordsIn(layoutInput.text.text.substring(getLineStart(last), getLineEnd(last))) <= 1
-}
-
-/** 幾個「字」：中日韓文字一字算一個，連在一起的英文字母、數字算一個，空白、標點、表情不算 */
-internal fun wordsIn(s: String): Int {
-    var n = 0
-    var inWord = false
-    var i = 0
-    while (i < s.length) {
-        val cp = s.codePointAt(i)
-        val script = Character.UnicodeScript.of(cp)
-        when {
-            !Character.isLetterOrDigit(cp) -> inWord = false
-            Character.isIdeographic(cp) || script == Character.UnicodeScript.HIRAGANA || script == Character.UnicodeScript.KATAKANA ||
-                script == Character.UnicodeScript.HANGUL -> { n++; inWord = false }
-            !inWord -> { n++; inWord = true }
-        }
-        i += Character.charCount(cp)
-    }
-    return n
-}
 
 /** 不跟著系統字體放大的字級：給表情這類裝飾用，字放大時把寬度留給真正的字。一般字級時大小不變。 */
 @Composable
@@ -486,7 +426,7 @@ fun BannerCard(visible: Boolean, emoji: String, title: String, body: String?, on
 fun EmptyState(text: String, emoji: String = "🐣", modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Wiggle { Text(emoji, style = MaterialTheme.typography.displayMedium) }
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        TidyText(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
 }
 

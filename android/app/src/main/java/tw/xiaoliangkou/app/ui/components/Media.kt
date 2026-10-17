@@ -246,6 +246,7 @@ private class UnsentVoice(val file: File, val durationMs: Long)
  * 錄音的狀態變了就呼叫 [onVoiceChange]：錄音中、錄好了還沒傳上去時先別讓人按儲存，不然那段錄音會不見。
  * 錄音傳不上去（網路不好）不會丟掉，可以重新上傳；App 跑到背景時先停下來，把錄到的存起來。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MediaPickerRow(
     vm: AppViewModel, shared: Boolean, onAdded: (MediaItem) -> Unit, enabled: Boolean = true, remaining: Int = Limits.MEDIA,
@@ -413,7 +414,8 @@ fun MediaPickerRow(
 
     val idle = enabled && !vm.busy && recording == null
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        // 字放大時一排放不下就換到下一排，按鈕不會被擠成「取 / 消」
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SoftButton("📷 照片", small = true, enabled = idle) {
                 val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 when {
@@ -440,7 +442,7 @@ fun MediaPickerRow(
         when {
             recording != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 RecordingDot()
-                Text("錄音中… 再按一下停止（最長 3 分鐘）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TidyText("錄音中… 再按一下停止（最長 3 分鐘）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             status != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
