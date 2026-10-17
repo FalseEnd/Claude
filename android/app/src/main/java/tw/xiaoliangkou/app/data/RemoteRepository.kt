@@ -356,8 +356,10 @@ class RemoteRepository(
                 put("pinned", pinned); put("color", color)
             })
         }
-        // 改成只有自己：共用資料夾裡的原始檔要刪掉，不然對方還是列得出來、讀得到
-        if (!nowShared) deleteUnused(moved.from, exceptMemo = id)
+        // 這次拿掉的照片、語音，和搬走的原始檔（改成只有自己時在共用資料夾、改成共用時在自己的資料夾）：
+        // 沒有其他地方用到就刪掉。共用資料夾裡的不刪，對方還是列得出來、讀得到
+        val keep = moved.media.mapTo(HashSet()) { it.path }
+        deleteUnused((old?.media.orEmpty().map { it.path } + moved.from).filter { it !in keep }.distinct(), exceptMemo = id)
         loadMemos()
     }
 
@@ -394,12 +396,16 @@ class RemoteRepository(
         return Relocated(out, from)
     }
 
-    /** 刪掉共用資料夾（和自己資料夾）裡已經沒有用到的檔案（盡量刪，失敗就算了；只有上傳的人刪得掉） */
+    /**
+     * 刪掉共用資料夾（和自己資料夾）裡已經沒有用到的檔案（盡量刪，失敗就算了；只有上傳的人刪得掉）。
+     * 以前的配對留下來的檔案已經讀不到，也刪不掉，不用送
+     */
     private suspend fun deleteUnused(paths: List<String>, exceptMemo: String?) {
         val st = _state.value
         val used = (st.memos.filter { it.id != exceptMemo }.flatMap { it.media } + st.dayEntries.flatMap { it.media }).mapTo(HashSet()) { it.path }
         val mine = st.myId?.let { "u/$it/" }
-        val unused = paths.filter { (it.startsWith("c/") || mine != null && it.startsWith(mine)) && it !in used }
+        val couple = st.couple?.id?.let { "c/$it/" }
+        val unused = paths.filter { (couple != null && it.startsWith(couple) || mine != null && it.startsWith(mine)) && it !in used }
         if (unused.isEmpty()) return
         try { apiCall { api.deleteMedia(unused) } } catch (e: AppException) { }
     }
@@ -410,7 +416,13 @@ class RemoteRepository(
         else "u/${st.myId ?: throw AppException(Errors.RELOGIN, "not_authenticated")}/"
     }
 
-    override suspend fun deleteMemo(id: String) { v2 { api.deleteMemo(id) }; loadMemos() }
+    override suspend fun deleteMemo(id: String) {
+        val old = _state.value.memo(id)
+        v2 { api.deleteMemo(id) }
+        // 它的照片、語音也刪掉（日曆或別的備忘錄還在用的留著）
+        if (old != null) deleteUnused(old.media.map { it.path }, exceptMemo = id)
+        loadMemos()
+    }
 
     // ---------------------------------------------------------------- 照片、語音
     override suspend fun uploadMedia(bytes: ByteArray, mime: String, kind: String, shared: Boolean, width: Int?, height: Int?, durationMs: Long?): MediaItem {

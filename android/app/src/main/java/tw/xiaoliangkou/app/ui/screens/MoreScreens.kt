@@ -148,7 +148,7 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
             CuteCard {
                 MenuRow(Icons.Rounded.Shield, c.mint, MaterialTheme.colorScheme.secondaryContainer, "分享與隱私", if (s.mySharing?.paused == true) "暫停分享中" else "決定 ${s.partnerName} 能看到什麼") { open("privacy") }
                 MenuRow(Icons.Rounded.Notifications, c.peach, c.peach.copy(alpha = 0.25f), "通知設定", "通知列顯示 ${s.partnerName} 的狀態、想收到哪些通知") { open("notif") }
-                MenuRow(Icons.Rounded.Widgets, c.butter, c.butter.copy(alpha = 0.25f), "桌面小工具", "在桌面看在一起的天數、${s.partnerName} 的狀態") { open("widgets") }
+                MenuRow(Icons.Rounded.Widgets, c.butter, c.butter.copy(alpha = 0.25f), "桌面小工具", "在桌面看在一起的天數、${s.partnerName} 的狀態、備忘錄") { open("widgets") }
                 if (!s.demo) {
                     MenuRow(Icons.Rounded.Tune, c.me, c.meSoft, "權限與背景執行", "位置、通知、省電、自動記帳") { open("permissions") }
                     MenuRow(Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號", if (s.schemaOutdated) "資料庫需要更新，點這裡看怎麼做 🛠️" else "連線、邀請另一半、改密碼、登出") { open("account") }

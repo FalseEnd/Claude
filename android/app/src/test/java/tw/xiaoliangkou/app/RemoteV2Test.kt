@@ -290,13 +290,16 @@ class RemoteV2Test {
         assertEquals("u/u-1/mine.jpg", paths.last())
         assertTrue(calls("GET /storage/v1/object/authenticated/media/c/old/").isEmpty())
         assertEquals(2, calls("POST /storage/v1/object/media/u/u-1/").size)
-        // 共用資料夾裡的原始檔刪掉，對方就列不出來、讀不到（日曆還在用的那張留著）
+        // 共用資料夾裡的原始檔刪掉，對方就列不出來、讀不到（日曆還在用的那張留著）；
+        // 已經不見的那張也從備忘錄拿掉了，順便清掉。以前配對的資料夾刪不掉，不用送
         val del = calls("DELETE /storage/v1/object/media").single()
-        assertEquals("""{"prefixes":["c/c-1/a.jpg"]}""", del.body.decodeToString())
+        assertEquals("""{"prefixes":["c/c-1/a.jpg","c/c-1/gone.jpg"]}""", del.body.decodeToString())
         assertEquals("Bearer a-1", del.header("Authorization"))
         assertEquals(key, del.header("apikey"))
 
-        // 一直是共用的：不刪任何檔案
+        // 一直是共用的、照片沒拿掉：不刪任何檔案
+        rpc("app_memos") { "[${memo("m1", "u-1", true, """[{"path":"c/c-1/a.jpg","kind":"photo"}]""")}]" }
+        r.refreshAll()
         r.saveMemo(m.id, m.title, "改內容", listOf(MediaItem("c/c-1/a.jpg", MediaItem.PHOTO)), shared = true, pinned = false, color = "pink")
         assertEquals(1, calls("DELETE /storage/").size)
         // 刪不掉（例如是對方上傳的）也沒關係，備忘錄已經存好了

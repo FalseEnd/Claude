@@ -224,6 +224,9 @@ class MemoWidget : AppWidgetProvider() {
             AppWidgetManager.getInstance(context)?.getAppWidgetIds(ComponentName(context, MemoWidget::class.java))
         }.getOrNull() ?: IntArray(0)
 
+        /** 桌面上有沒有放這個小工具（沒有的話，備忘錄打開「放在桌面」也看不到） */
+        fun isPlaced(context: Context): Boolean = widgetIds(context).isNotEmpty()
+
         fun updateAll(context: Context, snap: MemoWidgetSnapshot = load(context)) {
             val manager = AppWidgetManager.getInstance(context) ?: return
             update(context, manager, widgetIds(context), snap)
