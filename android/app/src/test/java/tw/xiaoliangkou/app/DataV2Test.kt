@@ -121,9 +121,10 @@ class DataV2Test {
         assertEquals(27, ProfileInfo.age(b, LocalDate.of(2026, 11, 21)))
         assertEquals(0, ProfileInfo.age(b, LocalDate.of(1999, 11, 21)))
         assertEquals(0, ProfileInfo.age(LocalDate.of(2030, 1, 1), LocalDate.of(2026, 1, 1)))
-        // 2/29 出生：平年 3/1 才加一歲
+        // 2/29 出生：平年 2/28 就加一歲（和生日倒數同一天）
         val leap = LocalDate.of(2000, 2, 29)
-        assertEquals(26, ProfileInfo.age(leap, LocalDate.of(2027, 2, 28)))
+        assertEquals(26, ProfileInfo.age(leap, LocalDate.of(2027, 2, 27)))
+        assertEquals(27, ProfileInfo.age(leap, LocalDate.of(2027, 2, 28)))
         assertEquals(27, ProfileInfo.age(leap, LocalDate.of(2027, 3, 1)))
         assertEquals(28, ProfileInfo.age(leap, LocalDate.of(2028, 2, 29)))
     }

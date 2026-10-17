@@ -194,7 +194,7 @@ fun XlkRoot(vm: AppViewModel, deepLink: String?, onDeepLinkHandled: () -> Unit) 
             p == null -> SplashScreen()
             repo == null -> StartFlow(vm)
             !s.loaded -> Connecting(vm)
-            !s.paired -> Box(Modifier.systemBarsPadding()) { PairingScreen(s, vm) }
+            !s.paired -> UnpairedScaffold(vm, pendingRoute) { pendingRoute = null }
             !p.onboarded && !s.demo -> Box(Modifier.systemBarsPadding()) { Onboarding(s, vm) }
             else -> MainScaffold(vm, pendingRoute) { pendingRoute = null }
         }
@@ -334,27 +334,60 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
         }
     }
 
-    val current = sheet
-    if (current != null) key(current) {
-        val close: () -> Unit = { sheet = null }
-        // 會寫一大段字、放照片和語音的面板：還沒儲存就滑掉、點外面、按返回時先問一下
-        val guarded = current is SheetSpec.DayEntryEdit || current is SheetSpec.MemoEdit || current is SheetSpec.NoteEdit
-        XlkSheet(guarded, close) {
-            when (current) {
-                SheetSpec.Comfort -> ComfortSheet(s, vm, close)
-                is SheetSpec.GuessIt -> GuessSheet(s, vm, current.id, close)
-                is SheetSpec.ExpenseEdit -> ExpenseEditSheet(s, vm, current.id, close)
-                is SheetSpec.ExpenseView -> ExpenseViewSheet(s, current.id, close)
-                SheetSpec.ParseTest -> ParseTestSheet(vm, close)
-                SheetSpec.Avatar -> AvatarSheet(s, vm, close)
-                is SheetSpec.PlaceEdit -> PlaceSheet(s, vm, current.id, current.lat, current.lng, current.name, close)
-                is SheetSpec.EventEdit -> EventSheet(s, vm, current.id, current.date) { calendarJump = current.date to System.nanoTime(); close() }
-                is SheetSpec.AnniversaryEdit -> AnniversarySheet(s, vm, current.id, close)
-                is SheetSpec.PeriodEdit -> PeriodSheet(vm, current.forPartner, close)
-                is SheetSpec.NoteEdit -> NoteSheet(s, vm, current.id, close)
-                is SheetSpec.DayEntryEdit -> DayEntrySheet(s, vm, current.id, current.date, close)
-                is SheetSpec.MemoEdit -> MemoSheet(s, vm, current.id, close)
-            }
+    sheet?.let { current -> SheetHost(s, vm, current, close = { sheet = null }) { calendarJump = it to System.nanoTime() } }
+}
+
+/** 還沒配對也能用的頁面（都有「還沒配對」的版本）；桌面的備忘錄小工具點了會到「memos」 */
+internal val UNPAIRED_ROUTES = setOf("profile", "memos", "fortune")
+
+/**
+ * 還沒配對（或解除配對後）：配對頁，加上配對前也能用的我的資料、備忘錄、星座運勢與御神籤。
+ * 解除配對後自己的備忘錄還在（桌面小工具也還看得到），這裡才打得開、改得了。
+ * 其他的通知（例如約會、心情）等配對好再打開。
+ */
+@Composable
+private fun UnpairedScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: () -> Unit) {
+    val s by vm.state.collectAsState()
+    val nav = rememberNavController()
+    var sheet by remember { mutableStateOf<SheetSpec?>(null) }
+    val open: (String) -> Unit = { nav.navigate(it) { launchSingleTop = true } }
+    val back: () -> Unit = { nav.popBackStack() }
+    LaunchedEffect(pendingRoute) { pendingRoute?.takeIf { it in UNPAIRED_ROUTES }?.let { open(it); routeHandled() } }
+    NavHost(
+        nav, "pairing", Modifier.fillMaxSize().systemBarsPadding(),
+        enterTransition = { fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 10 } },
+        exitTransition = { fadeOut(tween(160)) },
+        popEnterTransition = { fadeIn(tween(220)) },
+        popExitTransition = { fadeOut(tween(160)) + slideOutHorizontally(tween(220)) { it / 10 } },
+    ) {
+        composable("pairing") { PairingScreen(s, vm, open) }
+        composable("profile") { MyProfileScreen(s, vm, back) }
+        composable("memos") { MemosScreen(s, vm, back) { sheet = it } }
+        composable("fortune") { FortuneScreen(s, vm, back) }
+    }
+    sheet?.let { current -> SheetHost(s, vm, current, close = { sheet = null }) {} }
+}
+
+/** 打開的底部面板。[onEventSaved]：存好約會後日曆跳到那天 */
+@Composable
+private fun SheetHost(s: tw.xiaoliangkou.app.data.AppState, vm: AppViewModel, current: SheetSpec, close: () -> Unit, onEventSaved: (LocalDate) -> Unit) = key(current) {
+    // 會寫一大段字、放照片和語音的面板：還沒儲存就滑掉、點外面、按返回時先問一下
+    val guarded = current is SheetSpec.DayEntryEdit || current is SheetSpec.MemoEdit || current is SheetSpec.NoteEdit
+    XlkSheet(guarded, close) {
+        when (current) {
+            SheetSpec.Comfort -> ComfortSheet(s, vm, close)
+            is SheetSpec.GuessIt -> GuessSheet(s, vm, current.id, close)
+            is SheetSpec.ExpenseEdit -> ExpenseEditSheet(s, vm, current.id, close)
+            is SheetSpec.ExpenseView -> ExpenseViewSheet(s, current.id, close)
+            SheetSpec.ParseTest -> ParseTestSheet(vm, close)
+            SheetSpec.Avatar -> AvatarSheet(s, vm, close)
+            is SheetSpec.PlaceEdit -> PlaceSheet(s, vm, current.id, current.lat, current.lng, current.name, close)
+            is SheetSpec.EventEdit -> EventSheet(s, vm, current.id, current.date) { onEventSaved(current.date); close() }
+            is SheetSpec.AnniversaryEdit -> AnniversarySheet(s, vm, current.id, close)
+            is SheetSpec.PeriodEdit -> PeriodSheet(vm, current.forPartner, close)
+            is SheetSpec.NoteEdit -> NoteSheet(s, vm, current.id, close)
+            is SheetSpec.DayEntryEdit -> DayEntrySheet(s, vm, current.id, current.date, close)
+            is SheetSpec.MemoEdit -> MemoSheet(s, vm, current.id, close)
         }
     }
 }

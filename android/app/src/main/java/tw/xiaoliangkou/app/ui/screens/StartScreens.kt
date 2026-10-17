@@ -36,6 +36,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Favorite
@@ -43,6 +45,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.StickyNote2
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -54,6 +57,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,6 +90,7 @@ import tw.xiaoliangkou.app.ui.components.CuteField
 import tw.xiaoliangkou.app.ui.components.EmojiBubble
 import tw.xiaoliangkou.app.ui.components.HeartBeat
 import tw.xiaoliangkou.app.ui.components.LoadingDots
+import tw.xiaoliangkou.app.ui.components.MenuRow
 import tw.xiaoliangkou.app.ui.components.Note
 import tw.xiaoliangkou.app.ui.components.Pill
 import tw.xiaoliangkou.app.ui.components.ScreenHeader
@@ -342,12 +347,14 @@ fun RegisterScreen(vm: AppViewModel, back: () -> Unit, toLogin: () -> Unit) {
     }
 }
 
+/** [open]：打開配對前也能用的頁面（我的資料、備忘錄、星座運勢與御神籤）；null 就不顯示 */
 @Composable
-fun PairingScreen(s: AppState, vm: AppViewModel) {
+fun PairingScreen(s: AppState, vm: AppViewModel, open: ((String) -> Unit)? = null) {
     val context = LocalContext.current
-    var code by remember { mutableStateOf<String?>(null) }
-    var input by remember { mutableStateOf("") }
-    var since by remember { mutableStateOf(LocalDate.now().toString()) }
+    // 去看備忘錄、我的資料再回來，配對碼和打到一半的字都還在
+    var code by rememberSaveable { mutableStateOf<String?>(null) }
+    var input by rememberSaveable { mutableStateOf("") }
+    var since by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     val scope = rememberCoroutineScope()
     val prefs by vm.prefs.collectAsState()
     val p = prefs?.takeIf { it.configured && !s.demo }
@@ -410,6 +417,15 @@ fun PairingScreen(s: AppState, vm: AppViewModel) {
             }
         }
         item { Text("配對後兩個人各自決定要分享什麼，隨時可以暫停或解除。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
+        if (open != null) item {
+            val c = Cute.colors
+            CuteCard {
+                Text("配對前也可以先用", style = MaterialTheme.typography.titleMedium)
+                MenuRow(Icons.Rounded.Badge, c.me, c.meSoft, "我的資料", "暱稱、生日、血型…配對後對方看得到") { open("profile") }
+                MenuRow(Icons.Rounded.StickyNote2, c.peach, c.peach.copy(alpha = 0.25f), "備忘錄", "現在寫的只有你看得到，也可以放在桌面") { open("memos") }
+                MenuRow(Icons.Rounded.AutoAwesome, c.lavender, c.fertileSoft, "星座運勢與御神籤", "今天的運勢、抽一支籤") { open("fortune") }
+            }
+        }
         item { SoftButton("登出", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Logout) { scope.launch { vm.container.logout() } } }
     }
 }
