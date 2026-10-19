@@ -102,9 +102,10 @@ class ServerIntegrationTest {
     /** 個人資料、只有自己看得到的備註、日曆紀錄、備忘錄、照片與語音 */
     private suspend fun v2Features(zhe: Client, yu: Client): V2Files {
         val health = apiCall { anon().api.health() }
-        assertEquals(RemoteRepository.SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
+        assertEquals(RemoteRepository.DEVICE_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
         zhe.repo.refreshAll()
         assertFalse(zhe.repo.state.value.schemaOutdated)
+        assertFalse(zhe.repo.state.value.deviceInfoOutdated)
         val couple = zhe.repo.state.value.couple!!.id
 
         // 個人資料：對方看得到（app_me 的 partner.info），生日一起存
@@ -302,12 +303,18 @@ class ServerIntegrationTest {
             yu.repo.updateSharing(buildJsonObject { put("location", true); put("device", true); put("cycle", true) })
             eventually("分享變更通知") { yu.notes.any { it.kind == "sharing_changed" } }
             zhe.repo.reportDevice(buildJsonObject {
-                put("batteryLevel", 55); put("isCharging", false); put("network", "wifi"); put("stepsToday", 3210); put("deviceModel", "Pixel 8")
+                put("batteryLevel", 55); put("isCharging", false); put("network", "wifi"); put("stepsToday", 3210); put("deviceModel", "Google Pixel 8")
+                put("deviceName", "阿哲的 Pixel"); put("carrier", "中華電信")
             })
             zhe.repo.reportLocation(25.0330, 121.5654, 12f, 0f)
             eventually("對方畫面自動更新電量") { yu.repo.state.value.partnerStatus.device?.batteryLevel == 55 }
             eventually("對方在線上") { yu.repo.state.value.partnerOnline }
             assertEquals(25.0330, yu.repo.state.value.partnerStatus.location!!.lat, 1e-6)
+            yu.repo.state.value.partnerStatus.device!!.let {
+                assertEquals("阿哲的 Pixel", it.deviceName)
+                assertEquals("Google Pixel 8", it.deviceModel)
+                assertEquals("中華電信", it.carrier)
+            }
             zhe.repo.reportDevice(buildJsonObject { put("batteryLevel", 15); put("isCharging", false); put("network", "cellular") })
             eventually("低電量通知") { yu.notes.any { it.kind == "battery_low" && it.title.contains("15%") } }
 
