@@ -416,7 +416,8 @@ fun MediaPickerRow(
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // 字放大時一排放不下就換到下一排，按鈕不會被擠成「取 / 消」
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SoftButton("📷 照片", small = true, enabled = idle) {
+            // 錄音中不能選照片：先收起來，「停止」「取消」才放得下同一排
+            if (recording == null) SoftButton("📷 照片", small = true, enabled = idle) {
                 val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 when {
                     left <= 0 -> vm.toast("照片和語音最多 ${Limits.MEDIA} 個")

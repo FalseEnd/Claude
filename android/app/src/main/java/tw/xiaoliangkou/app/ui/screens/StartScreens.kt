@@ -95,6 +95,7 @@ import tw.xiaoliangkou.app.ui.components.Note
 import tw.xiaoliangkou.app.ui.components.Pill
 import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.SoftButton
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.ToggleRow
 import tw.xiaoliangkou.app.ui.components.bouncyClick
 import tw.xiaoliangkou.app.ui.theme.Cute
@@ -178,20 +179,22 @@ private fun InviteConfirmCard(invite: Pair<String, String>, savedUrl: String?, d
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         EmojiBubble("💌", Cute.colors.partnerSoft, 60.dp)
-        Text("要連到這個 Supabase 嗎？", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-        Text("收到連線邀請，確認是你們的再繼續喔", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        // 字放大時換成「要連到這個 / Supabase 嗎？」，不會只剩「嗎？」一行
+        TidyText("要連到這個 Supabase 嗎？", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        TidyText("收到連線邀請，確認是你們的再繼續喔", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (review.official) Cute.colors.meSoft else Cute.colors.periodSoft).padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(if (review.official) "☁️" else "❓", style = MaterialTheme.typography.titleLarge)
             Column(Modifier.weight(1f)) {
-                Text(review.host, style = MaterialTheme.typography.titleMedium, maxLines = 2)
+                // 網址太長時只在「.」後面換行（「qrstuvwxyz. / supabase.co」），不會切在「supabas / e」中間
+                Text(review.host.replace(".", ".\u200B"), style = MaterialTheme.typography.titleMedium, maxLines = 2)
                 Text(if (review.official) "Supabase 官方網址" else "不是 Supabase 官方網址", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         review.warnings.forEach { Note(it, "⚠️", Cute.colors.butter.copy(alpha = 0.3f)) }
-        if (review.warnings.isEmpty()) Note("按下去只會幫你填好設定，按「測試連線」成功後才會存起來", "🔒", MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f))
+        if (review.warnings.isEmpty()) Note("只會先填好設定，「測試連線」成功後才會儲存", "🔒", MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f))
         if (review.official) {
             CuteButton(if (demo) "離開示範，幫我填好" else "幫我填好", Modifier.fillMaxWidth(), icon = Icons.Rounded.Link, onClick = onConfirm)
             SoftButton("不要，取消", Modifier.fillMaxWidth(), onClick = onDismiss)
@@ -239,16 +242,17 @@ fun SupabaseSetupScreen(vm: AppViewModel, back: () -> Unit, next: (String) -> Un
             CuteCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     EmojiBubble("☁️", Cute.colors.meSoft, 44.dp)
-                    Column {
-                        Text("1. 貼上你們的 Supabase", style = MaterialTheme.typography.titleMedium)
-                        Text("在 Supabase 後台上方的 Connect（或 Project Settings › Data API／API Keys）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.weight(1f)) {
+                        TidyText("1. 貼上你們的 Supabase", style = MaterialTheme.typography.titleMedium)
+                        TidyText("在 Supabase 後台上方的 Connect（或 Project Settings › Data API／API Keys）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 CuteField(url, { url = it.trim() }, "Supabase 網址", placeholder = "https://xxxx.supabase.co", keyboard = KeyboardType.Uri,
                     supporting = if (dashboard) "這是後台的網址，會自動換成 $normalized ✨" else urlIssue, isError = urlIssue != null,
                     trailing = { PasteChip { paste { url = it } } })
-                CuteField(key, { key = Supabase.normalizeKey(it) }, "Supabase 金鑰（anon / publishable key）", placeholder = "sb_publishable_…",
-                    supporting = keyIssue ?: "公開用的金鑰，資料由資料庫的權限規則保護", isError = keyIssue != null,
+                // 標籤要短：浮到框線上時只有一行的位置，金鑰的種類寫在下面的說明
+                CuteField(key, { key = Supabase.normalizeKey(it) }, "Supabase 金鑰", placeholder = "sb_publishable_…",
+                    supporting = keyIssue ?: "Publishable key 或 anon key：公開用的金鑰，資料由資料庫的權限規則保護", isError = keyIssue != null,
                     trailing = { PasteChip { paste { key = Supabase.normalizeKey(it) } } })
                 if (unofficial) Note("這不是 Supabase 官方的網址（xxxx.supabase.co）。除非你們自己架了 Supabase，不然先確認一下，登入時密碼會送到這裡喔", "⚠️", Cute.colors.butter.copy(alpha = 0.3f))
                 CuteButton(if (tested) "連上了 ✅" else "測試連線", Modifier.fillMaxWidth(), icon = Icons.Rounded.Cloud,
@@ -271,12 +275,16 @@ fun SupabaseSetupScreen(vm: AppViewModel, back: () -> Unit, next: (String) -> Un
         item {
             CuteCard(color = Cute.colors.partnerSoft, onClick = { runCatching { uriHandler.openUri(Supabase.GUIDE_URL) } }) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("🐣", style = MaterialTheme.typography.headlineSmall)
+                    Text("🐣", style = MaterialTheme.typography.titleLarge)
+                    // 「看設定教學」放在說明下面（整張卡都能點），標題和說明用整個寬度，不會只剩「嗎？」一行
                     Column(Modifier.weight(1f)) {
-                        Text("還沒有 Supabase 專案嗎？", style = MaterialTheme.typography.titleSmall)
-                        Text("跟著設定教學一步一步來，免費、大約 10 分鐘 ☕ 另一半不用設定，等你傳邀請連結過去就好", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TidyText("還沒有 Supabase 專案嗎？", style = MaterialTheme.typography.titleSmall)
+                        TidyText("跟著設定教學一步一步來，免費、大約 10 分鐘 ☕ 另一半不用設定，等你傳邀請連結過去就好", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.AutoMirrored.Rounded.MenuBook, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Text("看設定教學", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        }
                     }
-                    Icon(Icons.AutoMirrored.Rounded.MenuBook, "設定教學", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -298,8 +306,8 @@ private fun AuthScaffold(
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 CoupleMascots(height = 110.dp)
-                Text(greeting, style = MaterialTheme.typography.headlineSmall)
-                Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                TidyText(greeting, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+                TidyText(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }
         }
         item { CuteCard(content = content) }
@@ -362,8 +370,8 @@ fun PairingScreen(s: AppState, vm: AppViewModel, open: ((String) -> Unit)? = nul
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 CoupleMascots(height = 120.dp, rightColor = MaterialTheme.colorScheme.outline)
-                Text("嗨 ${s.me?.displayName ?: ""}，來配對另一半吧", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-                Text("一個人產生配對碼，另一個人輸入", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TidyText("嗨 ${s.me?.displayName ?: ""}，來配對另一半吧", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+                TidyText("一個人產生配對碼，另一個人輸入", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }
         }
         if (p != null) item {
@@ -525,14 +533,17 @@ private fun Step(emoji: String, title: String, desc: String, ok: Boolean, enable
             .bouncyClick(enabled = enabled && !ok, onClick = onClick).padding(14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        EmojiBubble(emoji, if (ok) Cute.colors.card else MaterialTheme.colorScheme.primaryContainer, 46.dp)
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        EmojiBubble(emoji, if (ok) Cute.colors.card else MaterialTheme.colorScheme.primaryContainer, 44.dp)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // 「開啟」「先開位置」跟標題同一行，說明用整個寬度：字放大時不會被擠成一行五個字
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TidyText(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                if (ok) Text("✅", style = MaterialTheme.typography.titleMedium)
+                else Pill(if (enabled) "開啟" else "先開位置", if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TidyText(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (ok) Text("✅", style = MaterialTheme.typography.titleLarge)
-        else Pill(if (enabled) "開啟" else "先開位置", if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-            if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

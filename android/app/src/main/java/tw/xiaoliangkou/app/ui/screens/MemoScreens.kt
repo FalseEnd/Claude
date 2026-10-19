@@ -8,6 +8,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -91,6 +93,7 @@ import tw.xiaoliangkou.app.ui.components.VoiceDraft
 import tw.xiaoliangkou.app.ui.components.bouncyClick
 import tw.xiaoliangkou.app.ui.components.formatDuration
 import tw.xiaoliangkou.app.ui.components.rememberUploads
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.theme.Cute
 import tw.xiaoliangkou.app.widget.MemoWidget
 import tw.xiaoliangkou.app.widget.MemoWidgetSnapshot
@@ -174,6 +177,7 @@ fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
 }
 
 /** 一張便利貼：第一張照片、標題、內容、語音，下面寫誰的、誰看得到、什麼時候改的 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MemoCard(m: Memo, s: AppState, vm: AppViewModel, onClick: () -> Unit) {
     val shape = RoundedCornerShape(22.dp)
@@ -205,7 +209,8 @@ private fun MemoCard(m: Memo, s: AppState, vm: AppViewModel, onClick: () -> Unit
             }
             Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (m.title.isNotBlank()) {
-                    Text(
+                    // 標題換行時挑空白、標點的地方換（「週末採買清單 / 🛒」，不會變成「週末採買清 / 單」）
+                    TidyText(
                         m.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         // 留位置給右上角的圖釘
                         modifier = Modifier.padding(end = if (m.pinned && photos.isEmpty()) 14.dp else 0.dp),
@@ -227,14 +232,23 @@ private fun MemoCard(m: Memo, s: AppState, vm: AppViewModel, onClick: () -> Unit
                             .padding(horizontal = 8.dp, vertical = 3.dp),
                     )
                 }
-                Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    if (!mine) Avatar(s.partnerName, Cute.colors.partner, 18.dp, image = s.partner?.avatarUrl)
+                // 誰的、什麼時候：放不下同一行時，時間換到下一行（不會擠成「🔒 …」）
+                FlowRow(
+                    Modifier.fillMaxWidth().padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(Modifier.align(Alignment.CenterVertically), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        if (!mine) Avatar(s.partnerName, Cute.colors.partner, 18.dp, image = s.partner?.avatarUrl)
+                        Text(
+                            if (!mine) s.partnerName else if (m.shared) "👫 共用" else "🔒 只有我",
+                            style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Text(
-                        if (!mine) s.partnerName else if (m.shared) "👫 共用" else "🔒 只有我",
-                        style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
+                        Fmt.rel(m.time), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                        modifier = Modifier.align(Alignment.CenterVertically),
                     )
-                    Text(Fmt.rel(m.time), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
             }
         }

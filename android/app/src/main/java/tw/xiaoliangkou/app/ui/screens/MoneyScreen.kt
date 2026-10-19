@@ -386,7 +386,7 @@ private fun PaymentLogRow(e: tw.xiaoliangkou.app.service.AutoBookkeeping.Entry, 
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(color).bouncyClick(onClick = onClick).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(
+        TidyText(
             "$emoji ${e.outcome} · ${e.app}${e.title.takeIf { it.isNotBlank() && it != e.app }?.let { "（$it）" }.orEmpty()} · ${Fmt.rel(java.time.Instant.ofEpochMilli(e.at))}",
             style = MaterialTheme.typography.labelLarge,
         )

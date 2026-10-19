@@ -18,6 +18,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -244,7 +245,7 @@ class ProfileScreensTest {
     @Test fun partnerPhoneOpensDialer() {
         var opened: SheetSpec? = null
         compose.setContent { XlkTheme { PartnerProfileScreen(s, vm, {}) { opened = it } } }
-        compose.onNodeWithText("撥打").performClick()
+        compose.onNodeWithContentDescription("撥打電話").performClick()
         val intent = shadowOf(RuntimeEnvironment.getApplication()).nextStartedActivity
         assertNotNull(intent)
         assertEquals(Intent.ACTION_DIAL, intent.action)

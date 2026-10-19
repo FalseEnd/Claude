@@ -380,12 +380,13 @@ fun CuteField(
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
-        label = { Text(label) },
+        // 標籤浮到框線上時只有一行的位置：換成兩行會蓋住框線和輸入的字，所以一行放不下就「…」（標籤請寫短，說明放 supporting）
+        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         trailingIcon = trailing,
         placeholder = placeholder?.let { { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) } },
         singleLine = singleLine,
         isError = isError,
-        supportingText = supporting?.let { { Text(it) } },
+        supportingText = supporting?.let { { TidyText(it) } },
         keyboardOptions = KeyboardOptions(keyboardType = keyboard),
         visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         shape = RoundedCornerShape(18.dp),

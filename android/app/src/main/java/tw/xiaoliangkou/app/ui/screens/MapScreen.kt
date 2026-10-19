@@ -17,6 +17,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -112,6 +114,7 @@ import tw.xiaoliangkou.app.ui.components.Note
 import tw.xiaoliangkou.app.ui.components.Pill
 import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.SectionTitle
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.bouncyClick
 import tw.xiaoliangkou.app.ui.components.findActivity
 import tw.xiaoliangkou.app.ui.components.openAppSettings
@@ -407,27 +410,27 @@ private fun SearchMessage(text: String, onDismiss: () -> Unit) {
     }
 }
 
-/** 搜尋到的地點：顯示名稱，可以直接在這裡新增標點 */
+/** 搜尋到的地點：顯示名稱和地址，可以直接在這裡新增標點 */
 @Composable
 private fun PinCard(pin: PlaceHit, onAdd: () -> Unit, onClose: () -> Unit) {
     Row(
         Modifier.padding(top = 8.dp).fillMaxWidth().shadow(6.dp, RoundedCornerShape(22.dp)).clip(RoundedCornerShape(22.dp)).background(Cute.colors.card)
-            .padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("📌")
-        Column(Modifier.weight(1f)) {
-            Text(pin.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("📌", Modifier.padding(top = 2.dp))
+        // 「新增標點」放在地址下面：名稱、地址用整個寬度，才認得出找到的是哪裡
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(pin.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (pin.subtitle.isNotEmpty()) {
-                Text(pin.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(pin.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
+            Text(
+                "新增標點", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1,
+                modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primaryContainer).bouncyClick(onClick = onAdd)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
         }
-        Text(
-            "新增標點", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1,
-            modifier = Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primaryContainer).bouncyClick(onClick = onAdd)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        )
         Icon(
             Icons.Rounded.Close, "不要標出這個地點", tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(32.dp).clip(CircleShape).bouncyClick(onClick = onClose).padding(6.dp),
@@ -442,23 +445,24 @@ private fun PartnerLine(s: AppState, vm: AppViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Avatar(s.partnerName, Cute.colors.partner, 40.dp, image = s.partner?.avatarUrl)
                 Column(Modifier.weight(1f)) {
+                    // 字放大時換成「小雨 在 / 小雨公司」「距離你 2.4 公里 · / 更新於 剛剛」，不會切在詞中間
                     if (s.partnerSharing?.locationLive == true) {
-                        Text("${s.partnerName} ${Derived.partnerWhere(s)}", style = MaterialTheme.typography.titleMedium)
-                        Text(
+                        TidyText("${s.partnerName} ${Derived.partnerWhere(s)}", style = MaterialTheme.typography.titleMedium)
+                        TidyText(
                             listOfNotNull(Derived.distanceToPartner(s)?.let { "距離你 ${Fmt.distance(it)}" }, "更新於 ${Fmt.rel(s.partnerStatus.location?.let { it.recordedAt ?: it.updatedAt }?.toInstantOrNull())}").joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
-                        Text(s.partnerName, style = MaterialTheme.typography.titleMedium)
-                        Text(if (s.partnerSharing?.paused == true) "暫停分享中 🙈" else "沒有分享位置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TidyText(s.partnerName, style = MaterialTheme.typography.titleMedium)
+                        TidyText(if (s.partnerSharing?.paused == true) "暫停分享中 🙈" else "沒有分享位置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (s.partnerSharing?.locationLive == true) {
                     Text(
-                        "找找看", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                        "找找看", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1,
                         modifier = Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primaryContainer)
                             .bouncyClick { vm.act { r -> vm.toast(if (r.locatePartner()) "已請對方的手機回報位置 📍" else "對方的手機目前不在線上") } }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
             }
@@ -466,6 +470,7 @@ private fun PartnerLine(s: AppState, vm: AppViewModel) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlaceRow(s: AppState, p: Place, onClick: () -> Unit) {
     val watch = when (p.watchUser) { null -> "偵測兩人"; s.myId -> "偵測我"; else -> "偵測 ${s.partnerName}" }
@@ -477,11 +482,17 @@ private fun PlaceRow(s: AppState, p: Place, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         EmojiBubble(placeEmoji(p.icon), if (p.watchUser == s.myId) Cute.colors.meSoft else Cute.colors.partnerSoft, 44.dp)
-        Column(Modifier.weight(1f)) {
-            Text(p.name, style = MaterialTheme.typography.titleSmall)
-            Text("$watch · 半徑 ${p.radiusM} 公尺 · ${flags}通知", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // 「在這」跟在名稱後面（放不下就換到下一行），偵測誰、半徑、通知用整個寬度，放不下就換行
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(p.name, Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleSmall)
+                if (here) Pill("${s.partnerName} 在這 💗", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.align(Alignment.CenterVertically))
+            }
+            TidyText(
+                "$watch · 半徑 ${p.radiusM} 公尺 · ${flags}通知", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
         }
-        if (here) Pill("${s.partnerName} 在這 💗", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
     }
 }
 

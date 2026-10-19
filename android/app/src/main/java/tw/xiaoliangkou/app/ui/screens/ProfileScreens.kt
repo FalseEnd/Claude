@@ -49,6 +49,8 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -117,6 +119,7 @@ import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.bouncyClick
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.Instant
 import java.time.LocalDate
@@ -513,7 +516,7 @@ private fun Completion(filled: Int, total: Int, partner: String) {
             progress = { progress }, modifier = Modifier.fillMaxWidth().height(8.dp),
             color = Cute.colors.me, trackColor = Cute.colors.card, strokeCap = StrokeCap.Round, gapSize = 0.dp, drawStopIndicator = {},
         )
-        Text(
+        TidyText(
             if (filled >= total) "全部填好了，$partner 一定很開心 🥰" else "還有 ${total - filled} 項沒填，多寫一點讓 $partner 更懂你 💡",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -577,7 +580,7 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
                         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) { chips.forEach { Pill(it, c.card) } }
-                    if (sign != null) Text(
+                    if (sign != null) TidyText(
                         "${sign.name}的$name：${sign.trait}，帶給你滿滿的${sign.gift}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
                     )
@@ -603,10 +606,11 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
                 IconButton(onClick = { copyText(context, "電話", phone); vm.toast("已複製電話號碼") }) {
                     Icon(Icons.Rounded.ContentCopy, "複製電話", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
-                CuteButton(
-                    "撥打", Modifier.minimumInteractiveComponentSize(), icon = Icons.Rounded.Call, small = true,
-                    color = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary,
-                ) { dial(phone) }
+                // 圓形的撥打鍵（整列也可以點）：號碼才有地方完整顯示，字放大也不會變成「0912-3…」
+                FilledIconButton(
+                    onClick = { dial(phone) }, modifier = Modifier.size(44.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary),
+                ) { Icon(Icons.Rounded.Call, "撥打電話") }
             }
         }
         if (tiles.isNotEmpty()) {
@@ -695,8 +699,9 @@ private fun BirthdayCountdown(name: String, birthday: LocalDate, today: LocalDat
     ) {
         EmojiBubble(if (occ.daysLeft == 0) "🥳" else "🎂", Cute.colors.partnerSoft)
         Column(Modifier.weight(1f)) {
-            Text("生日 ${Fmt.md(occ.date)}（${Fmt.weekday(occ.date)}）", style = MaterialTheme.typography.titleSmall)
-            Text(
+            // 星期用短的「（一）」：字放大時標題才不會被右邊的「還有 37 天」擠成兩行
+            TidyText("生日 ${Fmt.md(occ.date)}（${Fmt.weekday(occ.date).removePrefix("週")}）", style = MaterialTheme.typography.titleSmall)
+            TidyText(
                 when {
                     occ.daysLeft == 0 -> "今天滿 ${occ.years} 歲，快去跟 $name 說生日快樂！"
                     soon -> "滿 ${occ.years} 歲 · 可以開始準備驚喜了 🎁"
@@ -704,9 +709,12 @@ private fun BirthdayCountdown(name: String, birthday: LocalDate, today: LocalDat
                 },
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // 倒數放在說明下面：標題、說明用整個寬度，字放大也不會被擠成好幾行
+            Box(Modifier.padding(top = 4.dp)) {
+                if (occ.daysLeft == 0) HeartBeat { Pill("就是今天 🎉", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary) }
+                else Pill(if (occ.daysLeft == 1) "明天" else "還有 ${occ.daysLeft} 天", if (soon) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+            }
         }
-        if (occ.daysLeft == 0) HeartBeat { Pill("就是今天 🎉", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary) }
-        else Pill(if (occ.daysLeft == 1) "明天" else "還有 ${occ.daysLeft} 天", if (soon) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
     }
 }
 

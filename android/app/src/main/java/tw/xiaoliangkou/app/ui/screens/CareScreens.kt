@@ -61,6 +61,7 @@ import tw.xiaoliangkou.app.ui.components.StatTile
 import tw.xiaoliangkou.app.ui.components.ToggleRow
 import tw.xiaoliangkou.app.ui.components.Wiggle
 import tw.xiaoliangkou.app.ui.components.bouncyClick
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.LocalDate
 
@@ -217,7 +218,7 @@ fun CycleScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         StatTile("下次經期", Fmt.md(pr.nextStart), Modifier.weight(1f))
-                        StatTile("本週期排卵日", Fmt.md(pr.ovulation), Modifier.weight(1f))
+                        StatTile("排卵日", Fmt.md(pr.ovulation), Modifier.weight(1f))
                         StatTile("易孕期", "${Fmt.md(pr.fertileStart)}–${Fmt.md(pr.fertileEnd)}", Modifier.weight(1f))
                     }
                     if (pr.stats.irregular) Note("最近幾個週期長短差比較多，預測可能不準。", "🤔")
@@ -226,14 +227,15 @@ fun CycleScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
                         // 日期看不懂（例如資料庫裡的 infinity）就當作不在經期中，不要讓畫面當掉
                         val inPeriod = last != null && last.endDate == null && Fmt.parseDate(last.startDate)?.let { it <= today } == true
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (inPeriod && last != null) CuteButton("經期結束了", Modifier.weight(1f), icon = Icons.Rounded.Check) {
+                            // 主要的按鈕寬一點：字放大時「今天開始了」才不會被拆成兩行
+                            if (inPeriod && last != null) CuteButton("經期結束了", Modifier.weight(1.5f), icon = Icons.Rounded.Check) {
                                 vm.act("已記錄經期結束") { it.updatePeriod(last.id, buildJsonObject { put("endDate", today.toString()) }) }
-                            } else CuteButton("今天開始了", Modifier.weight(1f), icon = Icons.Rounded.WaterDrop) {
+                            } else CuteButton("今天開始了", Modifier.weight(1.5f), icon = Icons.Rounded.WaterDrop) {
                                 vm.act("已記錄，預測更新了 🌸") { it.addPeriod(!mine, today.toString(), null) }
                             }
                             SoftButton("補記", Modifier.weight(1f)) { sheet(SheetSpec.PeriodEdit(!mine)) }
                         }
-                        if (!mine) Text("${s.partnerName} 允許你幫忙記錄，記錄後對方會看到。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (!mine) TidyText("${s.partnerName} 允許你幫忙記錄，記錄後對方會看到。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -304,7 +306,13 @@ private fun CareTips(pr: Cycle.Prediction) {
     }
     CuteCard(color = Cute.colors.partnerSoft) {
         Text("貼心提醒 💗", style = MaterialTheme.typography.titleMedium)
-        tips.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        // 表情符號單獨一欄：換行時第二行對齊文字，不會跑到表情底下
+        tips.forEach { tip ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(tip.substringBefore(' '), style = MaterialTheme.typography.bodyMedium)
+                TidyText(tip.substringAfter(' '), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
     }
 }
 
