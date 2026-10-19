@@ -27,7 +27,9 @@ import androidx.compose.ui.unit.dp
 import com.google.android.gms.auth.api.identity.GetPhoneNumberHintIntentRequest
 import com.google.android.gms.auth.api.identity.Identity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import tw.xiaoliangkou.app.data.PhoneNumbers
 import tw.xiaoliangkou.app.ui.AppViewModel
@@ -81,11 +83,14 @@ fun SimNumberButton(vm: AppViewModel, onNumber: (String) -> Unit, modifier: Modi
     }
 
     SoftButton("從 SIM 卡帶入", modifier, icon = Icons.Rounded.SimCard, small = true) {
-        runCatching {
-            Identity.getSignInClient(context).getPhoneNumberHintIntent(GetPhoneNumberHintIntentRequest.builder().build())
-                .addOnSuccessListener { pi -> runCatching { hint.launch(IntentSenderRequest.Builder(pi).build()) }.onFailure { fallback() } }
-                .addOnFailureListener { fallback() }
-        }.onFailure { fallback() }
+        // 在畫面的 scope 裡等 Google 回應：等的時候離開畫面就一起取消，不會對已經關掉的畫面跳視窗
+        scope.launch {
+            val pi = runCatching {
+                Identity.getSignInClient(context).getPhoneNumberHintIntent(GetPhoneNumberHintIntentRequest.builder().build()).await()
+            }.getOrNull()
+            ensureActive()
+            if (pi == null || runCatching { hint.launch(IntentSenderRequest.Builder(pi).build()) }.isFailure) fallback()
+        }
     }
 
     if (choices.isNotEmpty()) {

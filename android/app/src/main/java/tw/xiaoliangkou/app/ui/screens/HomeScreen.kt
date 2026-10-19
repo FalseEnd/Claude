@@ -58,6 +58,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -257,15 +260,19 @@ private fun PartnerPhone(s: AppState, vm: AppViewModel) {
 @Composable
 private fun MyPhone(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
     val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val myId = s.myId.orEmpty()
-    LaunchedEffect(myId) {
+    LaunchedEffect(myId, lifecycle) {
         // 示範模式（和還沒登入）用示範的手機，不用一直讀
         if (vm.repo.value !is RemoteRepository) return@LaunchedEffect
-        while (true) {
-            val r = withContext(Dispatchers.IO) { DeviceProbe.read(context) }
-            val steps = vm.container.settings.stepsSoFar(LocalDate.now().toEpochDay())
-            vm.repo.value?.setMyDevice(DeviceProbe.status(myId, r, steps))
-            delay(30_000)
+        // 只在看得到畫面時讀：切到背景就停，回到 App 馬上讀一次
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                val r = withContext(Dispatchers.IO) { DeviceProbe.read(context) }
+                val steps = vm.container.settings.stepsSoFar(LocalDate.now().toEpochDay())
+                vm.repo.value?.setMyDevice(DeviceProbe.status(myId, r, steps))
+                delay(30_000)
+            }
         }
     }
     val d = s.myDevice
