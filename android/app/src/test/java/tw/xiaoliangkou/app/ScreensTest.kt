@@ -58,8 +58,8 @@ import tw.xiaoliangkou.app.data.Avatars
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.data.PlaceHit
-import tw.xiaoliangkou.app.data.SettingsStore
 import tw.xiaoliangkou.app.data.Session
+import tw.xiaoliangkou.app.data.SettingsStore
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.SheetSpec
 import tw.xiaoliangkou.app.ui.screens.AccountScreen

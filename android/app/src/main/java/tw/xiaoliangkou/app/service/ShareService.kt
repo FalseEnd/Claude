@@ -2,12 +2,6 @@ package tw.xiaoliangkou.app.service
 
 import android.Manifest
 import android.annotation.SuppressLint
-import tw.xiaoliangkou.app.core.StepCounter
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.Mutex
-import java.time.ZoneId
-import java.util.UUID
-import android.os.SystemClock
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -22,11 +16,9 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.net.ConnectivityManager
 import android.net.Network
-import android.net.NetworkCapabilities
-import android.os.BatteryManager
 import android.os.Build
 import android.os.Looper
-import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
@@ -47,14 +39,19 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import tw.xiaoliangkou.app.container
 import tw.xiaoliangkou.app.core.Geo
+import tw.xiaoliangkou.app.core.StepCounter
 import tw.xiaoliangkou.app.data.RealtimeClient
 import tw.xiaoliangkou.app.data.RemoteRepository
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.util.UUID
 
 /**
  * 常駐的前景服務（登入 Supabase 後才啟動）：
@@ -269,43 +266,31 @@ class ShareService : LifecycleService() {
     private suspend fun reportDevice() {
         val repo = container.repo.value as? RemoteRepository ?: return
         val st = repo.state.value
+        val r = DeviceProbe.read(this)
+        val steps = stepTotal?.let { container.settings.stepsToday(stepReading(it)) }
+        // 首頁「我的手機」：自己的狀態直接放進畫面，沒分享也看得到
+        repo.setMyDevice(DeviceProbe.status(st.myId.orEmpty(), r, steps))
         if (st.mySharing?.deviceLive != true || !st.paired) return
-        val battery = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val level = battery?.let { b ->
-            val l = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-            val scale = b.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
-            if (l >= 0) (l * 100 / scale) else null
-        }
-        val status = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-        val cm = getSystemService(ConnectivityManager::class.java)
-        val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
-        val network = when {
-            caps == null -> "offline"
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
-            else -> "cellular"
-        }
-        // Wi-Fi 名稱不上傳：連 Wi-Fi 時用「目前所在的標點」當作名稱（例如「家裡」）
+        // Wi-Fi 名稱不上傳：連 Wi-Fi 時用「目前所在的標點」當作名稱（例如「家裡」），沒分享位置就不用
         val here = st.myLocation?.takeIf { st.mySharing?.locationLive == true }?.let { loc ->
             st.places.filter { it.watchUser == null || it.watchUser == st.myId }
                 .firstOrNull { Geo.distance(it.lat, it.lng, loc.lat, loc.lng) <= it.radiusM }?.name
         }
-        val nm = getSystemService(NotificationManager::class.java)
-        val silenced = nm != null && nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL
-        val interactive = getSystemService(PowerManager::class.java)?.isInteractive == true
-        val steps = stepTotal?.let { container.settings.stepsToday(stepReading(it)) }
         runCatching {
             repo.reportDevice(buildJsonObject {
-                if (level != null) put("batteryLevel", level)
-                put("isCharging", charging)
-                put("network", network)
+                r.batteryLevel?.let { put("batteryLevel", it) }
+                put("isCharging", r.isCharging)
+                put("network", r.network)
                 // Wi-Fi 在標點裡顯示標點名稱，其他時候顯示網速（系統估計的下載速度，行動網路也有）
-                val label = if (network == "wifi" && here != null) here else caps?.let { Net.speedLabel(it.linkDownstreamBandwidthKbps) }
+                val label = if (r.network == "wifi" && here != null) here else r.speed
                 if (label != null) put("networkLabel", label)
-                put("notificationsSilenced", silenced)
+                put("notificationsSilenced", r.silenced)
                 if (steps != null) put("stepsToday", steps)
-                if (interactive) put("lastActiveAt", Instant.now().toString())
-                put("deviceModel", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
+                if (r.interactive) put("lastActiveAt", Instant.now().toString())
+                put("deviceModel", r.deviceModel)
+                // 舊的資料庫不認得這兩個欄位，會直接忽略
+                r.deviceName?.let { put("deviceName", it) }
+                r.carrier?.let { put("carrier", it) }
             })
         }
     }

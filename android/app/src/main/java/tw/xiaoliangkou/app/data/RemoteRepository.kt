@@ -166,11 +166,11 @@ class RemoteRepository(
         }
     }
 
-    /** 資料庫有沒有跑過 upgrade-v2.sql：app_health 的 schema 要 >= 2 */
+    /** 資料庫有沒有跑過 upgrade-v2.sql：app_health 的 schema 要 >= 2（3 才有手機名稱與電信） */
     private suspend fun checkSchema() {
         val h = apiCall { api.health() }
         val schema = (h["schema"] as? JsonPrimitive)?.intOrNull ?: 0
-        _state.update { it.copy(schemaOutdated = schema < SCHEMA) }
+        _state.update { it.copy(schemaOutdated = schema < SCHEMA, dbSchema = schema) }
     }
 
     /**
@@ -199,11 +199,14 @@ class RemoteRepository(
      * 還是舊的資料庫的話只多一次 app_health，同時只會有一個在檢查
      */
     fun recheckSchema() {
-        if (!_state.value.schemaOutdated || refreshing.get() > 0 || !rechecking.compareAndSet(false, true)) return
+        val st = _state.value
+        val behind = st.schemaOutdated || st.deviceInfoOutdated
+        if (!behind || refreshing.get() > 0 || !rechecking.compareAndSet(false, true)) return
         scope.launch {
             try {
                 checkSchema()
-                if (!_state.value.schemaOutdated) refreshAll()
+                // 剛跑完 upgrade-v2.sql：新功能的資料重新載入（只差手機名稱、電信的話不用，對方下次回報就有）
+                if (st.schemaOutdated && !_state.value.schemaOutdated) refreshAll()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -527,11 +530,15 @@ class RemoteRepository(
         return (row["id"] as? JsonPrimitive)?.contentOrNull
     }
 
+    override fun setMyDevice(d: DeviceStatus) = _state.update { it.copy(myDevice = d) }
+
     override fun setMyLocation(lat: Double, lng: Double) = _state.update { it.copy(myLocation = LatLng(lat, lng)) }
 
     companion object {
         /** 這版 App 需要的資料庫版本（app_health 的 schema） */
         const val SCHEMA = 2
+        /** 有手機名稱與電信的資料庫版本：沒有也沒關係，只是對方看不到 */
+        const val DEVICE_SCHEMA = 3
 
         /** 舊的資料庫：暱稱、生日存好了，身高、星座這些還存不進去 */
         const val PROFILE_INFO_OUTDATED = "暱稱和生日存好了；其他資料要等資料庫更新才存得進去（說明在「我的 › Supabase 與帳號」）"

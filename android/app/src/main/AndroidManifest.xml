@@ -17,6 +17,8 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <!-- 日曆紀錄、備忘錄的語音 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 我的資料：沒有 Google 服務時，從 SIM 卡讀自己的電話號碼（使用者按了才問） -->
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
 
     <application
         android:name=".XlkApp"

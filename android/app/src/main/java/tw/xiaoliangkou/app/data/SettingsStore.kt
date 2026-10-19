@@ -10,8 +10,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
-import tw.xiaoliangkou.app.ui.StatusText
 import tw.xiaoliangkou.app.core.StepCounter
+import tw.xiaoliangkou.app.ui.StatusText
 
 private val Context.dataStore by preferencesDataStore("xiaoliangkou")
 
@@ -123,6 +123,15 @@ class SettingsStore(private val context: Context) {
 
     suspend fun insidePlaces(): Set<String> = context.dataStore.data.first()[K.insidePlaces] ?: emptySet()
     suspend fun setInsidePlaces(ids: Set<String>) = context.dataStore.edit { it[K.insidePlaces] = ids }
+
+    /** 今天到目前為止的步數（背景服務最後一次讀到的）；今天還沒讀到是 null */
+    suspend fun stepsSoFar(day: Long): Int? {
+        val p = context.dataStore.data.first()
+        if (p[K.stepDay] != day) return null
+        val base = p[K.stepBase] ?: return null
+        val last = p[K.stepLast] ?: return null
+        return ((p[K.stepCarry] ?: 0) + (last - base).coerceAtLeast(0)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
 
     /** 今日步數（換算方式見 [StepCounter]） */
     suspend fun stepsToday(r: StepCounter.Reading): Int {

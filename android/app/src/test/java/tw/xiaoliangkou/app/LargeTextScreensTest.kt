@@ -27,6 +27,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
@@ -274,7 +277,7 @@ class LargeTextScreensTest {
      * 使用者截圖裡的首頁：正式使用（不是示範）、對方用行動網路（約 30 Mbps）、手機型號很長、
      * 還沒有位置、今天的步數沒有回報。
      */
-    private fun phoneState(me: String, partner: String, model: String, battery: Int, screenMinutesAgo: Long): AppState {
+    private fun phoneState(me: String, partner: String, model: String, battery: Int, screenMinutesAgo: Long, name: String? = null, carrier: String? = null): AppState {
         val now = Instant.now()
         return s.copy(
             demo = false,
@@ -284,7 +287,7 @@ class LargeTextScreensTest {
                 DeviceStatus(
                     DemoRepository.PARTNER, batteryLevel = battery, isCharging = false, network = "cellular", networkLabel = "約 30 Mbps",
                     notificationsSilenced = false, stepsToday = null, lastActiveAt = now.minusSeconds(screenMinutesAgo * 60).toString(),
-                    deviceModel = model, updatedAt = now.minusSeconds(120).toString(),
+                    deviceModel = model, updatedAt = now.minusSeconds(120).toString(), deviceName = name, carrier = carrier,
                 ),
                 location = null,
             ),
@@ -398,6 +401,22 @@ class LargeTextScreensTest {
     @Config(qualifiers = TALL)
     @Test fun homePhoneAsusLight() = shot("19_home_phone_asus") {
         HomeScreen(phoneState("梓梓的小宝", "梓梓", "asus ASUSAI2501C", 76, 3), vm, {}, {})
+    }
+
+    /** 手機名稱、電信（資料庫更新後）：「ROG Phone 9 · asus ASUSAI2501C」「中華電信」 */
+    @Config(qualifiers = TALL)
+    @Test fun homePhoneNameCarrier() = shot("19b_home_phone_name_carrier") {
+        HomeScreen(phoneState("梓梓的小宝", "梓梓", "asus ASUSAI2501C", 76, 3, name = "梓梓的 ROG Phone 9", carrier = "中華電信"), vm, {}, {})
+    }
+
+    /** 我的手機：上面切到「我」 */
+    @Config(qualifiers = TALL)
+    @Test fun homeMyPhone() {
+        show { HomeScreen(phoneState("梓梓", "梓梓的小宝", "OPPO CPH2689", 55, 2, name = "OPPO Find X8 Pro", carrier = "遠傳電信"), vm, {}, {}) }
+        compose.onNode(hasText("我") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)).performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        assertTrue("看得到自己的手機", has("我的手機"))
+        capture("19c_home_my_phone")
     }
 
     /** 我暫停分享（上面的提醒＋恢復按鈕）、對方也暫停了（卡片裡的說明） */
@@ -541,6 +560,14 @@ class LargeTextScreensTest {
     @Test fun accountUpgrade() {
         configured()
         shot("43_account_upgrade") { AccountScreen(s.copy(schemaOutdated = true), vm) {} }
+    }
+
+    /** 跑過舊的 upgrade-v2.sql：只差手機名稱和電信，溫和地提醒再跑一次 */
+    @Config(qualifiers = TALL)
+    @Test fun accountMinorUpgrade() {
+        configured()
+        shot("43b_account_minor_upgrade") { AccountScreen(s.copy(dbSchema = 2), vm) {} }
+        assertTrue(has("可以再更新一次資料庫"))
     }
 
     // ================================================================ 地圖

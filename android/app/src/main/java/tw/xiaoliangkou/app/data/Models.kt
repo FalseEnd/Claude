@@ -62,6 +62,10 @@ import java.time.ZoneId
     val lastActiveAt: String? = null,
     val deviceModel: String? = null,
     val updatedAt: String? = null,
+    /** 手機名稱（設定 › 關於手機 › 裝置名稱），資料庫 schema 3 起才有 */
+    val deviceName: String? = null,
+    /** 電信（中華電信、台灣大哥大…），沒有 SIM 卡是 null */
+    val carrier: String? = null,
 )
 
 @Serializable data class LocationDto(

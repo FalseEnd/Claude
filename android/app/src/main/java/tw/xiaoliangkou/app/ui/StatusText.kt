@@ -75,7 +75,8 @@ object StatusText {
                 }
                 when (d.network) {
                     "wifi" -> add(Item(NETWORK, "📶", "Wi-Fi" + d.networkLabel?.let { "（$it）" }.orEmpty()))
-                    "cellular" -> add(Item(NETWORK, "📶", "行動網路" + d.networkLabel?.let { "（$it）" }.orEmpty()))
+                    // 有電信就寫電信（「中華電信（約 30 Mbps）」），舊版 App 沒回報電信時寫「行動網路」
+                    "cellular" -> add(Item(NETWORK, "📶", (d.carrier ?: "行動網路") + d.networkLabel?.let { "（$it）" }.orEmpty()))
                     "offline" -> add(Item(NETWORK, "📵", "沒有網路"))
                 }
                 d.stepsToday?.let { add(Item(STEPS, "👣", "${Fmt.int(it)} 步")) }

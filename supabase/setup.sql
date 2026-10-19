@@ -2044,6 +2044,27 @@ grant execute on function public.app_notes(jsonb), public.app_save_note(jsonb), 
   public.app_day_entries(jsonb), public.app_save_day_entry(jsonb), public.app_delete_day_entry(jsonb),
   public.app_memos(jsonb), public.app_save_memo(jsonb), public.app_delete_memo(jsonb)
   to authenticated;
-notify pgrst, 'reload schema';
+notify pgrst, 'reload schema';alter table public.device_status add column if not exists device_name text check (char_length(device_name) <= 60);
+alter table public.device_status add column if not exists carrier text check (char_length(carrier) <= 60);
+create or replace function public.app_report_device(jsonb default '{}') returns jsonb
+language plpgsql set search_path = public set timezone to 'UTC' as $$
+begin
+  insert into device_status (user_id, battery_level, is_charging, network, network_label, notifications_silenced,
+                             steps_today, last_active_at, device_model, device_name, carrier, updated_at)
+  values (auth.uid(), ($1->>'batteryLevel')::numeric::smallint, ($1->>'isCharging')::boolean, $1->>'network',
+          $1->>'networkLabel', ($1->>'notificationsSilenced')::boolean, ($1->>'stepsToday')::numeric::integer,
+          nullif($1->>'lastActiveAt', '')::timestamptz, $1->>'deviceModel',
+          left(nullif(btrim($1->>'deviceName'), ''), 60), left(nullif(btrim($1->>'carrier'), ''), 60), now())
+  on conflict (user_id) do update set
+    battery_level = excluded.battery_level, is_charging = excluded.is_charging, network = excluded.network,
+    network_label = excluded.network_label, notifications_silenced = excluded.notifications_silenced,
+    steps_today = excluded.steps_today, last_active_at = coalesce(excluded.last_active_at, device_status.last_active_at),
+    device_model = excluded.device_model, device_name = excluded.device_name, carrier = excluded.carrier, updated_at = now();
+  return jsonb_build_object('ok', true);
+end $$;
+create or replace function public.app_health(jsonb default '{}') returns jsonb
+language sql stable set search_path = public set timezone to 'UTC' as $$
+  select jsonb_build_object('ok', true, 'time', now(), 'schema', 3)
+$$;
 select '設定完成 🎉 回到說明文件做第 3 步' as "小倆口";
 commit;

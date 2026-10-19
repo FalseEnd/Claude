@@ -44,7 +44,14 @@ data class AppState(
     val memosLoaded: Boolean = false,
     /** 遠端資料庫還沒跑 upgrade-v2.sql */
     val schemaOutdated: Boolean = false,
+    /** 資料庫的版本（app_health 的 schema），還不知道是 null */
+    val dbSchema: Int? = null,
+    /** 這支手機自己的狀態：直接從手機讀，不經過伺服器，沒分享也看得到 */
+    val myDevice: DeviceStatus? = null,
 ) {
+    /** 新功能都能用，只是資料庫還沒有手機名稱與電信（跑過舊的 upgrade-v2.sql）：再跑一次就好，不急 */
+    val deviceInfoOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.DEVICE_SCHEMA
+
     val paired get() = couple != null && partner != null
     val myId get() = me?.id
     val partnerName get() = partner?.displayName ?: "對方"
@@ -213,6 +220,8 @@ interface CoupleRepository {
     suspend fun reportLocation(lat: Double, lng: Double, accuracy: Float?, speed: Float?, recordedAt: java.time.Instant? = null) {}
     /** 地圖上「我」的位置：只存在這支手機，不會上傳（要分享位置才會用 [reportLocation] 回報） */
     fun setMyLocation(lat: Double, lng: Double) {}
+    /** 首頁「我的手機」：只存在這支手機，不會上傳（要分享手機狀態才會用 [reportDevice] 回報） */
+    fun setMyDevice(d: DeviceStatus) {}
     suspend fun reportPlaceEvent(placeId: String, arrive: Boolean) {}
     /** 回傳新記帳的 id；同一筆已經記過就是 null */
     suspend fun addAutoExpense(parsed: PaymentParser.Parsed, dedupeKey: String): String? = null

@@ -211,7 +211,11 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         ).sortedByDescending { it.time }
 
         return AppState(
-            loaded = true, demo = true, connected = true, memosLoaded = true,
+            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.DEVICE_SCHEMA,
+            myDevice = DeviceStatus(
+                ME, 82, true, "wifi", "約 120 Mbps", false, 3_120, iso(), "samsung SM-S921B", iso(),
+                deviceName = "阿哲的 Galaxy S24", carrier = "台灣大哥大",
+            ),
             me = Profile(ME, "阿哲", email = "azhe@example.com", birthday = myBirthday.toString(), info = ProfileInfo.build(mapOf(
                 ProfileInfo.HEIGHT to "176", ProfileInfo.WEIGHT to "68", ProfileInfo.PHONE to "0987-654-321", ProfileInfo.BLOOD_TYPE to "A",
                 ProfileInfo.MBTI to "ISTJ", ProfileInfo.JOB to "軟體工程師", ProfileInfo.HOBBIES to "打籃球、手沖咖啡、露營",
@@ -229,7 +233,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
             partnerSharing = Sharing(PARTNER, shareLocation = true, shareDevice = true, shareExpenses = true, shareMood = true, shareCycle = true),
             partnerOnline = true,
             partnerStatus = PartnerStatus(
-                DeviceStatus(PARTNER, 34, false, "wifi", "公司", true, 4286, iso(ago(3)), "Pixel 8", iso()),
+                DeviceStatus(PARTNER, 34, false, "wifi", "公司", true, 4286, iso(ago(3)), "Google Pixel 8", iso(), deviceName = "小雨的手機", carrier = "中華電信"),
                 LocationDto(PARTNER, lat, lng, 15.0, 0.0, "still", iso(), iso()),
             ),
             myLocation = MY_LOCATION,
@@ -357,7 +361,8 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
                         PARTNER, battery.toInt(), dwelling && stop.charge,
                         if (dwelling && stop.wifi != null) "wifi" else "cellular", if (dwelling) stop.wifi else null,
                         dwelling && (routeIndex == OFFICE || stop.name == "健身房"), steps.toInt(),
-                        iso(if (moving && stop.metro) now() else now().minusSeconds(180)), "Pixel 8", iso(),
+                        iso(if (moving && stop.metro) now() else now().minusSeconds(180)), "Google Pixel 8", iso(),
+                        deviceName = "小雨的手機", carrier = "中華電信",
                     ),
                     LocationDto(PARTNER, lat, lng, 15.0, if (moving) 1.3 else 0.0, if (!moving) "still" else if (stop.metro) "transit" else "walking", iso(), iso()),
                 )

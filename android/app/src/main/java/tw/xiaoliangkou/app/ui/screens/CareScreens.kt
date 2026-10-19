@@ -58,10 +58,10 @@ import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.StatTile
+import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.ToggleRow
 import tw.xiaoliangkou.app.ui.components.Wiggle
 import tw.xiaoliangkou.app.ui.components.bouncyClick
-import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.LocalDate
 

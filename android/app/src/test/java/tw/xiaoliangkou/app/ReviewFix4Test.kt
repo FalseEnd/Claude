@@ -81,7 +81,7 @@ class ReviewFix4Test {
     private val paired = """{"user":{"id":"u-1","displayName":"阿哲"},"couple":{"id":"c-1"},"partner":{"id":"u-2","displayName":"小雨"},"partnerOnline":false}"""
     private val single = """{"user":{"id":"u-1","displayName":"阿哲"},"partnerOnline":false}"""
     private val v1Health = """{"ok":true,"time":"2026-10-16T00:00:00Z"}"""
-    private val v2Health = """{"ok":true,"schema":2}"""
+    private val v2Health = """{"ok":true,"schema":3}"""
 
     private fun memo(id: String, user: String, shared: Boolean, pinned: Boolean = false, media: String = "[]") =
         """{"id":"$id","userId":"$user","title":"便利貼","body":"","media":$media,"shared":$shared,"pinned":$pinned,"color":"pink","createdAt":"2026-10-15T02:16:21+00:00"}"""
@@ -157,6 +157,29 @@ class ReviewFix4Test {
         r.recheckSchema()
         delay(200)
         assertEquals(after, count("app_health"))
+    }
+
+    /** 跑過舊的 upgrade-v2.sql（schema 2）：新功能都能用，只是還沒有手機名稱和電信；回到 App 再問一次，但不用整個重新載入 */
+    @Test fun schemaTwoOnlyMissesPhoneNames() = runBlocking<Unit> {
+        upgradeDatabase()
+        rpc("app_health") { """{"ok":true,"schema":2}""" }
+        val r = repo()
+        assertFalse(r.state.value.schemaOutdated)
+        assertTrue(r.state.value.deviceInfoOutdated)
+
+        val me = count("app_me")
+        val health = count("app_health")
+        r.recheckSchema()
+        until("再問一次 app_health") { count("app_health") == health + 1 }
+        delay(200)
+        assertTrue(r.state.value.deviceInfoOutdated)
+        assertEquals("不用整個重新載入", me, count("app_me"))
+
+        // 再跑一次 upgrade-v2.sql 之後
+        rpc("app_health") { """{"ok":true,"schema":3}""" }
+        r.recheckSchema()
+        until("手機名稱的提醒拿掉") { !r.state.value.deviceInfoOutdated }
+        assertEquals(me, count("app_me"))
     }
 
     /** 另一半那支手機：資料庫是對方更新的，收到新功能的變動、新功能的呼叫成功時就發現 */

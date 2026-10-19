@@ -14,8 +14,8 @@ android {
         applicationId = "tw.xiaoliangkou.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.2.1"
     }
 
     buildTypes {
@@ -68,6 +68,8 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.play.services.location)
+    // 「從 SIM 卡帶入」電話號碼（Google 的 Phone Number Hint，不用電話權限）
+    implementation(libs.play.services.auth)
     implementation(libs.osmdroid)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)

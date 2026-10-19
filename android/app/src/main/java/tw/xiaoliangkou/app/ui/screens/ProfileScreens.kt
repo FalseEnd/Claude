@@ -47,10 +47,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -99,6 +99,7 @@ import tw.xiaoliangkou.app.core.Dates
 import tw.xiaoliangkou.app.core.Horoscope
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.Limits
+import tw.xiaoliangkou.app.data.Note as PrivateNote
 import tw.xiaoliangkou.app.data.Profile
 import tw.xiaoliangkou.app.data.ProfileInfo
 import tw.xiaoliangkou.app.ui.AppViewModel
@@ -117,14 +118,14 @@ import tw.xiaoliangkou.app.ui.components.Pill
 import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.Segmented
+import tw.xiaoliangkou.app.ui.components.SimNumberButton
 import tw.xiaoliangkou.app.ui.components.SoftButton
-import tw.xiaoliangkou.app.ui.components.bouncyClick
 import tw.xiaoliangkou.app.ui.components.TidyText
+import tw.xiaoliangkou.app.ui.components.bouncyClick
 import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
-import tw.xiaoliangkou.app.data.Note as PrivateNote
 
 // ---------------------------------------------------------------- 欄位小工具
 
@@ -396,6 +397,8 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                     }
                     BloodTypePicker(form[ProfileInfo.BLOOD_TYPE].orEmpty().trim().uppercase()) { set(ProfileInfo.BLOOD_TYPE, it) }
                     Info(ProfileInfo.PHONE)
+                    // 自己的號碼直接從手機帶入，不用一個一個打
+                    SimNumberButton(vm, onNumber = { set(ProfileInfo.PHONE, it) })
                 }
 
                 SectionTitle("個性與生活")

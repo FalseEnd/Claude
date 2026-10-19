@@ -121,8 +121,17 @@ update public.sharing_settings set share_location = true, share_device = true, s
  where user_id = test.id('zhe');
 insert into public.device_status (user_id, battery_level, is_charging, network) values (test.id('zhe'), 60, false, 'wifi');
 insert into public.locations (user_id, lat, lng, recorded_at) values (test.id('zhe'), 25.033, 121.565, now());
+-- 手機名稱與電信（20261017000006）：前後空白去掉、最多 60 個字
+select public.app_report_device(jsonb_build_object('batteryLevel', 60, 'isCharging', false, 'network', 'wifi',
+                                                   'deviceName', '  阿哲的 Pixel  ', 'carrier', '中華電信'));
+select test.ok(test.error_of($$update public.device_status set device_name = repeat('x', 61) where user_id = auth.uid()$$) like '23514:%',
+               'phone name is at most 60 characters');
+select test.ok(test.error_of($$update public.device_status set carrier = repeat('x', 61) where user_id = auth.uid()$$) like '23514:%',
+               'carrier is at most 60 characters');
 
 select test.login(test.id('yu'));
+select test.ok(public.app_partner_status()->'device'->>'deviceName' = '阿哲的 Pixel', 'partner sees the phone name, trimmed');
+select test.ok(public.app_partner_status()->'device'->>'carrier' = '中華電信', 'partner sees the carrier');
 select test.ok((select count(*) from public.device_status) = 1, 'partner sees shared device status');
 select test.ok((select count(*) from public.locations) = 1, 'partner sees shared location');
 select test.ok((select count(*) from public.profiles) = 2, 'partner sees both profiles');

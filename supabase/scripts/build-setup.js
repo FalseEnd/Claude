@@ -1,7 +1,7 @@
 'use strict';
 // 從 supabase/migrations/*.sql 產生使用者貼到 Supabase SQL Editor 執行一次的檔案，各自包在同一個交易裡：
 //   supabase/setup.sql        新專案：全部的 migrations
-//   supabase/upgrade-v2.sql   已經跑過舊版 setup.sql 的專案：只有 20261016000005 這一個
+//   supabase/upgrade-v2.sql   已經跑過舊版 setup.sql 的專案：20261016000005 之後的（可以重複執行，跑過舊的 upgrade-v2.sql 的人再跑一次就好）
 // 產生的檔案拿掉所有 -- 註解：複製貼上時如果換行被吃掉，註解會把後面的程式碼一起變成註解。
 //   node supabase/scripts/build-setup.js           產生
 //   node supabase/scripts/build-setup.js --check   只檢查是否和遷移檔一致
@@ -54,7 +54,7 @@ function stripComments(sql) {
 
 const OUTPUTS = [
   { file: 'setup.sql', only: () => true, done: '設定完成 🎉 回到說明文件做第 3 步' },
-  { file: 'upgrade-v2.sql', only: (f) => f.startsWith('20261016000005_'), done: '更新完成 🎉' }
+  { file: 'upgrade-v2.sql', only: (f) => f >= '20261016000005_', done: '更新完成 🎉' }
 ];
 
 function build(out) {

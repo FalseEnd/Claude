@@ -60,8 +60,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -97,8 +97,8 @@ import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.ToggleRow
-import tw.xiaoliangkou.app.ui.components.cuteSlider
 import tw.xiaoliangkou.app.ui.components.bouncyClick
+import tw.xiaoliangkou.app.ui.components.cuteSlider
 import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.LocalDate
 
@@ -159,7 +159,7 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
                 MenuRow(Icons.Rounded.Widgets, c.butter, c.butter.copy(alpha = 0.25f), "桌面小工具", "在桌面看在一起的天數、${s.partnerName} 的狀態、備忘錄") { open("widgets") }
                 if (!s.demo) {
                     MenuRow(Icons.Rounded.Tune, c.me, c.meSoft, "權限與背景執行", "位置、通知、省電、自動記帳") { open("permissions") }
-                    MenuRow(Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號", if (s.schemaOutdated) "資料庫需要更新，點這裡看怎麼做 🛠️" else "連線、邀請另一半、改密碼、登出") { open("account") }
+                    MenuRow(Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號", if (s.schemaOutdated) "資料庫需要更新，點這裡看怎麼做 🛠️" else if (s.deviceInfoOutdated) "可以再更新一次資料庫（手機名稱、電信）📱" else "連線、邀請另一半、改密碼、登出") { open("account") }
                 } else {
                     MenuRow(Icons.Rounded.Science, c.lavender, c.fertileSoft, "示範控制台", "扮演 ${s.partnerName}，看看會跳出什麼通知") { open("demo") }
                 }
@@ -197,7 +197,7 @@ fun PrivacyScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
         item {
             CuteCard {
                 ToggleRow("位置", sh?.shareLocation == true, "即時位置、抵達與離開標點", "📍") { set("location", it) }
-                ToggleRow("手機狀態", sh?.shareDevice == true, "電量、充電、網路、螢幕、步數", "🔋") { set("device", it) }
+                ToggleRow("手機狀態", sh?.shareDevice == true, "電量、網路、電信、螢幕、步數、手機名稱", "🔋") { set("device", it) }
                 ToggleRow("開銷", sh?.shareExpenses == true, "自動記帳（不給看、禮物模式除外）", "💰") { set("expenses", it) }
                 ToggleRow("心情", sh?.shareMood == true, "你設定的心情與備註", "😊") { set("mood", it) }
                 if (s.cycleOwnerIsMe) ToggleRow("經期", sh?.shareCycle == true, "日期與預測，不含症狀", "🌸") { set("cycle", it) }
@@ -397,7 +397,7 @@ fun AccountScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenHeader("Supabase 與帳號", onBack = back) }
-        if (s.schemaOutdated) item { SchemaUpgradeCard(prefs?.supabaseUrl, vm) }
+        if (s.schemaOutdated || s.deviceInfoOutdated) item { SchemaUpgradeCard(prefs?.supabaseUrl, vm, minor = !s.schemaOutdated) }
         item {
             CuteCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -467,7 +467,7 @@ fun AccountScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
 
 /** 資料庫還是 0.1 版：一步一步教怎麼執行 upgrade-v2.sql，更新好再檢查一次（其他畫面的「資料庫需要更新」都指到這裡） */
 @Composable
-private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel) {
+private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, minor: Boolean = false) {
     val uriHandler = LocalUriHandler.current
     fun open(url: String) { runCatching { uriHandler.openUri(url) }.onFailure { vm.toast("打不開瀏覽器，請到說明文件找「更新資料庫」那一節") } }
     val editor = Supabase.sqlEditorUrl(projectUrl)
@@ -478,12 +478,17 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel) {
         "跳出「Potential issue detected」的話，按「Run query」繼續",
         "下方出現「更新完成 🎉」就好了，回來按「重新檢查」",
     )
-    CuteCard(color = Cute.colors.butter.copy(alpha = 0.3f)) {
+    // minor：新功能都能用了，只是還沒有手機名稱與電信（跑過舊的 upgrade-v2.sql），不急
+    CuteCard(color = if (minor) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f) else Cute.colors.butter.copy(alpha = 0.3f)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            EmojiBubble("🛠️", Cute.colors.card, 44.dp)
+            EmojiBubble(if (minor) "📱" else "🛠️", Cute.colors.card, 44.dp)
             Column(Modifier.weight(1f)) {
-                Text("資料庫需要更新", style = MaterialTheme.typography.titleMedium)
-                Text("個人資料、備註、日曆的生活紀錄和備忘錄，要先更新資料庫才能用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TidyText(if (minor) "可以再更新一次資料庫" else "資料庫需要更新", style = MaterialTheme.typography.titleMedium)
+                TidyText(
+                    if (minor) "再執行一次 upgrade-v2.sql，對方的手機名稱和電信就會顯示。其他功能都已經可以用了"
+                    else "個人資料、備註、日曆的生活紀錄和備忘錄，要先更新資料庫才能用",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
         steps.forEachIndexed { i, t ->
@@ -504,8 +509,10 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel) {
         CuteButton("我更新好了，重新檢查", Modifier.fillMaxWidth(), icon = Icons.Rounded.Refresh, enabled = !vm.busy) {
             vm.act { r ->
                 r.refreshAll()
+                val st = r.state.value
                 vm.toast(
-                    if (r.state.value.schemaOutdated) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
+                    if (st.schemaOutdated || (minor && st.deviceInfoOutdated)) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
+                    else if (minor) "資料庫更新好了，手機名稱和電信會顯示 🎉"
                     else "資料庫更新好了，新功能都可以用了 🎉",
                 )
             }

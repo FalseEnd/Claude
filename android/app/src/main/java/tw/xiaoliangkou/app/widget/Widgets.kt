@@ -9,10 +9,10 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Typeface
-import android.text.StaticLayout
-import android.text.TextPaint
 import android.os.Build
 import android.os.Bundle
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.util.LruCache
 import android.util.SizeF
 import android.util.TypedValue

@@ -2,7 +2,8 @@
 # 在本機的 Supabase（Supabase CLI + Docker）上執行資料庫與 API 測試：
 #   1. 檢查 supabase/setup.sql、upgrade-v2.sql 和 migrations 一致
 #   2. 舊版使用者：只套用 v1 的 migrations，再執行 upgrade-v2.sql 兩次（只跑一次就好，但多跑也不能壞）；
-#      先放一個自己建的公開 media 空間，更新後要變成不公開
+#      先放一個自己建的公開 media 空間，更新後要變成不公開。
+#      跑過舊的 upgrade-v2.sql（只有 v2）的資料庫，再執行一次新的 upgrade-v2.sql
 #   3. 新專案：空的資料庫直接執行 setup.sql
 #   4. supabase db reset：重建資料庫並套用 migrations
 #   2–4 每次都跑資料庫冒煙測試（supabase/tests/rls_smoke.sql，在交易裡執行，最後 rollback）
@@ -42,8 +43,8 @@ export DATABASE_URL="$(val DB_URL)"
 quiet() { local out; out="$("$@" 2>&1)" || { echo "$out" >&2; return 1; }; }
 run_sql() { quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -f "$1"; }
 smoke() { psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -f supabase/tests/rls_smoke.sql 2>&1 | sed 's/^psql:[^ ]* NOTICE:  //'; }
-schema_is_2() {
-  [ "$(psql "$DATABASE_URL" -X -tAc "select public.app_health()->>'schema'")" = 2 ] || { echo "app_health 沒有回傳 schema 2" >&2; exit 1; }
+schema_is_3() {
+  [ "$(psql "$DATABASE_URL" -X -tAc "select public.app_health()->>'schema'")" = 3 ] || { echo "app_health 沒有回傳 schema 3" >&2; exit 1; }
 }
 
 echo "== 舊版資料庫執行 upgrade-v2.sql（兩次）"
@@ -51,7 +52,13 @@ quiet "${sb[@]}" db reset --version 20261015000004
 quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -c "insert into storage.buckets (id, name, public) values ('media', 'media', true)"
 run_sql supabase/upgrade-v2.sql
 run_sql supabase/upgrade-v2.sql
-schema_is_2
+schema_is_3
+quiet smoke
+
+echo "== 跑過舊的 upgrade-v2.sql 的資料庫再執行新的 upgrade-v2.sql（加上手機名稱與電信）"
+quiet "${sb[@]}" db reset --version 20261016000005
+run_sql supabase/upgrade-v2.sql
+schema_is_3
 quiet smoke
 
 echo "== 新專案執行 setup.sql"
@@ -61,7 +68,7 @@ mkdir -p "$empty/supabase/migrations"
 cp supabase/config.toml "$empty/supabase/"
 quiet "${sb[@]}" db reset --workdir "$empty"
 run_sql supabase/setup.sql
-schema_is_2
+schema_is_3
 quiet smoke
 
 echo "== 套用 migrations"

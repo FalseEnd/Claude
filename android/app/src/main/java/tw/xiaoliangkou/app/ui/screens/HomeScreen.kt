@@ -1,5 +1,8 @@
 package tw.xiaoliangkou.app.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,6 +29,7 @@ import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.SignalCellularAlt
+import androidx.compose.material.icons.rounded.SimCard
 import androidx.compose.material.icons.rounded.Train
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material.icons.rounded.WifiOff
@@ -35,24 +40,35 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Cycle
 import tw.xiaoliangkou.app.core.Dates
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.DeviceStatus
+import tw.xiaoliangkou.app.data.RemoteRepository
 import tw.xiaoliangkou.app.data.toInstantOrNull
+import tw.xiaoliangkou.app.service.DeviceProbe
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Derived
 import tw.xiaoliangkou.app.ui.Fmt
@@ -67,6 +83,7 @@ import tw.xiaoliangkou.app.ui.components.EmojiBubble
 import tw.xiaoliangkou.app.ui.components.HeartBeat
 import tw.xiaoliangkou.app.ui.components.Pill
 import tw.xiaoliangkou.app.ui.components.SectionTitle
+import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.StatTile
 import tw.xiaoliangkou.app.ui.components.TidyText
@@ -85,7 +102,7 @@ fun HomeScreen(s: AppState, vm: AppViewModel, open: (String) -> Unit, sheet: (Sh
                 SoftButton("恢復", small = true) { vm.act("已恢復分享") { it.pauseSharing(0) } }
             }
         }
-        item { PartnerPhone(s, vm) }
+        item { PhoneCard(s, vm, open) }
         item { MoodCard(s, open, sheet) }
         item { QuickActions(s, open, sheet) }
         careBanner(s)?.let { (emoji, text) -> item { Banner(emoji, text, Cute.colors.periodSoft) { SoftButton("看看", small = true) { open("cycle") } } } }
@@ -169,77 +186,175 @@ private fun Banner(emoji: String, text: String, color: Color, action: @Composabl
     }
 }
 
+/** 手機狀態：對方分享的，和我自己的（直接從這支手機讀，不用分享），上面切換 */
+@Composable
+private fun PhoneCard(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
+    var tab by rememberSaveable { mutableStateOf("partner") }
+    CuteCard {
+        Segmented(listOf("partner" to s.partnerName, "me" to "我"), tab) { tab = it }
+        if (tab == "me") MyPhone(s, vm, open) else PartnerPhone(s, vm)
+    }
+}
+
 @Composable
 private fun PartnerPhone(s: AppState, vm: AppViewModel) {
     val ps = s.partnerSharing
     val d = s.partnerStatus.device
-    CuteCard {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box {
-                Avatar(s.partnerName, Cute.colors.partner, 34.dp, image = s.partner?.avatarUrl)
-                if (s.partnerOnline) Box(Modifier.align(Alignment.BottomEnd).offset(2.dp, 2.dp).size(12.dp).clip(CircleShape).background(Cute.colors.card).padding(2.dp).clip(CircleShape).background(Cute.colors.good))
-            }
-            // 手機型號放在標題下面：不跟標題搶寬度，名字長、字放大也不會把標題擠成好幾行
-            Column(Modifier.weight(1f)) {
-                TidyText("${s.partnerName} 的手機", style = MaterialTheme.typography.titleMedium)
-                d?.deviceModel?.let {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Rounded.PhoneAndroid, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-                        Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-        if (ps?.deviceLive != true || d == null) {
-            Text(
-                when {
-                    ps?.paused == true -> "${s.partnerName} 暫停分享到 ${Fmt.time(ps.pausedUntilInstant!!)}，時間到會自動恢復 🙈"
-                    ps?.shareDevice != true -> "${s.partnerName} 目前沒有分享手機狀態"
-                    else -> "還沒收到手機狀態，等對方打開小倆口 📡"
-                },
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            return@CuteCard
-        }
-        val level = d.batteryLevel ?: 0
-        val charging = d.isCharging == true
-        val lastActive = d.lastActiveAt?.toInstantOrNull()
-        val screenOn = lastActive != null && java.time.Duration.between(lastActive, java.time.Instant.now()).seconds < 120
-        // 圖示放在小標題旁，數值用整個寬度；同一排的卡片一樣高（字放大時數值會換成兩行）
-        val tile = Modifier.fillMaxHeight()
-        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile("電量", "$level%", tile.weight(1f), sub = if (charging) "充電中 ⚡" else if (level <= 20) "電量偏低 🔋" else "未充電", extra = { BatteryPill(level, charging) })
-            StatTile(
-                "網路", when (d.network) { "wifi" -> "Wi-Fi"; "cellular" -> "行動網路"; else -> "離線" }, tile.weight(1f),
-                sub = d.networkLabel ?: if (d.network == "wifi") "已連線" else "—",
-                labelIcon = { Icon(when (d.network) { "wifi" -> Icons.Rounded.Wifi; "cellular" -> Icons.Rounded.SignalCellularAlt; else -> Icons.Rounded.WifiOff }, null, tint = Cute.colors.me, modifier = Modifier.size(14.dp)) },
-            )
-            StatTile(
-                "螢幕", if (screenOn) "使用中" else "休息中", tile.weight(1f),
-                sub = if (d.notificationsSilenced == true) "勿擾中 🔕" else Fmt.rel(lastActive),
-                labelIcon = { Icon(if (d.notificationsSilenced == true) Icons.Rounded.DoNotDisturbOn else if (screenOn) Icons.Rounded.PhoneAndroid else Icons.Rounded.Bedtime, null, tint = Cute.colors.lavender, modifier = Modifier.size(14.dp)) },
-            )
-        }
-        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val act = s.partnerStatus.location?.activity
-            StatTile(
-                "位置", if (ps.locationLive) Derived.partnerWhere(s) else "沒有分享位置", tile.weight(2f),
-                sub = Derived.distanceToPartner(s)?.let { "距離你 ${Fmt.distance(it)}" } ?: "—",
-                labelIcon = { Icon(when (act) { "walking", "running" -> Icons.AutoMirrored.Rounded.DirectionsWalk; "transit" -> Icons.Rounded.Train; else -> Icons.Rounded.LocationOn }, null, tint = Cute.colors.partner, modifier = Modifier.size(14.dp)) },
-            )
-            // 沒有步數（手機沒有計步器、沒給權限，或今天還沒回報）：說清楚，不要只寫「— 步」
-            StatTile("今日步數", d.stepsToday?.let { Fmt.int(it) } ?: "—", tile.weight(1f), sub = if (d.stepsToday != null) "👣 步" else "手機沒回報")
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TidyText("更新於 ${Fmt.rel(d.updatedAt?.toInstantOrNull())}", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (ps.locationLive) SoftButton("現在在哪？", icon = Icons.Rounded.MyLocation, small = true) {
-                    vm.act { r -> vm.toast(if (r.locatePartner()) "已請 ${s.partnerName} 的手機回報位置 📍" else "${s.partnerName} 的手機目前不在線上") }
-                }
-            }
-            TidyText("只顯示對方選擇分享的項目", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    PhoneHeader("${s.partnerName} 的手機", d) {
+        Box {
+            Avatar(s.partnerName, Cute.colors.partner, 34.dp, image = s.partner?.avatarUrl)
+            if (s.partnerOnline) Box(Modifier.align(Alignment.BottomEnd).offset(2.dp, 2.dp).size(12.dp).clip(CircleShape).background(Cute.colors.card).padding(2.dp).clip(CircleShape).background(Cute.colors.good))
         }
     }
+    if (ps?.deviceLive != true || d == null) {
+        Text(
+            when {
+                ps?.paused == true -> "${s.partnerName} 暫停分享到 ${Fmt.time(ps.pausedUntilInstant!!)}，時間到會自動恢復 🙈"
+                ps?.shareDevice != true -> "${s.partnerName} 目前沒有分享手機狀態"
+                else -> "還沒收到手機狀態，等對方打開小倆口 📡"
+            },
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    val lastActive = d.lastActiveAt?.toInstantOrNull()
+    val screenOn = lastActive != null && java.time.Duration.between(lastActive, java.time.Instant.now()).seconds < 120
+    // 兩欄：字放大時數值、說明也放得下（三欄時「行動網路」會被擠成「行…」）
+    TileRow { m ->
+        BatteryTile(d, m)
+        NetworkTile(d, m)
+    }
+    TileRow { m ->
+        StatTile(
+            "螢幕", if (screenOn) "使用中" else "休息中", m,
+            sub = if (d.notificationsSilenced == true) "勿擾中 🔕" else Fmt.rel(lastActive),
+            labelIcon = { Icon(if (d.notificationsSilenced == true) Icons.Rounded.DoNotDisturbOn else if (screenOn) Icons.Rounded.PhoneAndroid else Icons.Rounded.Bedtime, null, tint = Cute.colors.lavender, modifier = Modifier.size(14.dp)) },
+        )
+        // 沒有步數（手機沒有計步器、沒給權限，或今天還沒回報）：說清楚，不要只寫「— 步」
+        StatTile("今日步數", d.stepsToday?.let { Fmt.int(it) } ?: "—", m, sub = if (d.stepsToday != null) "👣 步" else "手機沒回報")
+    }
+    val act = s.partnerStatus.location?.activity
+    StatTile(
+        "位置", if (ps.locationLive) Derived.partnerWhere(s) else "沒有分享位置", Modifier.fillMaxWidth(),
+        sub = Derived.distanceToPartner(s)?.let { "距離你 ${Fmt.distance(it)}" } ?: "—",
+        labelIcon = { Icon(when (act) { "walking", "running" -> Icons.AutoMirrored.Rounded.DirectionsWalk; "transit" -> Icons.Rounded.Train; else -> Icons.Rounded.LocationOn }, null, tint = Cute.colors.partner, modifier = Modifier.size(14.dp)) },
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TidyText("更新於 ${Fmt.rel(d.updatedAt?.toInstantOrNull())}", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (ps.locationLive) SoftButton("現在在哪？", icon = Icons.Rounded.MyLocation, small = true) {
+                vm.act { r -> vm.toast(if (r.locatePartner()) "已請 ${s.partnerName} 的手機回報位置 📍" else "${s.partnerName} 的手機目前不在線上") }
+            }
+        }
+        TidyText(
+            if (s.deviceInfoOutdated) "只顯示對方選擇分享的項目 · 資料庫再更新一次就能看到手機名稱和電信" else "只顯示對方選擇分享的項目",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 我的手機：直接從這支手機讀（每 30 秒更新），沒分享、沒網路也看得到 */
+@Composable
+private fun MyPhone(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
+    val context = LocalContext.current
+    val myId = s.myId.orEmpty()
+    LaunchedEffect(myId) {
+        // 示範模式（和還沒登入）用示範的手機，不用一直讀
+        if (vm.repo.value !is RemoteRepository) return@LaunchedEffect
+        while (true) {
+            val r = withContext(Dispatchers.IO) { DeviceProbe.read(context) }
+            val steps = vm.container.settings.stepsSoFar(LocalDate.now().toEpochDay())
+            vm.repo.value?.setMyDevice(DeviceProbe.status(myId, r, steps))
+            delay(30_000)
+        }
+    }
+    val d = s.myDevice
+    PhoneHeader("我的手機", d) { Avatar(s.me?.displayName ?: "我", Cute.colors.me, 34.dp, image = s.me?.avatarUrl) }
+    if (d == null) {
+        Text("讀取中…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    TileRow { m ->
+        BatteryTile(d, m)
+        NetworkTile(d, m)
+    }
+    TileRow { m ->
+        val silenced = d.notificationsSilenced == true
+        StatTile(
+            "勿擾", if (silenced) "開著" else "關著", m, sub = if (silenced) "通知不會響 🔕" else "通知會響",
+            labelIcon = { Icon(if (silenced) Icons.Rounded.DoNotDisturbOn else Icons.Rounded.Notifications, null, tint = Cute.colors.lavender, modifier = Modifier.size(14.dp)) },
+        )
+        val noPermission = Build.VERSION.SDK_INT >= 29 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED
+        StatTile(
+            "今日步數", d.stepsToday?.let { Fmt.int(it) } ?: "—", m,
+            sub = when {
+                d.stepsToday != null -> "👣 步"
+                noPermission -> "要打開「體能活動」權限"
+                else -> "走幾步就會出現"
+            },
+        )
+    }
+    val sh = s.mySharing
+    val shared = listOfNotNull("手機狀態".takeIf { sh?.deviceLive == true }, "位置".takeIf { sh?.locationLive == true })
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TidyText(
+            when {
+                sh?.paused == true -> "你暫停分享中，${s.partnerName} 現在看不到這些"
+                shared.isEmpty() -> "你沒有分享手機狀態和位置，${s.partnerName} 看不到這些"
+                else -> "${s.partnerName} 看得到你的${shared.joinToString("和")}"
+            },
+            Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SoftButton("分享設定", small = true) { open("privacy") }
+    }
+}
+
+/** 誰的手機，下面一行手機名稱 · 型號，一行電信 */
+@Composable
+private fun PhoneHeader(title: String, d: DeviceStatus?, avatar: @Composable () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        avatar()
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            TidyText(title, style = MaterialTheme.typography.titleMedium)
+            val phone = listOfNotNull(d?.deviceName, d?.deviceModel).distinct().joinToString(" · ")
+            if (phone.isNotEmpty()) InfoLine(Icons.Rounded.PhoneAndroid, phone)
+            d?.carrier?.let { InfoLine(Icons.Rounded.SimCard, it) }
+        }
+    }
+}
+
+@Composable
+private fun InfoLine(icon: ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+        TidyText(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** 同一排的小卡一樣高 */
+@Composable
+private fun TileRow(content: @Composable RowScope.(Modifier) -> Unit) {
+    Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        content(Modifier.fillMaxHeight().weight(1f))
+    }
+}
+
+@Composable
+private fun BatteryTile(d: DeviceStatus, modifier: Modifier) {
+    val level = d.batteryLevel ?: 0
+    val charging = d.isCharging == true
+    StatTile("電量", d.batteryLevel?.let { "$it%" } ?: "—", modifier, sub = if (charging) "充電中 ⚡" else if (level <= 20) "電量偏低 🔋" else "未充電", extra = { BatteryPill(level, charging) })
+}
+
+/** 網路：Wi-Fi 或行動網路，下面是所在的標點或網速（電信寫在上面的手機資訊裡，連 Wi-Fi 時也看得到） */
+@Composable
+private fun NetworkTile(d: DeviceStatus, modifier: Modifier) {
+    StatTile(
+        "網路", when (d.network) { "wifi" -> "Wi-Fi"; "cellular" -> "行動網路"; else -> "離線" }, modifier,
+        sub = d.networkLabel ?: when (d.network) { "wifi", "cellular" -> "已連線"; else -> "沒有網路" },
+        labelIcon = { Icon(when (d.network) { "wifi" -> Icons.Rounded.Wifi; "cellular" -> Icons.Rounded.SignalCellularAlt; else -> Icons.Rounded.WifiOff }, null, tint = Cute.colors.me, modifier = Modifier.size(14.dp)) },
+    )
 }
 
 @Composable
