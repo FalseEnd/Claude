@@ -1,5 +1,5 @@
 -- 資料庫冒煙測試：配對、分享權限、通知、RPC 輸出格式、函式權限、排程與即時事件，
--- 以及 v2 的個人資料、私人備註、日曆紀錄、備忘錄與 Storage 權限。
+-- 以及 v2 的個人資料、私人備註、日曆紀錄、備忘錄、Storage 權限與 GIPHY 貼圖。
 -- 以 postgres 身分執行：psql "$DB_URL" -f supabase/tests/rls_smoke.sql
 -- 全部在一個交易裡，最後 rollback，不會在資料庫留下任何資料。
 -- 任何一個 test.ok() 失敗都會中止並顯示訊息。
@@ -44,6 +44,10 @@ create function test.outbox_body(p_user uuid, p_title text) returns text
 language sql security definer set search_path = public as $$
   select body from public.notification_outbox where recipient_id = p_user and title = p_title order by id desc limit 1
 $$;
+create function test.outbox_data(p_user uuid, p_title text) returns jsonb
+language sql security definer set search_path = public as $$
+  select data from public.notification_outbox where recipient_id = p_user and title = p_title order by id desc limit 1
+$$;
 -- 某人收到某張表的 changed 幾次（不受 Row Level Security 限制，才能確認「對方真的沒收到」）
 create function test.changed(p_user uuid, p_table text) returns bigint
 language sql security definer set search_path = public as $$
@@ -54,6 +58,13 @@ create function test.trace() returns text
 language sql security definer set search_path = public as $$
   select format('%s/%s/%s', (select count(*) from public.realtime_events), (select count(*) from public.notification_outbox),
                 (select count(*) from public.activity_log))
+$$;
+-- 所有人的通知、歷史紀錄、即時事件裡，有幾筆出現這段文字（GIPHY 的 key 一筆都不能有）
+create function test.mentions(p_text text) returns bigint
+language sql security definer set search_path = public as $$
+  select (select count(*) from public.notification_outbox o where strpos(o::text, p_text) > 0)
+       + (select count(*) from public.activity_log a where strpos(a::text, p_text) > 0)
+       + (select count(*) from public.realtime_events e where strpos(e::text, p_text) > 0)
 $$;
 
 -- 預期會失敗的語句：回傳錯誤訊息（SQLSTATE: message），沒失敗則回傳 null
@@ -234,6 +245,78 @@ select test.ok((select count(*) from public.realtime_events where table_name = '
                'turning mood sharing off tells the partner to reload moods');
 select test.login(test.id('yu'));
 update public.sharing_settings set share_mood = true where user_id = test.id('yu');
+
+-- ---------------------------------------------------------------- GIPHY 貼圖與 API key（20261020000007）
+-- key 一對情侶一把，誰設定都可以，兩個人都讀得到；前後的空白去掉，空白或沒給就清掉
+select test.login(test.id('zhe'));
+select test.changed(test.id('yu'), 'couples') as couples_before \gset
+select test.ok(public.app_set_giphy_key('{"key": "  xlkSmokeKey_0123456789-abc  "}')->>'giphyKey' = 'xlkSmokeKey_0123456789-abc',
+               'app_set_giphy_key saves the key, trimmed');
+select test.ok(test.changed(test.id('yu'), 'couples') = :couples_before + 1, 'the partner is told to reload the couple');
+select test.login(test.id('yu'));
+select test.ok((public.app_me())->'couple' ?& array['id', 'togetherSince', 'createdAt', 'giphyKey']
+               and (public.app_me())#>>'{couple,giphyKey}' = 'xlkSmokeKey_0123456789-abc', 'the partner reads the key from app_me');
+select test.ok(test.error_of($$select public.app_set_giphy_key('{"key": "too-short"}')$$) like '23514:%', 'a key is 16 to 128 characters');
+select test.ok(test.error_of($$select public.app_set_giphy_key('{"key": "0123456789abcdef/../x"}')$$) like '23514:%',
+               'a key is letters, digits, _ and - only');
+select test.ok(test.error_of($$update public.couples set giphy_key = 'not a GIPHY key at all'$$) like '23514:%',
+               'writing the column directly is checked too');
+select public.app_set_giphy_key('{"key": "  "}') as cleared \gset
+select test.ok((:'cleared'::jsonb)->'giphyKey' = 'null' and (public.app_me())#>'{couple,giphyKey}' = 'null', 'a blank key clears it');
+select test.ok(public.app_set_giphy_key('{}')->'giphyKey' = 'null', 'so does a missing key');
+select test.ok(public.app_set_giphy_key('{"key": "xlkSmokeKey_0123456789-abc"}')->>'togetherSince' = '2024-02-14',
+               'setting the key leaves together_since alone');
+select test.login(test.id('mia'));
+select test.ok(test.error_of($$select public.app_set_giphy_key('{"key": "xlkSmokeKey_0123456789-abc"}')$$) like 'P0001: not_paired%',
+               'an unpaired user has no key to set');
+select test.ok(not exists (select 1 from public.couples) and (public.app_me())->'couple' = 'null', 'an outsider cannot read the key');
+
+-- 貼圖只存 GIPHY 的 id，只能是英文字母和數字（App 用它組網址）
+select test.login(test.id('yu'));
+select public.app_post_mood('{"mood": "happy", "sticker": " L4c8BNDK4STL7B5LdV "}') as sticker_mood \gset
+select test.ok((:'sticker_mood'::jsonb)->>'sticker' = 'L4c8BNDK4STL7B5LdV' and (:'sticker_mood'::jsonb)->'note' = 'null',
+               'app_post_mood stores the sticker id, trimmed');
+select public.app_post_mood('{"mood": "sad", "sticker": "13CoXDiaCcCoyk"}');
+select test.ok(public.app_post_mood('{"mood": "calm", "sticker": "  "}')->'sticker' = 'null', 'a blank sticker is stored as null');
+select test.ok(test.error_of($$select public.app_post_mood('{"mood": "happy", "sticker": "../x"}')$$) like '23514:%',
+               'a sticker id cannot climb out of the GIPHY URL');
+select test.ok(test.error_of($$select public.app_post_mood('{"mood": "happy", "sticker": "a b"}')$$) like '23514:%',
+               'a sticker id is letters and digits only');
+select test.ok(test.error_of(format('select public.app_post_mood(%L)', jsonb_build_object('mood', 'happy', 'sticker', repeat('a', 65))))
+               like '23514:%', 'a sticker id is at most 64 characters');
+select test.login(test.id('zhe'));
+select test.ok((select sticker from public.moods where id = ((:'sticker_mood'::jsonb)->>'id')::bigint) = 'L4c8BNDK4STL7B5LdV'
+               and public.app_moods() @> '[{"mood": "happy", "sticker": "L4c8BNDK4STL7B5LdV"}]', 'the partner sees the sticker');
+select test.ok(test.outbox_body(test.id('zhe'), '小雨 現在覺得開心') = '附上一張貼圖 ✨', 'a happy mood with only a sticker says so in the notification');
+select test.ok(test.outbox_data(test.id('zhe'), '小雨 現在覺得開心') = '{"mood": "happy", "sticker": "L4c8BNDK4STL7B5LdV"}',
+               'the mood notification carries the sticker id');
+select test.ok(test.outbox_body(test.id('zhe'), '小雨 現在覺得難過') = '要不要安撫一下？', 'a sad mood with a sticker still asks for comfort');
+select test.ok(public.app_history('{"kinds": ["mood"]}') @> '[{"payload": {"mood": "happy", "note": null, "sticker": "L4c8BNDK4STL7B5LdV"}}]',
+               'the mood history carries the sticker id');
+select test.ok(test.outbox_body(test.id('yu'), '阿哲 給了你一個大大的抱抱') = '點開回應一下吧', 'a comfort with no message or sticker asks for a reply');
+select public.app_send_comfort('{"kind": "kiss", "sticker": "xT4uQulxzV39haRFjG"}') as sticker_comfort \gset
+select test.ok((:'sticker_comfort'::jsonb)->>'sticker' = 'xT4uQulxzV39haRFjG' and (:'sticker_comfort'::jsonb)->'message' = 'null',
+               'app_send_comfort stores the sticker id');
+select test.ok(test.outbox_body(test.id('yu'), '阿哲 親了你一下') = '傳了一張貼圖給你，點開看看 👀',
+               'a comfort with only a sticker says so in the notification');
+select test.ok(test.outbox_data(test.id('yu'), '阿哲 親了你一下')
+               = jsonb_build_object('comfort_id', ((:'sticker_comfort'::jsonb)->>'id')::bigint, 'sticker', 'xT4uQulxzV39haRFjG'),
+               'the comfort notification keeps comfort_id and carries the sticker id');
+select public.app_send_comfort('{"kind": "cheer", "message": "明天會更好", "sticker": "42YlR8u9gV5Cw"}');
+select test.ok(test.outbox_body(test.id('yu'), '阿哲 幫你加油打氣') = '明天會更好', 'a message still comes first');
+select test.ok(public.app_history('{"kinds": ["comfort"]}')->0->'payload' = '{"kind": "cheer", "message": "明天會更好", "sticker": "42YlR8u9gV5Cw"}',
+               'the comfort history carries the sticker id');
+select test.ok(test.error_of($$select public.app_send_comfort('{"kind": "hug", "sticker": "../x"}')$$) like '23514:%',
+               'comfort sticker ids are checked too');
+select test.ok(test.error_of(format($$insert into public.comforts (couple_id, receiver_id, kind, sticker) values (%L, %L, 'hug', 'a/b')$$,
+                                    public.my_couple_id(), test.id('yu'))) like '23514:%', 'even when writing the table directly');
+select test.login(test.id('yu'));
+select test.ok(public.app_comforts() @> jsonb_build_array(jsonb_build_object('id', ((:'sticker_comfort'::jsonb)->>'id')::bigint,
+                                                                             'sticker', 'xT4uQulxzV39haRFjG')),
+               'the receiver gets the sticker from app_comforts');
+select test.ok(test.error_of(format($$update public.comforts set sticker = 'abc' where id = %s$$, (:'sticker_comfort'::jsonb)->>'id'))
+               like '42501:%', 'the receiver cannot change the sticker');
+select test.ok(test.mentions('xlkSmokeKey_0123456789-abc') = 0, 'the GIPHY key never shows up in notifications, history or realtime events');
 
 -- ---------------------------------------------------------------- 經期分享
 select test.login(test.id('yu'));
@@ -597,6 +680,7 @@ select test.ok((select count(*) from public.moods) = 0, 'former partner mood is 
 select test.ok((select count(*) from public.places) = 0, 'shared places are no longer visible');
 select test.ok((select count(*) from public.profiles) = 1, 'former partner profile is no longer visible');
 select test.ok((public.app_me())->'partner' = 'null' and (public.app_me())->'couple' = 'null', 'app_me has null couple and partner after unpairing');
+select test.ok(not exists (select 1 from public.couples), 'the old couple and its GIPHY key are no longer readable');
 select test.ok(public.app_day_entries('{"from": "2026-10-01", "to": "2026-10-31"}') = '[]', 'diary entries are no longer visible after unpairing');
 select test.ok((select count(*) from storage.objects where bucket_id = 'media') = 1, 'the old couple folder is no longer readable (only my own folder is)');
 select test.ok(public.app_notes() = '[]', 'notes about the former partner are hidden');
@@ -629,7 +713,7 @@ select test.ok(not exists (select 1 from pg_proc p where p.pronamespace = 'publi
                                              'couple_of', 'partner_of', 'shares', 'display_name_of', 'handle_new_user', 'tg_changed',
                                              'expense_shown', 'tg_couple_member_deleted', 'tg_place_saved',
                                              'media_valid', 'media_summary', 'tg_media_valid', 'tg_day_entry_inserted',
-                                             'tg_memo_inserted', 'tg_changed_memo')
+                                             'tg_memo_inserted', 'tg_changed_memo', 'tg_mood_inserted', 'tg_comfort_inserted')
                            and has_function_privilege('authenticated', p.oid, 'execute')),
                'jobs and internal helpers are not callable by clients');
 select test.ok(not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef

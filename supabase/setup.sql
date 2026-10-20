@@ -2065,6 +2065,91 @@ end $$;
 create or replace function public.app_health(jsonb default '{}') returns jsonb
 language sql stable set search_path = public set timezone to 'UTC' as $$
   select jsonb_build_object('ok', true, 'time', now(), 'schema', 3)
+$$;alter table public.moods add column if not exists sticker text check (sticker ~ '^[A-Za-z0-9]{1,64}$');
+alter table public.comforts add column if not exists sticker text check (sticker ~ '^[A-Za-z0-9]{1,64}$');
+alter table public.couples add column if not exists giphy_key text check (giphy_key ~ '^[A-Za-z0-9_-]{16,128}$');
+grant insert (sticker) on public.comforts to authenticated;
+grant update (giphy_key) on public.couples to authenticated;
+create or replace function public.app_post_mood(jsonb default '{}') returns jsonb
+language plpgsql set search_path = public set timezone to 'UTC' as $$
+declare v_row jsonb;
+begin
+  insert into moods as t (mood, note, sticker) values ($1->>'mood', nullif($1->>'note', ''), nullif(btrim($1->>'sticker'), ''))
+  returning to_jsonb(t) into v_row;
+  return camel(v_row);
+end $$;
+create or replace function public.app_send_comfort(jsonb default '{}') returns jsonb
+language plpgsql set search_path = public set timezone to 'UTC' as $$
+declare v_row jsonb;
+begin
+  insert into comforts as t (couple_id, receiver_id, kind, message, sticker)
+  values (my_couple_id(), partner_id(), $1->>'kind', nullif($1->>'message', ''), nullif(btrim($1->>'sticker'), ''))
+  returning to_jsonb(t) into v_row;
+  return camel(v_row);
+end $$;
+create or replace function public.tg_mood_inserted() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not shares(new.user_id, 'mood') then return new; end if;
+  perform log_activity(couple_of(new.user_id), new.user_id, 'mood',
+    jsonb_build_object('mood', new.mood, 'note', new.note, 'sticker', new.sticker));
+  perform enqueue_notification(partner_of(new.user_id), 'mood',
+    display_name_of(new.user_id) || ' 現在覺得' || mood_label(new.mood),
+    case when new.mood in ('tired', 'anxious', 'sad', 'angry', 'sick')
+         then coalesce(new.note || '。', '') || '要不要安撫一下？'
+         else coalesce(nullif(new.note, ''), case when new.sticker is not null then '附上一張貼圖 ✨' end, '') end,
+    jsonb_build_object('mood', new.mood, 'sticker', new.sticker));
+  return new;
+end $$;
+create or replace function public.tg_comfort_inserted() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform log_activity(new.couple_id, new.sender_id, 'comfort',
+    jsonb_build_object('kind', new.kind, 'message', new.message, 'sticker', new.sticker));
+  perform enqueue_notification(new.receiver_id, 'comfort',
+    display_name_of(new.sender_id) || ' ' || comfort_text(new.kind),
+    coalesce(new.message, case when new.sticker is not null then '傳了一張貼圖給你，點開看看 👀' else '點開回應一下吧' end),
+    jsonb_build_object('comfort_id', new.id, 'sticker', new.sticker));
+  return new;
+end $$;
+create or replace function public.app_me(jsonb default '{}') returns jsonb
+language plpgsql stable security definer set search_path = public set timezone to 'UTC' as $$
+declare
+  v_uid     uuid := auth.uid();
+  v_couple  uuid;
+  v_partner uuid;
+begin
+  if v_uid is null then raise exception 'not_authenticated'; end if;
+  v_couple := couple_of(v_uid);
+  if v_couple is not null then v_partner := partner_of(v_uid); end if;
+  return jsonb_build_object(
+    'user', coalesce(camel((select to_jsonb(p) from (select id, display_name, avatar_url, birthday, info
+                                                     from profiles where id = v_uid) p)), '{}'::jsonb)
+            || jsonb_build_object('email', (select u.email from auth.users u where u.id = v_uid)),
+    'couple', camel((select to_jsonb(c) from (select id, together_since, created_at, giphy_key from couples where id = v_couple) c)),
+    'partner', camel((select to_jsonb(p) from (select id, display_name, avatar_url, birthday, info
+                                               from profiles where id = v_partner) p)),
+    'mySharing', camel((select to_jsonb(s) from sharing_settings s where s.user_id = v_uid)),
+    'partnerSharing', camel((select to_jsonb(s) from sharing_settings s where s.user_id = v_partner)),
+    'partnerOnline', coalesce((select d.updated_at > now() - interval '10 minutes'
+                               from device_status d where d.user_id = v_partner), false));
+end $$;
+create or replace function public.app_set_giphy_key(jsonb default '{}') returns jsonb
+language plpgsql set search_path = public set timezone to 'UTC' as $$
+declare v_row jsonb;
+begin
+  update couples set giphy_key = nullif(btrim($1->>'key'), '') where id = my_couple_id()
+  returning jsonb_build_object('id', id, 'together_since', together_since, 'created_at', created_at, 'giphy_key', giphy_key)
+  into v_row;
+  if v_row is null then raise exception 'not_paired'; end if;
+  return camel(v_row);
+end $$;
+create or replace function public.app_health(jsonb default '{}') returns jsonb
+language sql stable set search_path = public set timezone to 'UTC' as $$
+  select jsonb_build_object('ok', true, 'time', now(), 'schema', 4)
 $$;
+revoke all on function public.app_set_giphy_key(jsonb) from public, anon;
+grant execute on function public.app_set_giphy_key(jsonb) to authenticated;
+notify pgrst, 'reload schema';
 select '設定完成 🎉 回到說明文件做第 3 步' as "小倆口";
 commit;

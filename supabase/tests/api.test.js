@@ -219,7 +219,7 @@ test('健康檢查：還沒登入也能確認網址和金鑰', { skip }, async (
   const r = await ok(null, 'app_health');
   assert.equal(r.ok, true);
   assert.match(r.time, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?\+00:00$/);
-  assert.equal(r.schema, 3, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql（3 = 也有手機名稱與電信）');
+  assert.equal(r.schema, 4, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql（4 = 也有 GIPHY 貼圖）');
   // 金鑰錯誤的 401 由雲端的 API gateway 檢查；本機的 Supabase CLI 不檢查 apikey，這裡測不到
 });
 
@@ -391,6 +391,49 @@ test('心情、安撫、離線補送', { skip }, async () => {
   await ok(A, 'app_send_comfort', { kind: 'pat' });
   B.sock = await connect(B);
   await B.sock.next((m) => m.type === 'notification' && /摸摸你的頭/.test(m.title));
+});
+
+test('GIPHY 貼圖：心情和安撫附上貼圖 id，通知也帶著；API key 兩個人都讀得到，但不會出現在通知或歷史紀錄', { skip }, async () => {
+  // key 一對情侶一把：阿哲設定，小雨收到 couples 的 changed，從 app_me 讀得到
+  const key = `xlkApiTest_${tag}_0123456789`;
+  assert.equal((await ok(A, 'app_set_giphy_key', { key: ` ${key} ` })).giphyKey, key);
+  await A.sock.next((m) => m.type === 'changed' && m.table === 'couples');
+  await B.sock.next((m) => m.type === 'changed' && m.table === 'couples');
+  const me = await ok(B, 'app_me');
+  assert.deepEqual(Object.keys(me).sort(), ['couple', 'mySharing', 'partner', 'partnerOnline', 'partnerSharing', 'user'], 'app_me 最外層的 key 不變');
+  assert.equal(me.couple.giphyKey, key);
+  assert.equal(me.couple.togetherSince, '2025-05-21', '設定 key 不會動到在一起的日子');
+  assert.equal((await rpc(A, 'app_set_giphy_key', { key: 'not a key' })).data.code, '23514');
+  assert.equal((await rest(B, 'PATCH', `couples?id=eq.${me.couple.id}`, { giphy_key: 'x' })).data.code, '23514', '直接改欄位也一樣檢查');
+  assert.equal((await rpc(null, 'app_set_giphy_key', { key })).status, 401, '沒登入不能呼叫');
+
+  const sticker = 'L4c8BNDK4STL7B5LdV';
+  const mood = await ok(B, 'app_post_mood', { mood: 'happy', sticker });
+  assert.equal(mood.sticker, sticker);
+  const n = await A.sock.next((m) => m.type === 'notification' && m.title === '小雨 現在覺得開心');
+  assert.equal(n.body, '附上一張貼圖 ✨');
+  assert.deepEqual(n.data, { mood: 'happy', sticker });
+  assert.equal((await ok(A, 'app_moods', { days: 1 })).find((m) => m.id === mood.id).sticker, sticker, '對方讀得到貼圖');
+  assert.equal((await rpc(B, 'app_post_mood', { mood: 'happy', sticker: '../x' })).data.code, '23514', '貼圖 id 只能是英文字母和數字');
+
+  const sent = await ok(A, 'app_send_comfort', { kind: 'hug', sticker: 'xT4uQulxzV39haRFjG' });
+  assert.equal(sent.sticker, 'xT4uQulxzV39haRFjG');
+  const c = await B.sock.next((m) => m.type === 'notification' && m.kind === 'comfort' && m.data.comfort_id === sent.id);
+  assert.equal(c.body, '傳了一張貼圖給你，點開看看 👀');
+  assert.deepEqual(c.data, { comfort_id: sent.id, sticker: sent.sticker }, '通知的 data 保持 comfort_id，再加上貼圖 id');
+  assert.equal((await ok(B, 'app_comforts', { limit: 10 })).find((x) => x.id === sent.id).sticker, sent.sticker);
+  denied(await rest(B, 'PATCH', `comforts?id=eq.${sent.id}`, { sticker: 'abc' }));
+
+  // key 不會出現在任何通知、歷史紀錄或 Realtime 訊息裡
+  const seen = [...A.sock.queued(), ...B.sock.queued(), n, c, ...(await ok(A, 'app_history', { limit: 200 })),
+    ...(await rest(A, 'GET', 'notification_outbox?select=title,body,data')).data,
+    ...(await rest(B, 'GET', 'notification_outbox?select=title,body,data')).data];
+  assert.deepEqual(seen.filter((x) => JSON.stringify(x).includes(key)), []);
+
+  // 空白就清掉，對方也收到 changed
+  assert.equal((await ok(B, 'app_set_giphy_key', { key: '  ' })).giphyKey, null);
+  await A.sock.next((m) => m.type === 'changed' && m.table === 'couples');
+  assert.equal((await ok(A, 'app_me')).couple.giphyKey, null);
 });
 
 test('「現在在哪」請對方回報位置', { skip }, async () => {
