@@ -71,6 +71,10 @@ dependencies {
     // 「從 SIM 卡帶入」電話號碼（Google 的 Phone Number Hint，不用電話權限）
     implementation(libs.play.services.auth)
     implementation(libs.osmdroid)
+    // GIPHY 貼圖：會動的 GIF、WebP（只放記憶體快取，不存檔）
+    implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
+    implementation(libs.coil.network.okhttp)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 
@@ -82,4 +86,5 @@ dependencies {
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.roborazzi.junit.rule)
+    testImplementation(libs.coil.test)
 }

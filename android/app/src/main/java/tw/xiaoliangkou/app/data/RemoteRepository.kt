@@ -166,7 +166,7 @@ class RemoteRepository(
         }
     }
 
-    /** 資料庫有沒有跑過 upgrade-v2.sql：app_health 的 schema 要 >= 2（3 才有手機名稱與電信） */
+    /** 資料庫有沒有跑過 upgrade-v2.sql：app_health 的 schema 要 >= 2（3 才有手機名稱與電信，4 才有 GIPHY 貼圖） */
     private suspend fun checkSchema() {
         val h = apiCall { api.health() }
         val schema = (h["schema"] as? JsonPrimitive)?.intOrNull ?: 0
@@ -200,12 +200,12 @@ class RemoteRepository(
      */
     fun recheckSchema() {
         val st = _state.value
-        val behind = st.schemaOutdated || st.deviceInfoOutdated
+        val behind = st.schemaOutdated || st.deviceInfoOutdated || st.stickersOutdated
         if (!behind || refreshing.get() > 0 || !rechecking.compareAndSet(false, true)) return
         scope.launch {
             try {
                 checkSchema()
-                // 剛跑完 upgrade-v2.sql：新功能的資料重新載入（只差手機名稱、電信的話不用，對方下次回報就有）
+                // 剛跑完 upgrade-v2.sql：新功能的資料重新載入（只差手機名稱、電信、貼圖的話不用，對方下次回報就有）
                 if (st.schemaOutdated && !_state.value.schemaOutdated) refreshAll()
             } catch (e: CancellationException) {
                 throw e
@@ -270,13 +270,75 @@ class RemoteRepository(
         return r
     }
 
-    override suspend fun postMood(mood: String, note: String?) {
-        apiCall { api.postMood(buildJsonObject { put("mood", mood); put("note", note ?: "") }) }
+    override suspend fun postMood(mood: String, note: String?, sticker: String?) {
+        val s = checkSticker(sticker)
+        val row = apiCall { api.postMood(buildJsonObject { put("mood", mood); put("note", note ?: ""); if (s != null) put("sticker", s) }) }
         loadMoods()
+        stickerSaved(s, row.sticker, MOOD_STICKER_NOT_SAVED)
     }
-    override suspend fun sendComfort(kind: String, message: String?) {
-        apiCall { api.postComfort(buildJsonObject { put("kind", kind); put("message", message ?: "") }) }
+    override suspend fun sendComfort(kind: String, message: String?, sticker: String?) {
+        val s = checkSticker(sticker)
+        val row = apiCall { api.postComfort(buildJsonObject { put("kind", kind); put("message", message ?: ""); if (s != null) put("sticker", s) }) }
         loadComforts()
+        stickerSaved(s, row.sticker, COMFORT_STICKER_NOT_SAVED)
+    }
+
+    /** 要附的貼圖：資料庫還存不了就先擋下來（舊的資料庫會默默略過不認得的欄位，貼圖就不見了） */
+    private fun checkSticker(sticker: String?): String? {
+        val s = sticker?.takeIf { it.isNotBlank() } ?: return null
+        if (!Giphy.isValidId(s)) throw AppException(BAD_STICKER, "invalid_input")
+        val st = _state.value
+        if (st.schemaOutdated) throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
+        if (st.stickersOutdated) throw AppException(STICKERS_OUTDATED, STICKERS_OUTDATED_CODE)
+        return s
+    }
+
+    /** 送出去了，回傳的那筆卻沒有貼圖：資料庫其實還是舊的（還不知道版本、或剛換回舊的資料庫） */
+    private fun stickerSaved(sent: String?, saved: String?, message: String) {
+        if (sent == null || saved == sent) return
+        stickersBehind()
+        throw AppException(message, STICKERS_OUTDATED_CODE)
+    }
+
+    /** 記下資料庫還沒有貼圖（之後回到 App 會再檢查一次） */
+    private fun stickersBehind() = _state.update { it.copy(dbSchema = (it.dbSchema ?: STICKER_SCHEMA).coerceAtMost(STICKER_SCHEMA - 1)) }
+
+    override suspend fun readComfort(id: Long) = markRead(listOf(id))
+
+    override suspend fun markComfortsRead() {
+        val st = _state.value
+        val me = st.myId ?: return
+        markRead(st.comforts.filter { it.receiverId == me && it.readAt == null }.map { it.id })
+    }
+
+    /** 畫面先標成看過了（紅點馬上消失），再一筆一筆告訴資料庫；沒送到的改回來，下次再標 */
+    private suspend fun markRead(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        val now = Instant.now().toString()
+        _state.update { st -> st.copy(comforts = st.comforts.map { if (it.id in ids && it.readAt == null) it.copy(readAt = now) else it }) }
+        val done = mutableSetOf<Long>()
+        try {
+            ids.forEach { id -> apiCall { api.readComfort(id) }; done += id }
+        } catch (e: Exception) {
+            _state.update { st -> st.copy(comforts = st.comforts.map { if (it.id !in done && it.id in ids && it.readAt == now) it.copy(readAt = null) else it }) }
+            throw e
+        }
+        reloadQuietly(::loadComforts)
+    }
+
+    override suspend fun setGiphyKey(key: String?) {
+        val k = key?.trim()?.takeIf { it.isNotEmpty() }
+        if (k != null && !Giphy.isValidKey(k)) throw AppException(BAD_GIPHY_KEY, "invalid_input")
+        try {
+            // 沒有 key 就是清掉
+            apiCall { api.setGiphyKey(buildJsonObject { if (k != null) put("key", k) }) }
+        } catch (e: AppException) {
+            // 還沒有 app_set_giphy_key：資料庫是 schema 3 以前的
+            if (e.code == Errors.SCHEMA_OUTDATED_CODE) { stickersBehind(); throw AppException(STICKERS_OUTDATED, STICKERS_OUTDATED_CODE, e.status) }
+            throw e
+        }
+        loadMe()
+        recheckSchema()
     }
 
     override suspend fun saveAnniversary(id: String?, body: JsonObject) {
@@ -539,6 +601,16 @@ class RemoteRepository(
         const val SCHEMA = 2
         /** 有手機名稱與電信的資料庫版本：沒有也沒關係，只是對方看不到 */
         const val DEVICE_SCHEMA = 3
+        /** 有 GIPHY 貼圖的資料庫版本：沒有的話心情、安撫照樣能送，只是不能附貼圖 */
+        const val STICKER_SCHEMA = 4
+
+        const val STICKERS_OUTDATED_CODE = "stickers_outdated"
+        /** 舊的資料庫（schema 3 以前）存不了貼圖 */
+        const val STICKERS_OUTDATED = "資料庫還不能存 GIPHY 貼圖：請到 Supabase 的 SQL Editor 再執行一次 upgrade-v2.sql（說明在「我的 › Supabase 與帳號」）"
+        const val MOOD_STICKER_NOT_SAVED = "心情更新了，但資料庫還沒更新，貼圖沒有存到：請再執行一次 upgrade-v2.sql"
+        const val COMFORT_STICKER_NOT_SAVED = "安撫送出去了，但資料庫還沒更新，貼圖沒有存到：請再執行一次 upgrade-v2.sql"
+        const val BAD_STICKER = "這張貼圖不能用，換一張試試"
+        const val BAD_GIPHY_KEY = "這看起來不是 GIPHY 的 API key：請到 GIPHY Developers 複製整串 key 🔑"
 
         /** 舊的資料庫：暱稱、生日存好了，身高、星座這些還存不進去 */
         const val PROFILE_INFO_OUTDATED = "暱稱和生日存好了；其他資料要等資料庫更新才存得進去（說明在「我的 › Supabase 與帳號」）"

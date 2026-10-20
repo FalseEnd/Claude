@@ -1,12 +1,15 @@
 package tw.xiaoliangkou.app
 
 import android.app.Application
+import android.graphics.BitmapFactory
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
+import coil3.ImageLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,7 +27,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import org.osmdroid.config.Configuration
 import tw.xiaoliangkou.app.core.PaymentParser
@@ -32,6 +38,7 @@ import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.Errors
+import tw.xiaoliangkou.app.data.Giphy
 import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.data.MediaCache
 import tw.xiaoliangkou.app.data.PlaceSearch
@@ -47,12 +54,14 @@ import tw.xiaoliangkou.app.data.apiCall
 import tw.xiaoliangkou.app.service.AutoBookkeeping
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.ShareService
+import tw.xiaoliangkou.app.ui.components.stickerImageLoader
 import tw.xiaoliangkou.app.widget.MemoWidget
 import tw.xiaoliangkou.app.widget.MemoWidgetSnapshot
 import tw.xiaoliangkou.app.widget.WidgetSnapshot
 import tw.xiaoliangkou.app.widget.Widgets
 
-class XlkApp : Application() {
+// open：測試用 TestXlkApp 換掉會連網路的東西（Robolectric 會自動用它）
+open class XlkApp : Application() {
     lateinit var container: AppContainer
         private set
 
@@ -85,6 +94,17 @@ class AppContainer(private val app: Application) {
     }
     /** 地圖的地址搜尋 */
     val placeSearch = PlaceSearch(app, "${BuildConfig.APPLICATION_ID}/${BuildConfig.VERSION_NAME}")
+    /** GIPHY：搜尋貼圖（查過的頁面記在記憶體裡）、通知裡的貼圖；測試時換成假的 */
+    var giphy = Giphy()
+
+    /**
+     * 顯示 GIPHY 貼圖的圖片載入器（用到才建立）：只放記憶體、不存檔。測試時換成假的。
+     * 不用 Coil 全域的那個：測試之間會互相影響
+     */
+    var stickerImages: ImageLoader
+        get() = images ?: stickerImageLoader(app).also { images = it }
+        set(value) { images = value }
+    private var images: ImageLoader? = null
 
     private val _repo = MutableStateFlow<CoupleRepository?>(null)
     val repo: StateFlow<CoupleRepository?> = _repo
@@ -284,12 +304,30 @@ class AppContainer(private val app: Application) {
         }
         supabase = c
         realtime.start(url, key, s.userId, { session.freshToken() }, c.api)
+        // 還是同一個登入（沒登出、沒換帳號）才補上通知的貼圖
         val repo = RemoteRepository(c.api, realtime, scope) { n ->
-            if (!isForeground) notifier.show(n.id, n.title, n.body, n.kind, n.data)
+            if (!isForeground) postNotification(n) { supabase === c }
         }
         _repo.value = repo
         scope.launch { runCatching { repo.refreshAll() } }
         ShareService.start(app)
+    }
+
+    /**
+     * 背景收到的通知：先發文字的。附了 GIPHY 貼圖的話，再到背景抓不會動的那張（最多等 5 秒），
+     * 抓到時通知還在、[current] 也還是對的，才把同一則換成有大圖的（不會再響一次）；抓不到就留著文字的
+     */
+    internal fun postNotification(n: RealtimeClient.Event.Notification, current: () -> Boolean): Job? {
+        notifier.show(n.id, n.title, n.body, n.kind, n.data)
+        val sticker = (n.data?.get("sticker") as? JsonPrimitive)?.contentOrNull?.takeIf(Giphy::isValidId) ?: return null
+        if (!notifier.canPost()) return null
+        val client = giphy
+        return scope.launch {
+            val picture = withContext(Dispatchers.IO) {
+                withTimeoutOrNull(5_000) { client.still(sticker)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
+            } ?: return@launch
+            if (current() && notifier.isShowing(n.id)) notifier.show(n.id, n.title, n.body, n.kind, n.data, picture)
+        }
     }
 
     suspend fun logout() {
@@ -307,6 +345,8 @@ class AppContainer(private val app: Application) {
     suspend fun setAutoBookkeeping(v: Boolean) { settings.setAutoBookkeeping(v); reloadPrefs() }
     suspend fun setStatusNotification(v: Boolean) { settings.setStatusNotification(v); reloadPrefs() }
     suspend fun setStatusItems(items: Set<String>) { settings.setStatusItems(items); reloadPrefs() }
+    /** 選了一張貼圖：記到「最近用過」 */
+    suspend fun addRecentSticker(id: String) { settings.addRecentSticker(id); reloadPrefs() }
 
     private fun stopCurrent() {
         voice.stop()

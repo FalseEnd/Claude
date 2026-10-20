@@ -329,10 +329,16 @@ internal fun safeInterceptor(block: (Interceptor.Chain) -> okhttp3.Response) = I
 }
 
 /** 共用的連線池 */
-private val sharedHttp: OkHttpClient = OkHttpClient.Builder()
+internal val sharedHttp: OkHttpClient = OkHttpClient.Builder()
     .connectTimeout(10, TimeUnit.SECONDS)
     .readTimeout(20, TimeUnit.SECONDS)
     .build()
+
+/**
+ * 連 GIPHY（搜尋、貼圖的圖片）：共用連線池，但絕對不能帶 Supabase 的 apikey 和登入的 token，
+ * 所以從 [sharedHttp] 長出來，不能用 [SupabaseClient] 裡的那幾個
+ */
+internal val giphyHttp: OkHttpClient = sharedHttp.newBuilder().build()
 
 /**
  * 連到一個 Supabase 專案：[api] 是資料操作，其餘是登入相關。

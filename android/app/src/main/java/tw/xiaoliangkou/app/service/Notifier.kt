@@ -62,22 +62,41 @@ class Notifier(private val context: Context) {
         return PendingIntent.getActivity(context, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    fun show(id: Long, title: String, body: String, kind: String, data: JsonObject? = null) {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) return
-        val n = NotificationCompat.Builder(context, channelFor(kind))
+    /** Android 13 起要使用者允許才能發通知 */
+    fun canPost() = Build.VERSION.SDK_INT < 33 ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * 資料庫來的通知（[id] 是 outbox 的 id）。
+     * [picture] 是附的 GIPHY 貼圖（不會動的那張）：展開時顯示大圖；同一則補上圖片時不會再響一次
+     */
+    fun show(id: Long, title: String, body: String, kind: String, data: JsonObject? = null, picture: Bitmap? = null) {
+        if (!canPost()) return
+        val b = NotificationCompat.Builder(context, channelFor(kind))
             .setSmallIcon(R.drawable.ic_stat_heart)
             .setColor(PINK)
             .setContentTitle(title)
             .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
             .setPriority(if (channelFor(kind) == CH_LOVE) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(openApp(RemoteRepository.routeFor(kind, data), id.toInt()))
-            .build()
-        runCatching { NotificationManagerCompat.from(context).notify(id.toInt() + 100, n) }
+        if (picture == null) {
+            b.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        } else {
+            // 收合時貼圖在右邊；展開時是大圖，右邊就不用再放一次
+            b.setStyle(NotificationCompat.BigPictureStyle().bigPicture(picture).setSummaryText(body).bigLargeIcon(null as Bitmap?))
+                .setLargeIcon(picture)
+                .setOnlyAlertOnce(true)
+        }
+        runCatching { NotificationManagerCompat.from(context).notify(androidId(id), b.build()) }
     }
+
+    /** 這則還在通知列上（使用者還沒滑掉、還沒點開） */
+    fun isShowing(id: Long): Boolean = runCatching {
+        context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == androidId(id) }
+    }.getOrDefault(false)
+
+    private fun androidId(id: Long) = id.toInt() + 100
 
     fun serviceNotification(text: String): Notification =
         NotificationCompat.Builder(context, CH_SERVICE)

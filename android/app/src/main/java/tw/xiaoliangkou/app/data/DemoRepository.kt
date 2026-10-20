@@ -59,6 +59,8 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
     companion object {
         const val ME = "demo-me"
         const val PARTNER = "demo-partner"
+        /** 小雨傳來的安撫附的貼圖（GIPHY 上真的有的貼圖：透明背景的抱抱） */
+        const val STICKER = "L4c8BNDK4STL7B5LdV"
         val MY_LOCATION = LatLng(25.0330, 121.5430) // 大安區
 
         private data class Stop(val name: String, val lat: Double, val lng: Double, val dwell: Int = 0, val wifi: String? = null, val charge: Boolean = false, val spend: String? = null, val metro: Boolean = false)
@@ -200,7 +202,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         )
         val history = listOf(
             activity("guess", PARTNER, at(1, 22, 0), "merchant" to "好樂迪 KTV", "guess" to 1000, "actual" to 1200, "points" to 50),
-            activity("comfort", PARTNER, at(1, 22, 40), "kind" to "here", "message" to "收到抱抱了，晚安"),
+            activity("comfort", PARTNER, at(1, 22, 40), "kind" to "here", "message" to "收到抱抱了，晚安", "sticker" to STICKER),
             activity("comfort", ME, at(1, 22, 35), "kind" to "hug", "message" to null),
             activity("battery_low", PARTNER, at(1, 17, 50), "level" to 18),
             activity("event_confirmed", PARTNER, at(1, 12, 5), "title" to "週六晚餐"),
@@ -211,7 +213,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         ).sortedByDescending { it.time }
 
         return AppState(
-            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.DEVICE_SCHEMA,
+            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.STICKER_SCHEMA,
             myDevice = DeviceStatus(
                 ME, 82, true, "wifi", "約 120 Mbps", false, 3_120, iso(), "samsung SM-S921B", iso(),
                 deviceName = "阿哲的 Galaxy S24", carrier = "台灣大哥大",
@@ -243,7 +245,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
             moods = moods,
             comforts = listOf(
                 Comfort(id(), senderId = ME, receiverId = PARTNER, kind = "hug", createdAt = iso(at(1, 22, 35))),
-                Comfort(id(), senderId = PARTNER, receiverId = ME, kind = "here", message = "收到抱抱了，晚安", createdAt = iso(at(1, 22, 40))),
+                Comfort(id(), senderId = PARTNER, receiverId = ME, kind = "here", message = "收到抱抱了，晚安", createdAt = iso(at(1, 22, 40)), sticker = STICKER),
             ),
             anniversaries = listOf(
                 Anniversary("a1", title = "在一起紀念日", date = since.toString(), kind = "together"),
@@ -291,6 +293,8 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
     private fun fences() = _state.value.places.filter { it.watchUser != ME }.map { Geo.Fence(it.id, it.lat, it.lng, it.radiusM.toDouble()) }
 
     private fun log(a: Activity) = _state.update { it.copy(history = listOf(a) + it.history) }
+    /** 附了貼圖才放進紀錄（跟資料庫一樣是 sticker） */
+    private fun stickerPayload(id: String?): Array<Pair<String, Any?>> = if (id == null) emptyArray() else arrayOf("sticker" to id)
     private suspend fun banner(title: String, body: String?, kind: String) {
         if (_state.value.notifPrefs[kind] == false) return
         _banners.emit(Banner(title, body, kind, RemoteRepository.routeFor(kind)))
@@ -563,24 +567,34 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         return GuessResult(actual, score.points, score.ratio)
     }
 
-    override suspend fun postMood(mood: String, note: String?) {
-        _state.update { it.copy(moods = listOf(Mood(id(), ME, mood, note?.ifBlank { null }, iso())) + it.moods) }
-        log(activity("mood", ME, now(), "mood" to mood, "note" to note))
+    /** 跟 Supabase 模式一樣先檢查貼圖的 id（示範模式不會連到 GIPHY） */
+    private fun checkSticker(sticker: String?): String? {
+        val s = sticker?.takeIf { it.isNotBlank() } ?: return null
+        if (!Giphy.isValidId(s)) throw AppException(RemoteRepository.BAD_STICKER, "invalid_input")
+        return s
+    }
+
+    override suspend fun postMood(mood: String, note: String?, sticker: String?) {
+        val s = checkSticker(sticker)
+        _state.update { it.copy(moods = listOf(Mood(id(), ME, mood, note?.ifBlank { null }, iso(), s)) + it.moods) }
+        log(activity("mood", ME, now(), "mood" to mood, "note" to note, *stickerPayload(s)))
         if (Catalog.mood(mood)?.needsComfort == true) scope.launch {
             delay(3500)
             val c = Catalog.comforts.filter { it.key in listOf("hug", "pat", "here") }.random()
-            _state.update { it.copy(comforts = listOf(Comfort(id(), senderId = PARTNER, receiverId = ME, kind = c.key, createdAt = iso())) + it.comforts) }
+            _state.update { it.copy(comforts = listOf(Comfort(id(), senderId = PARTNER, receiverId = ME, kind = c.key, message = "看到你心情不好", createdAt = iso())) + it.comforts) }
             log(activity("comfort", PARTNER, now(), "kind" to c.key, "message" to "看到你心情不好"))
             banner("小雨 ${c.push} ${c.emoji}", "看到你心情不好", "comfort")
         }
     }
 
-    override suspend fun sendComfort(kind: String, message: String?) {
-        _state.update { it.copy(comforts = listOf(Comfort(id(), senderId = ME, receiverId = PARTNER, kind = kind, message = message, createdAt = iso())) + it.comforts) }
-        log(activity("comfort", ME, now(), "kind" to kind, "message" to message))
+    override suspend fun sendComfort(kind: String, message: String?, sticker: String?) {
+        val s = checkSticker(sticker)
+        _state.update { it.copy(comforts = listOf(Comfort(id(), senderId = ME, receiverId = PARTNER, kind = kind, message = message, createdAt = iso(), sticker = s)) + it.comforts) }
+        log(activity("comfort", ME, now(), "kind" to kind, "message" to message, *stickerPayload(s)))
         scope.launch {
             delay(2600)
             val reply = listOf("收到了，好多了", "嘿嘿謝謝你", "晚點見面再抱一次", "有你真好").random()
+            _state.update { it.copy(comforts = listOf(Comfort(id(), senderId = PARTNER, receiverId = ME, kind = "here", message = reply, createdAt = iso())) + it.comforts) }
             log(activity("comfort", PARTNER, now(), "kind" to "here", "message" to reply))
             banner("小雨 回覆了你", reply, "comfort")
             val pm = _state.value.moods.firstOrNull { it.userId == PARTNER }
@@ -589,6 +603,22 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
                 partnerMood("calm", "被安撫了")
             }
         }
+    }
+
+    override suspend fun readComfort(id: Long) = markRead { it.id == id }
+    override suspend fun markComfortsRead() = markRead { true }
+
+    /** 收到的安撫標成看過了 */
+    private fun markRead(which: (Comfort) -> Boolean) {
+        val now = iso()
+        _state.update { st -> st.copy(comforts = st.comforts.map { if (it.receiverId == ME && it.readAt == null && which(it)) it.copy(readAt = now) else it }) }
+    }
+
+    /** 存在示範的配對上（示範模式不會連到 GIPHY） */
+    override suspend fun setGiphyKey(key: String?) {
+        val k = key?.trim()?.takeIf { it.isNotEmpty() }
+        if (k != null && !Giphy.isValidKey(k)) throw AppException(RemoteRepository.BAD_GIPHY_KEY, "invalid_input")
+        _state.update { it.copy(couple = it.couple?.copy(giphyKey = k)) }
     }
 
     override suspend fun saveAnniversary(id: String?, body: JsonObject) {

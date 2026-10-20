@@ -14,6 +14,8 @@ retrofit = "2.11.0"
 playLocation = "21.3.0"
 playAuth = "21.3.0"
 osmdroid = "6.1.20"
+# 3.3.0 以後要 Kotlin 2.2
+coil = "3.2.0"
 iconsExtended = "1.7.8"
 junit = "4.13.2"
 robolectric = "4.14.1"
@@ -48,6 +50,10 @@ retrofit-kotlinx-serialization = { module = "com.squareup.retrofit2:converter-ko
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "playLocation" }
 play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "playAuth" }
 osmdroid = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroid" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
+coil-test = { module = "io.coil-kt.coil3:coil-test", version.ref = "coil" }
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }

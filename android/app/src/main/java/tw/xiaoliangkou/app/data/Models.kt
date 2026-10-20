@@ -21,7 +21,16 @@ import java.time.ZoneId
     val birthDate: LocalDate? get() = birthday?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 }
 
-@Serializable data class Couple(val id: String, val togetherSince: String? = null, val createdAt: String? = null)
+@Serializable data class Couple(
+    val id: String,
+    val togetherSince: String? = null,
+    val createdAt: String? = null,
+    /** 兩個人共用的 GIPHY API key（資料庫 schema 4 起才有）：只拿來搜尋貼圖 */
+    val giphyKey: String? = null,
+) {
+    // key 不能跟著狀態被印出來（例外訊息、測試失敗的訊息）
+    override fun toString() = "Couple(id=$id, togetherSince=$togetherSince, createdAt=$createdAt, giphyKey=${giphyKey?.let { "***" }})"
+}
 
 @Serializable data class Sharing(
     val userId: String,
@@ -118,7 +127,15 @@ import java.time.ZoneId
 
 @Serializable data class GuessResult(val actualAmount: Double, val scorePoints: Int, val errorRatio: Double)
 
-@Serializable data class Mood(val id: Long, val userId: String, val mood: String, val note: String? = null, val createdAt: String)
+@Serializable data class Mood(
+    val id: Long,
+    val userId: String,
+    val mood: String,
+    val note: String? = null,
+    val createdAt: String,
+    /** 附上的 GIPHY 貼圖 id（資料庫 schema 4 起才有） */
+    val sticker: String? = null,
+)
 
 @Serializable data class Comfort(
     val id: Long,
@@ -129,6 +146,8 @@ import java.time.ZoneId
     val message: String? = null,
     val createdAt: String,
     val readAt: String? = null,
+    /** 附上的 GIPHY 貼圖 id（資料庫 schema 4 起才有） */
+    val sticker: String? = null,
 )
 
 @Serializable data class Anniversary(

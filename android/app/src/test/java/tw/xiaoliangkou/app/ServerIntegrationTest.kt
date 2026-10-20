@@ -102,10 +102,11 @@ class ServerIntegrationTest {
     /** 個人資料、只有自己看得到的備註、日曆紀錄、備忘錄、照片與語音 */
     private suspend fun v2Features(zhe: Client, yu: Client): V2Files {
         val health = apiCall { anon().api.health() }
-        assertEquals(RemoteRepository.DEVICE_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
+        assertEquals(RemoteRepository.STICKER_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
         zhe.repo.refreshAll()
         assertFalse(zhe.repo.state.value.schemaOutdated)
         assertFalse(zhe.repo.state.value.deviceInfoOutdated)
+        assertFalse(zhe.repo.state.value.stickersOutdated)
         val couple = zhe.repo.state.value.couple!!.id
 
         // 個人資料：對方看得到（app_me 的 partner.info），生日一起存

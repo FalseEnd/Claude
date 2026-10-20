@@ -31,6 +31,8 @@ class SettingsStore(private val context: Context) {
         /** 常駐通知顯示對方的狀態，以及要顯示哪些項目（見 [StatusText]） */
         val statusNotification: Boolean = true,
         val statusItems: Set<String> = StatusText.DEFAULTS,
+        /** 最近用過的 GIPHY 貼圖 id，最近的在前（最多 [RECENT_STICKERS] 個，登出就清掉） */
+        val recentStickers: List<String> = emptyList(),
     ) {
         val configured get() = supabaseUrl.isNotEmpty() && supabaseKey.isNotEmpty()
     }
@@ -55,6 +57,8 @@ class SettingsStore(private val context: Context) {
         val stepCarry = longPreferencesKey("step_carry")
         val stepLastAt = longPreferencesKey("step_last_at")
         val stepSession = stringPreferencesKey("step_session")
+        // 有順序的清單：用逗號分開（GIPHY 的 id 只有英數字）
+        val recentStickers = stringPreferencesKey("recent_stickers")
         // 舊版留下的設定，登出時順便清掉
         val legacy = listOf(stringPreferencesKey("server_url"), stringPreferencesKey("token"))
     }
@@ -77,8 +81,11 @@ class SettingsStore(private val context: Context) {
             onboarded = p[K.onboarded] ?: false,
             statusNotification = p[K.statusNotification] ?: true,
             statusItems = p[K.statusItems] ?: StatusText.DEFAULTS,
+            recentStickers = stickers(p[K.recentStickers]),
         )
     }
+
+    private fun stickers(raw: String?) = raw?.split(',')?.filter(Giphy::isValidId).orEmpty()
 
     suspend fun load(): Prefs = read(context.dataStore.data.first())
 
@@ -112,7 +119,7 @@ class SettingsStore(private val context: Context) {
     /** 登出：清掉登入狀態，保留 Supabase 網址、金鑰與 Email，方便重新登入 */
     suspend fun clear() = context.dataStore.edit {
         listOf(K.mode, K.accessToken, K.refreshToken, K.userId).forEach { k -> it.remove(k) }
-        it.remove(K.expiresAt); it.remove(K.insidePlaces); it.remove(K.onboarded)
+        it.remove(K.expiresAt); it.remove(K.insidePlaces); it.remove(K.onboarded); it.remove(K.recentStickers)
         K.legacy.forEach { k -> it.remove(k) }
     }
 
@@ -120,6 +127,11 @@ class SettingsStore(private val context: Context) {
     suspend fun setAutoBookkeeping(v: Boolean) = context.dataStore.edit { it[K.autoBookkeeping] = v }
     suspend fun setStatusNotification(v: Boolean) = context.dataStore.edit { it[K.statusNotification] = v }
     suspend fun setStatusItems(items: Set<String>) = context.dataStore.edit { it[K.statusItems] = items }
+
+    /** 選了一張貼圖：放到「最近用過」的最前面 */
+    suspend fun addRecentSticker(id: String) = context.dataStore.edit {
+        if (Giphy.isValidId(id)) it[K.recentStickers] = (listOf(id) + stickers(it[K.recentStickers])).distinct().take(RECENT_STICKERS).joinToString(",")
+    }
 
     suspend fun insidePlaces(): Set<String> = context.dataStore.data.first()[K.insidePlaces] ?: emptySet()
     suspend fun setInsidePlaces(ids: Set<String>) = context.dataStore.edit { it[K.insidePlaces] = ids }
@@ -157,5 +169,9 @@ class SettingsStore(private val context: Context) {
             steps = n
         }
         return steps.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    companion object {
+        const val RECENT_STICKERS = 24
     }
 }

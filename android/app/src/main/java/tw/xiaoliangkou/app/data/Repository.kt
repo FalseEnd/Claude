@@ -51,6 +51,10 @@ data class AppState(
 ) {
     /** 新功能都能用，只是資料庫還沒有手機名稱與電信（跑過舊的 upgrade-v2.sql）：再跑一次就好，不急 */
     val deviceInfoOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.DEVICE_SCHEMA
+    /** 資料庫還存不了 GIPHY 貼圖（schema 3 以前）：心情、安撫照樣能送，只是不能附貼圖。再跑一次 upgrade-v2.sql 就好 */
+    val stickersOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.STICKER_SCHEMA
+    /** 兩個人共用的 GIPHY API key，還沒設定是 null */
+    val giphyKey get() = couple?.giphyKey?.takeIf { it.isNotBlank() }
 
     val paired get() = couple != null && partner != null
     val myId get() = me?.id
@@ -168,9 +172,15 @@ interface CoupleRepository {
     suspend fun deleteExpense(id: String)
     suspend fun guess(id: String, amount: Double): GuessResult
 
-    // 心情與安撫
-    suspend fun postMood(mood: String, note: String?)
-    suspend fun sendComfort(kind: String, message: String?)
+    // 心情與安撫（[sticker] 是選填的 GIPHY 貼圖 id）
+    suspend fun postMood(mood: String, note: String?, sticker: String? = null)
+    suspend fun sendComfort(kind: String, message: String?, sticker: String? = null)
+    /** 收到的安撫看過了 */
+    suspend fun readComfort(id: Long)
+    /** 收到的安撫全部標成看過了 */
+    suspend fun markComfortsRead()
+    /** 兩個人共用的 GIPHY API key；null 或空白是清掉 */
+    suspend fun setGiphyKey(key: String?)
 
     // 紀念日與約會
     suspend fun saveAnniversary(id: String?, body: JsonObject)

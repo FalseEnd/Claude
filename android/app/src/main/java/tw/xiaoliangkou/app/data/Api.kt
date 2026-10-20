@@ -60,6 +60,8 @@ class Api(private val rest: RestService, private val storage: StorageService? = 
     suspend fun comforts(limit: Int = 50): List<Comfort> = call("app_comforts", buildJsonObject { put("limit", limit) })
     suspend fun postComfort(body: JsonObject): Comfort = call("app_send_comfort", body)
     suspend fun readComfort(id: Long): JsonObject = call("app_read_comfort", buildJsonObject { put("id", id) })
+    /** 兩個人共用的 GIPHY API key：{"key": …}，沒給或空白是清掉；回傳更新後的配對 */
+    suspend fun setGiphyKey(body: JsonObject): Couple = call("app_set_giphy_key", body)
 
     suspend fun anniversaries(): List<Anniversary> = call("app_anniversaries")
     suspend fun createAnniversary(body: JsonObject): Anniversary = call("app_create_anniversary", body)
@@ -186,6 +188,7 @@ object Errors {
         "app_notes", "app_save_note", "app_delete_note",
         "app_day_entries", "app_save_day_entry", "app_delete_day_entry",
         "app_memos", "app_save_memo", "app_delete_memo",
+        "app_set_giphy_key",
     )
     private val FUNCTION_NAME = Regex("""public\.(\w+)""")
 
