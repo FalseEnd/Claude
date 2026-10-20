@@ -7,13 +7,16 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,7 +24,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.GifBox
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.buildJsonObject
@@ -42,22 +49,27 @@ import kotlinx.serialization.json.put
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Cycle
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.Giphy
+import tw.xiaoliangkou.app.data.GiphySearcher
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Derived
 import tw.xiaoliangkou.app.ui.Fmt
 import tw.xiaoliangkou.app.ui.SheetSpec
+import tw.xiaoliangkou.app.ui.components.Avatar
 import tw.xiaoliangkou.app.ui.components.ChoiceChip
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.CuteCard
 import tw.xiaoliangkou.app.ui.components.CuteField
 import tw.xiaoliangkou.app.ui.components.CycleRing
 import tw.xiaoliangkou.app.ui.components.EmptyState
+import tw.xiaoliangkou.app.ui.components.GiphyPickerDialog
 import tw.xiaoliangkou.app.ui.components.Note
 import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.StatTile
+import tw.xiaoliangkou.app.ui.components.StickerImage
 import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.ToggleRow
 import tw.xiaoliangkou.app.ui.components.Wiggle
@@ -69,10 +81,11 @@ import java.time.LocalDate
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun MoodScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
+fun MoodScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.container.giphy, back: () -> Unit) {
     val current = Derived.moodToday(s, s.myId)
     var pick by remember { mutableStateOf(current?.mood) }
     var note by remember { mutableStateOf(current?.note ?: "") }
+    var sticker by remember { mutableStateOf(current?.sticker?.takeIf(Giphy::isValidId)) }
     val today = LocalDate.now()
     val days = (6 downTo 0).map { today.minusDays(it.toLong()) }
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -85,12 +98,15 @@ fun MoodScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                         row.forEach { m -> MoodBubble(m.emoji, m.label, pick == m.key, Modifier.weight(1f)) { pick = m.key } }
                     }
                 }
+                StickerChoice(s, vm, sticker, Catalog.mood(pick)?.let { it.label to it.giphyQuery }, giphy) { sticker = it }
                 CuteField(note, { note = it.take(100) }, "想多說一點（選填）", placeholder = "例如：今天被誇獎了")
                 CuteButton("更新心情", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Send, enabled = pick != null && !vm.busy) {
                     val m = pick ?: return@CuteButton
-                    vm.act(if (s.mySharing?.shareMood == true) "已更新，${s.partnerName} 收到通知了 ${Catalog.mood(m)?.emoji}" else "已更新（沒有分享給對方）", hearts = Catalog.mood(m)?.valence ?: 0 > 0, onDone = back) { it.postMood(m, note.trim()) }
+                    vm.act(if (s.mySharing?.shareMood == true) "已更新，${s.partnerName} 收到通知了 ${Catalog.mood(m)?.emoji}" else "已更新（沒有分享給對方）", hearts = Catalog.mood(m)?.valence ?: 0 > 0, onDone = back) {
+                        it.postMood(m, note.trim(), sticker.takeUnless { s.stickersOutdated })
+                    }
                 }
-                Text(
+                TidyText(
                     if (s.mySharing?.shareMood == true) "${s.partnerName} 會收到通知。心情不好時，對方會看到「要不要安撫一下」。" else "你目前沒有分享心情，${s.partnerName} 看不到。",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -100,12 +116,15 @@ fun MoodScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
             CuteCard {
                 Text("這 7 天", style = MaterialTheme.typography.titleMedium)
                 Row {
-                    Text("", Modifier.width(44.dp))
+                    Spacer(Modifier.width(WHO))
                     days.forEach { Text(if (it == today) "今" else Fmt.weekday(it).substring(1), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
-                listOf("我" to s.myId, s.partnerName to s.partner?.id).forEach { (name, id) ->
+                // 名字可能很長（「梓梓的小宝」）：用頭像，不會被切成「梓梓」
+                listOf(Triple(s.me?.displayName ?: "我", s.myId, s.me?.avatarUrl), Triple(s.partnerName, s.partner?.id, s.partner?.avatarUrl)).forEach { (name, id, avatar) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(name, Modifier.width(44.dp), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                        Box(Modifier.width(WHO).clearAndSetSemantics { contentDescription = if (id == s.myId) "我" else name }) {
+                            Avatar(name, if (id == s.myId) Cute.colors.me else Cute.colors.partner, 28.dp, image = avatar)
+                        }
                         days.forEach { d ->
                             val m = if (id == s.partner?.id && s.partnerSharing?.shareMood != true) null else Derived.moodOn(s, id, d)
                             Text(Catalog.mood(m?.mood)?.emoji ?: "·", Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.outline)
@@ -115,6 +134,33 @@ fun MoodScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
             }
         }
     }
+}
+
+/** 「這 7 天」左邊頭像那一欄的寬度 */
+private val WHO = 36.dp
+
+/**
+ * 選填的 GIPHY 貼圖：還沒選是「加一張」，選了顯示貼圖和「換一張」「移除」。
+ * 資料庫還存不了貼圖就只說要更新（送出去也會被擋下來）。[suggestion] 是選貼圖時先幫忙查的
+ */
+@Composable
+private fun StickerChoice(s: AppState, vm: AppViewModel, sticker: String?, suggestion: Pair<String, String>?, giphy: GiphySearcher, onChange: (String?) -> Unit) {
+    var picking by remember { mutableStateOf(false) }
+    when {
+        s.stickersOutdated -> TidyText("再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        sticker == null -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SoftButton("加一張 GIPHY 貼圖", Modifier.fillMaxWidth(), icon = Icons.Rounded.GifBox) { picking = true }
+            TidyText("選填，對方會看到會動的貼圖", Modifier.padding(start = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StickerImage(sticker, Modifier.size(120.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SoftButton("換一張", Modifier.fillMaxWidth(), icon = Icons.Rounded.GifBox, small = true) { picking = true }
+                SoftButton("移除", Modifier.fillMaxWidth(), icon = Icons.Rounded.Close, small = true) { onChange(null) }
+            }
+        }
+    }
+    if (picking) GiphyPickerDialog(s, vm, suggestion, onPick = onChange, onDismiss = { picking = false }, searcher = giphy)
 }
 
 @Composable
@@ -135,19 +181,21 @@ private fun MoodBubble(emoji: String, label: String, selected: Boolean, modifier
 // ---------------------------------------------------------------- 安撫
 
 @Composable
-fun ComfortSheet(s: AppState, vm: AppViewModel, close: () -> Unit) {
+fun ComfortSheet(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.container.giphy, close: () -> Unit) {
     var pick by remember { mutableStateOf("hug") }
     var message by remember { mutableStateOf("") }
+    var sticker by remember { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("安撫 ${s.partnerName} 🤗", style = MaterialTheme.typography.titleLarge)
         Text("${s.partnerName} 的手機會立刻跳出通知", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Catalog.comforts.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { c -> MoodBubble(c.emoji, c.label, pick == c.key, Modifier.weight(1f)) { pick = c.key } } }
         }
+        StickerChoice(s, vm, sticker, Catalog.comfort(pick)?.let { it.label to it.giphyQuery }, giphy) { sticker = it }
         CuteField(message, { message = it.take(200) }, "悄悄話（選填）", placeholder = "辛苦了，晚上帶你去吃好吃的", singleLine = false)
         CuteButton("送出${Catalog.comfort(pick)?.label}", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Send, enabled = !vm.busy) {
             val label = Catalog.comfort(pick)?.label
-            vm.act("已送出$label，${s.partnerName} 收到通知了 💗", hearts = true, onDone = close) { it.sendComfort(pick, message.trim()) }
+            vm.act("已送出$label，${s.partnerName} 收到通知了 💗", hearts = true, onDone = close) { it.sendComfort(pick, message.trim(), sticker.takeUnless { s.stickersOutdated }) }
         }
     }
 }

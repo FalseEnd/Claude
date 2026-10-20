@@ -317,7 +317,7 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
             composable("money") { MoneyScreen(s, vm, showSheet) }
             composable("calendar") { CalendarScreen(s, vm, showSheet, calendarJump?.first, calendarJump?.second ?: 0L) { calendarJump = null } }
             composable("more") { MoreScreen(s, vm, showSheet, open) }
-            composable("mood") { MoodScreen(s, vm, back) }
+            composable("mood") { MoodScreen(s, vm, back = back) }
             composable("anniv") { AnniversaryScreen(s, vm, back, showSheet) }
             composable("cycle") { CycleScreen(s, vm, back, showSheet) }
             composable("history") { HistoryScreen(s, vm, back) }
@@ -328,7 +328,7 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
             composable("partner") { PartnerProfileScreen(s, vm, back, showSheet) }
             composable("memos") { MemosScreen(s, vm, back, showSheet) }
             composable("fortune") { FortuneScreen(s, vm, back) }
-            composable("account") { AccountScreen(s, vm, back) }
+            composable("account") { AccountScreen(s, vm, back = back) }
             composable("permissions") { PermissionsScreen(vm, back, null) }
             composable("demo") { DemoConsole(s, vm, back) }
         }
@@ -375,7 +375,7 @@ private fun SheetHost(s: tw.xiaoliangkou.app.data.AppState, vm: AppViewModel, cu
     val guarded = current is SheetSpec.DayEntryEdit || current is SheetSpec.MemoEdit || current is SheetSpec.NoteEdit
     XlkSheet(guarded, close) {
         when (current) {
-            SheetSpec.Comfort -> ComfortSheet(s, vm, close)
+            SheetSpec.Comfort -> ComfortSheet(s, vm, close = close)
             is SheetSpec.GuessIt -> GuessSheet(s, vm, current.id, close)
             is SheetSpec.ExpenseEdit -> ExpenseEditSheet(s, vm, current.id, close)
             is SheetSpec.ExpenseView -> ExpenseViewSheet(s, current.id, close)

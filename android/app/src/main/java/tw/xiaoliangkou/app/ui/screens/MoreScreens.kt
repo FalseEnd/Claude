@@ -159,7 +159,12 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
                 MenuRow(Icons.Rounded.Widgets, c.butter, c.butter.copy(alpha = 0.25f), "桌面小工具", "在桌面看在一起的天數、${s.partnerName} 的狀態、備忘錄") { open("widgets") }
                 if (!s.demo) {
                     MenuRow(Icons.Rounded.Tune, c.me, c.meSoft, "權限與背景執行", "位置、通知、省電、自動記帳") { open("permissions") }
-                    MenuRow(Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號", if (s.schemaOutdated) "資料庫需要更新，點這裡看怎麼做 🛠️" else if (s.deviceInfoOutdated) "可以再更新一次資料庫（手機名稱、電信）📱" else "連線、邀請另一半、改密碼、登出") { open("account") }
+                    MenuRow(
+                        Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號",
+                        if (s.schemaOutdated) "資料庫需要更新，點這裡看怎麼做 🛠️"
+                        else if (s.stickersOutdated) "可以再更新一次資料庫（${upgradeGains(s).joinToString("、")}）📱"
+                        else "連線、邀請另一半、GIPHY 貼圖、改密碼、登出",
+                    ) { open("account") }
                 } else {
                     MenuRow(Icons.Rounded.Science, c.lavender, c.fertileSoft, "示範控制台", "扮演 ${s.partnerName}，看看會跳出什麼通知") { open("demo") }
                 }
@@ -351,6 +356,8 @@ fun HistoryScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     val filters = listOf("all" to "全部", "place" to "位置", "mood" to "心情", "comfort" to "安撫", "money" to "開銷", "date" to "約會", "device" to "手機", "pair" to "分享")
     val list = s.history.filter { filter == "all" || Fmt.historyGroup(it.kind) == filter }
     val groups = list.groupBy { Fmt.localDate(it.time) }
+    // 看到紀錄了：收到的安撫都標成看過（首頁的紅點跟著消失）。安安靜靜地做，失敗了下次再標
+    LaunchedEffect(Unit) { runCatching { vm.repo.value?.markComfortsRead() } }
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { ScreenHeader("歷史紀錄", onBack = back) }
         item {
@@ -372,12 +379,17 @@ fun HistoryScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
             item(key = "d$day") { Text(Fmt.dayLabel(day), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp, top = 6.dp)) }
             items(items, key = { it.id }) { a ->
                 val (emoji, text) = Fmt.history(a, s.myId, s.partnerName)
+                // 心情、安撫附的貼圖放在文字下面（id 不對就不顯示）
+                val sticker = (a.payload["sticker"] as? JsonPrimitive)?.contentOrNull?.takeIf(Giphy::isValidId)
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Cute.colors.card).padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = if (sticker != null) Alignment.Top else Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     EmojiBubble(emoji, if (a.actorId == s.myId) Cute.colors.meSoft else Cute.colors.partnerSoft, 38.dp)
-                    TidyText(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TidyText(text, style = MaterialTheme.typography.bodyMedium)
+                        if (sticker != null) StickerImage(sticker, Modifier.size(96.dp))
+                    }
                     Text(Fmt.time(a.time), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

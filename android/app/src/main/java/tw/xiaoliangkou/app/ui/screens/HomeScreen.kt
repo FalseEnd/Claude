@@ -68,7 +68,10 @@ import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Cycle
 import tw.xiaoliangkou.app.core.Dates
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.Comfort
 import tw.xiaoliangkou.app.data.DeviceStatus
+import tw.xiaoliangkou.app.data.Giphy
+import tw.xiaoliangkou.app.data.Mood
 import tw.xiaoliangkou.app.data.RemoteRepository
 import tw.xiaoliangkou.app.data.toInstantOrNull
 import tw.xiaoliangkou.app.service.DeviceProbe
@@ -78,6 +81,7 @@ import tw.xiaoliangkou.app.ui.Fmt
 import tw.xiaoliangkou.app.ui.SheetSpec
 import tw.xiaoliangkou.app.ui.components.Avatar
 import tw.xiaoliangkou.app.ui.components.BatteryPill
+import tw.xiaoliangkou.app.ui.components.ButtonRow
 import tw.xiaoliangkou.app.ui.components.CountUpText
 import tw.xiaoliangkou.app.ui.components.CoupleMascots
 import tw.xiaoliangkou.app.ui.components.CuteButton
@@ -89,6 +93,7 @@ import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
 import tw.xiaoliangkou.app.ui.components.StatTile
+import tw.xiaoliangkou.app.ui.components.StickerImage
 import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.bouncyClick
 import tw.xiaoliangkou.app.ui.components.unscaled
@@ -97,20 +102,52 @@ import java.time.LocalDate
 
 @Composable
 fun HomeScreen(s: AppState, vm: AppViewModel, open: (String) -> Unit, sheet: (SheetSpec) -> Unit) {
+    // 收到、還沒看過的安撫（最新的一則）：放在手機狀態上面，一打開就看得到
+    val received = s.comforts.firstOrNull { it.receiverId == s.myId && it.readAt == null }
+    // 每一項都有 key：安撫的卡片出現、消失時，畫面不會跳
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { TopBar(s, open) }
-        item { Hero(s) }
-        if (s.mySharing?.paused == true) item {
+        item(key = "top") { TopBar(s, open) }
+        item(key = "hero") { Hero(s) }
+        if (s.mySharing?.paused == true) item(key = "paused") {
             Banner("🙈", "你暫停分享到 ${Fmt.time(s.mySharing.pausedUntilInstant!!)}，${s.partnerName} 看得到你暫停了。", Cute.colors.butter.copy(alpha = 0.35f)) {
                 SoftButton("恢復", small = true) { vm.act("已恢復分享") { it.pauseSharing(0) } }
             }
         }
-        item { PhoneCard(s, vm, open) }
-        item { MoodCard(s, open, sheet) }
-        item { QuickActions(s, open, sheet) }
-        careBanner(s)?.let { (emoji, text) -> item { Banner(emoji, text, Cute.colors.periodSoft) { SoftButton("看看", small = true) { open("cycle") } } } }
-        item { Upcoming(s, open) }
-        item { Recent(s, open) }
+        if (received != null) item(key = "received") { ReceivedComfort(s, vm, received) }
+        item(key = "phone") { PhoneCard(s, vm, open) }
+        item(key = "mood") { MoodCard(s, open, sheet) }
+        item(key = "quick") { QuickActions(s, open, sheet) }
+        careBanner(s)?.let { (emoji, text) -> item(key = "care") { Banner(emoji, text, Cute.colors.periodSoft) { SoftButton("看看", small = true) { open("cycle") } } } }
+        item(key = "upcoming") { Upcoming(s, open) }
+        item(key = "recent") { Recent(s, open) }
+    }
+}
+
+/** 對方傳來的安撫：誰、說了什麼、附的貼圖和悄悄話；回抱一下或「收到了」就收起來 */
+@Composable
+private fun ReceivedComfort(s: AppState, vm: AppViewModel, c: Comfort) {
+    val kind = Catalog.comfort(c.kind)
+    val sticker = c.sticker?.takeIf(Giphy::isValidId)
+    val message = c.message?.trim()?.takeIf { it.isNotEmpty() }
+    CuteCard(color = Cute.colors.partnerSoft) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Avatar(s.partnerName, Cute.colors.partner, 40.dp, image = s.partner?.avatarUrl)
+            Column(Modifier.weight(1f)) {
+                TidyText("${s.partnerName} ${kind?.push ?: "安撫了你"} ${kind?.emoji ?: "🤗"}", style = MaterialTheme.typography.titleSmall)
+                Text(Fmt.rel(c.createdAt.toInstantOrNull()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (sticker != null) StickerImage(sticker, Modifier.size(120.dp))
+        if (message != null) TidyText(
+            message, Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Cute.colors.card.copy(alpha = 0.8f)).padding(horizontal = 14.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        ButtonRow {
+            CuteButton("回抱 🤗", small = true, enabled = !vm.busy) {
+                vm.act("已經抱抱 ${s.partnerName} 🤗", hearts = true) { it.sendComfort("hug", null); it.readComfort(c.id) }
+            }
+            SoftButton("收到了", small = true, enabled = !vm.busy) { vm.act { it.readComfort(c.id) } }
+        }
     }
 }
 
@@ -374,8 +411,8 @@ private fun MoodCard(s: AppState, open: (String) -> Unit, sheet: (SheetSpec) -> 
             Text("心情紀錄 ›", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.bouncyClick { open("mood") })
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MoodHalf(s.partnerName, Cute.colors.partner, s.partner?.avatarUrl, pm?.mood, pm?.note, pm?.createdAt, Modifier.weight(1f), if (s.partnerSharing?.shareMood == false) "沒有分享心情" else "今天還沒更新", null)
-            MoodHalf("我", Cute.colors.me, s.me?.avatarUrl, mm?.mood, mm?.note, mm?.createdAt, Modifier.weight(1f), "點我設定心情", onClick = { open("mood") })
+            MoodHalf(s.partnerName, Cute.colors.partner, s.partner?.avatarUrl, pm, Modifier.weight(1f), if (s.partnerSharing?.shareMood == false) "沒有分享心情" else "今天還沒更新", null)
+            MoodHalf("我", Cute.colors.me, s.me?.avatarUrl, mm, Modifier.weight(1f), "點我設定心情", onClick = { open("mood") })
         }
         val m = Catalog.mood(pm?.mood)
         if (m?.needsComfort == true) {
@@ -391,8 +428,9 @@ private fun MoodCard(s: AppState, open: (String) -> Unit, sheet: (SheetSpec) -> 
 }
 
 @Composable
-private fun MoodHalf(name: String, color: Color, avatar: String?, mood: String?, note: String?, at: String?, modifier: Modifier, empty: String, onClick: (() -> Unit)?) {
-    val m = Catalog.mood(mood)
+private fun MoodHalf(name: String, color: Color, avatar: String?, mood: Mood?, modifier: Modifier, empty: String, onClick: (() -> Unit)?) {
+    val m = Catalog.mood(mood?.mood)
+    val sticker = mood?.sticker?.takeIf(Giphy::isValidId)
     Column(
         modifier.clip(RoundedCornerShape(22.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             .then(if (onClick != null) Modifier.bouncyClick(onClick = onClick) else Modifier).padding(12.dp),
@@ -400,12 +438,19 @@ private fun MoodHalf(name: String, color: Color, avatar: String?, mood: String?,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Avatar(name, color, 18.dp, image = avatar)
-            NameAndTime(name, at?.toInstantOrNull()?.let { Fmt.time(it) })
+            NameAndTime(name, mood?.createdAt?.toInstantOrNull()?.let { Fmt.time(it) })
         }
         if (m != null) {
-            HeartBeat { Text(m.emoji, style = MaterialTheme.typography.headlineLarge) }
-            Text(m.label, style = MaterialTheme.typography.titleMedium)
-            Text(note ?: "—", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            // 附了貼圖就放貼圖，表情移到心情前面，一樣看得出是什麼心情
+            if (sticker != null) {
+                StickerImage(sticker, Modifier.padding(vertical = 2.dp).size(72.dp))
+                TidyText("${m.emoji} ${m.label}", style = MaterialTheme.typography.titleMedium)
+            } else {
+                HeartBeat { Text(m.emoji, style = MaterialTheme.typography.headlineLarge) }
+                Text(m.label, style = MaterialTheme.typography.titleMedium)
+            }
+            // 太長時用「…」結尾（點進心情紀錄看得到），不會無聲無息被切掉
+            TidyText(mood?.note ?: "—", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         } else {
             Text(if (onClick != null) "＋" else "·", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
             Text(empty, style = MaterialTheme.typography.titleSmall)
