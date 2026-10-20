@@ -406,9 +406,10 @@ fun DateField(label: String, value: String, onChange: (String) -> Unit) {
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val d = Fmt.parseDate(value)
-        Text(
+        // 別年的日期（「2027/1/5（二）」）在半寬的欄位放不下一行：星期換到第二行，不會被切掉
+        TidyText(
             d?.let { (if (it.year != LocalDate.now().year) "${it.year}/" else "") + "${it.monthValue}/${it.dayOfMonth}（${Fmt.weekday(it).substring(1)}）" } ?: "選擇日期",
-            style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Start, maxLines = 1,
+            style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Start,
         )
     }
     if (open) DatePickerPopup(value, onDismiss = { open = false }) { onChange(it); open = false }

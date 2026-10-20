@@ -28,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
@@ -46,6 +47,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityOptionsCompat
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -57,6 +59,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -77,14 +81,20 @@ import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DemoMedia
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.DeviceStatus
+import tw.xiaoliangkou.app.data.GiphyException
+import tw.xiaoliangkou.app.data.GiphySearcher
 import tw.xiaoliangkou.app.data.MediaItem
+import tw.xiaoliangkou.app.data.Mood
 import tw.xiaoliangkou.app.data.PartnerStatus
 import tw.xiaoliangkou.app.data.PlaceHit
 import tw.xiaoliangkou.app.data.Session
 import tw.xiaoliangkou.app.ui.AppViewModel
+import tw.xiaoliangkou.app.ui.Derived
+import tw.xiaoliangkou.app.ui.Fmt
 import tw.xiaoliangkou.app.ui.XlkRoot
 import tw.xiaoliangkou.app.ui.XlkSheet
 import tw.xiaoliangkou.app.ui.components.BannerCard
+import tw.xiaoliangkou.app.ui.components.GiphyPickerDialog
 import tw.xiaoliangkou.app.ui.components.MediaPickerRow
 import tw.xiaoliangkou.app.ui.components.MediaThumbs
 import tw.xiaoliangkou.app.ui.components.VoiceChip
@@ -213,6 +223,13 @@ class LargeTextScreensTest {
     private fun waitPhotos(n: Int) = compose.waitUntil(WAIT) { compose.onAllNodesWithContentDescription("照片").fetchSemanticsNodes().size >= n }
 
     private fun has(text: String, substring: Boolean = false) = compose.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
+
+    /** 畫面上這段字實際排出來的樣子 */
+    private fun layoutOf(text: String): TextLayoutResult {
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(layouts)
+        return layouts.single()
+    }
 
     // ================================================================ 資料
 
@@ -451,6 +468,17 @@ class LargeTextScreensTest {
         }
     }
 
+    /** 很長的悄悄話：通知卡片最多三行，放不下時結尾看得到「…」，不會無聲無息被切掉 */
+    @Test fun bannerLongMessage() {
+        val long = "今天辛苦了，" + "晚上一起吃熱炒好不好？我已經在路上了，".repeat(6)
+        shot("23b_banner_long") {
+            Column(Modifier.padding(top = 24.dp)) { BannerCard(true, "🤗", "梓梓的小宝 給了你一個大大的抱抱，還傳了一張貼圖給你", long) {} }
+        }
+        val body = layoutOf(long)
+        assertEquals(3, body.lineCount)
+        assertTrue("最後一行要有「…」", body.isLineEllipsized(2))
+    }
+
     // ================================================================ 帳本、日曆、照顧
 
     @Config(qualifiers = TALL)
@@ -562,12 +590,14 @@ class LargeTextScreensTest {
         shot("43_account_upgrade") { AccountScreen(s.copy(schemaOutdated = true), vm) {} }
     }
 
-    /** 跑過舊的 upgrade-v2.sql：只差手機名稱和電信，溫和地提醒再跑一次 */
+    /** 跑過最早的 upgrade-v2.sql（schema 2）：少了手機名稱、電信和 GIPHY 貼圖，溫和地提醒再跑一次，列出會多什麼 */
     @Config(qualifiers = TALL)
     @Test fun accountMinorUpgrade() {
         configured()
         shot("43b_account_minor_upgrade") { AccountScreen(s.copy(dbSchema = 2), vm) {} }
         assertTrue(has("可以再更新一次資料庫"))
+        assertTrue(has("心情和安撫可以附上 GIPHY 貼圖"))
+        assertTrue(has("看得到對方的手機名稱和電信"))
     }
 
     // ================================================================ 地圖
@@ -694,6 +724,16 @@ class LargeTextScreensTest {
 
     @Test fun eventEditSheet() = sheet("70_sheet_event_edit") { EventSheet(s, vm, "e1", today) {} }
 
+    /** 別年的日期（「2027/1/5（二）」）在半寬的欄位：放不下一行就換行，不會被切掉 */
+    @Test fun eventSheetNextYear() {
+        val d = LocalDate.of(today.year + 1, 1, 5)
+        sheet("69b_sheet_event_next_year") { EventSheet(s, vm, null, d) {} }
+        val text = "${d.year}/1/5（${Fmt.weekday(d).substring(1)}）"
+        val layout = layoutOf(text)
+        assertFalse("「$text」超出範圍", layout.hasVisualOverflow)
+        assertEquals(text, layout.layoutInput.text.text.replace("\n", ""))
+    }
+
     @Test fun anniversarySheet() = sheet("71_sheet_anniversary") { AnniversarySheet(s, vm, null) {} }
 
     @Test fun anniversaryEditSheet() = sheet("72_sheet_anniversary_edit") { AnniversarySheet(s, vm, "a4") {} }
@@ -806,6 +846,156 @@ class LargeTextScreensTest {
         compose.waitUntil(WAIT) { !vm.busy && has("重新上傳") }
         compose.mainClock.advanceTimeBy(1000)
         capture("84_voice_unsent")
+    }
+
+    // ================================================================ GIPHY 貼圖（搜尋、貼圖都是假的，不連網路）
+
+    private val giphy = FakeGiphy()
+    private val withKey: AppState get() = s.copy(demo = false, couple = s.couple!!.copy(giphyKey = FakeGiphy.KEY))
+    private val noKey: AppState get() = s.copy(demo = false, couple = s.couple!!.copy(giphyKey = null))
+
+    /** 等 [n] 張貼圖載好（載好才有說明文字） */
+    private fun waitStickers(n: Int, description: String = "貼圖") =
+        compose.waitUntil(WAIT) { compose.onAllNodesWithContentDescription(description).fetchSemanticsNodes().size >= n }
+
+    /** 「最近用過」的貼圖（最近的在前）；設定存在同一個 DataStore，先清乾淨 */
+    private fun recents(vararg ids: String) {
+        val end = System.currentTimeMillis() + 10_000
+        while (vm.prefs.value == null && System.currentTimeMillis() < end) { ShadowLooper.idleMainLooper(); Thread.sleep(10) }
+        runBlocking {
+            vm.container.settings.clear()
+            ids.reversed().forEach { vm.container.addRecentSticker(it) }
+            vm.container.reloadPrefs()
+        }
+    }
+
+    private fun picker(st: AppState, dark: Boolean = false, searcher: GiphySearcher = giphy) =
+        show(dark) { GiphyPickerDialog(st, vm, "抱抱" to "hug", {}, {}, searcher) }
+
+    /** 首頁最上面：「梓梓的小宝」傳來的安撫（貼圖、長的悄悄話、回抱）；對方今天的心情附了貼圖 */
+    @Config(qualifiers = TALL)
+    @Test fun homeReceivedComfort() {
+        val pm = Derived.moodToday(s, DemoRepository.PARTNER)!!
+        val st = phoneState("梓梓", "梓梓的小宝", "OPPO CPH2689", 55, 2).let { p ->
+            p.copy(
+                moods = p.moods.map { if (it.id == pm.id) it.copy(sticker = FakeGiphy.STICKER_B) else it },
+                comforts = p.comforts.map { if (it.receiverId == p.myId && it.readAt == null) it.copy(message = "今天辛苦了，晚上一起吃熱炒好不好？我已經在路上了") else it },
+            )
+        }
+        show { HomeScreen(st, vm, {}, {}) }
+        waitStickers(2)
+        capture("15b_home_received_comfort")
+    }
+
+    /** 今天的心情附了貼圖（換一張、移除）；這 7 天用頭像，很長的名字也不會被切掉 */
+    @Config(qualifiers = TALL)
+    @Test fun moodSticker() {
+        val mine = Mood(9001, DemoRepository.ME, "happy", "今天被主管誇獎了", Instant.now().toString(), sticker = DemoRepository.STICKER)
+        show { MoodScreen(s.copy(moods = listOf(mine) + s.moods, partner = s.partner!!.copy(displayName = "梓梓的小宝")), vm, giphy) {} }
+        waitStickers(1)
+        capture("29b_mood_sticker")
+    }
+
+    @Config(qualifiers = TALL)
+    @Test fun historySticker() {
+        runBlocking { demo.postMood("happy", "今天被主管誇獎了", FakeGiphy.STICKER_B) }
+        show { HistoryScreen(s, vm) {} }
+        waitStickers(2)
+        capture("37b_history_sticker")
+    }
+
+    /** 安撫附上貼圖：從選貼圖的視窗挑一張 */
+    @Test fun comfortSheetSticker() {
+        recents()
+        show { SheetBody { ComfortSheet(withKey, vm, giphy) {} } }
+        compose.onNodeWithText("加一張 GIPHY 貼圖").performClick()
+        waitStickers(1, FakeGiphy.description("hug", 1))
+        compose.onNodeWithContentDescription(FakeGiphy.description("hug", 2)).performClick()
+        waitStickers(1)
+        compose.mainClock.advanceTimeBy(1000)
+        capture("60b_sheet_comfort_sticker")
+    }
+
+    @Config(qualifiers = TALL)
+    @Test fun accountGiphySet() {
+        configured()
+        shot("42b_account_giphy_set") { AccountScreen(withKey, vm, giphy) {} }
+    }
+
+    @Config(qualifiers = TALL)
+    @Test fun accountGiphyUnset() {
+        configured()
+        shot("42c_account_giphy_unset") { AccountScreen(noKey, vm, giphy) {} }
+    }
+
+    /** schema 3：只差 GIPHY 貼圖，溫和地提醒再跑一次 upgrade-v2.sql */
+    @Config(qualifiers = TALL)
+    @Test fun accountStickerUpgrade() {
+        configured()
+        shot("43c_account_minor_upgrade_stickers") { AccountScreen(s.copy(dbSchema = 3), vm, giphy) {} }
+        assertTrue(has("可以再更新一次資料庫"))
+    }
+
+    /** 選貼圖的視窗：還沒有 key（設定卡片很長，上半、捲到底各一張） */
+    @Config(qualifiers = PHONE)
+    @Test fun giphySetup() {
+        recents()
+        picker(noKey)
+        screen("99b_dialog_giphy_setup")
+        compose.onNodeWithText("再檢查一次").performScrollTo()
+        compose.mainClock.advanceTimeBy(500)
+        screen("99c_dialog_giphy_setup_bottom")
+    }
+
+    @Config(qualifiers = PHONE)
+    @Test fun giphyResults() {
+        recents(DemoRepository.STICKER)
+        picker(withKey)
+        waitStickers(1, FakeGiphy.description("hug", 1))
+        screen("99d_dialog_giphy_results")
+    }
+
+    @Config(qualifiers = PHONE)
+    @Test fun giphyResultsDark() {
+        recents(DemoRepository.STICKER)
+        picker(withKey, dark = true)
+        waitStickers(1, FakeGiphy.description("hug", 1))
+        screen("99e_dialog_giphy_results_dark")
+    }
+
+    @Config(qualifiers = PHONE)
+    @Test fun giphyError() {
+        recents()
+        giphy.fail = GiphyException.Reason.NETWORK
+        picker(withKey)
+        compose.waitUntil(WAIT) { has("連不到 GIPHY") }
+        screen("99f_dialog_giphy_error")
+    }
+
+    @Config(qualifiers = PHONE)
+    @Test fun giphyRateLimited() {
+        recents(DemoRepository.STICKER)
+        giphy.fail = GiphyException.Reason.RATE_LIMITED
+        picker(withKey)
+        compose.waitUntil(WAIT) { has("GIPHY 這個小時用太多次了，等一下再試 🙏") }
+        screen("99g_dialog_giphy_rate_limited")
+    }
+
+    @Config(qualifiers = PHONE)
+    @Test fun giphyDemo() {
+        recents()
+        picker(s)
+        waitStickers(1, "示範貼圖")
+        screen("99h_dialog_giphy_demo")
+    }
+
+    @Config(qualifiers = PHONE)
+    @Test fun giphyBadKey() {
+        recents()
+        giphy.fail = GiphyException.Reason.BAD_KEY
+        picker(withKey)
+        compose.waitUntil(WAIT) { has("GIPHY 的 key 不能用了") }
+        screen("99i_dialog_giphy_bad_key")
     }
 
     // ================================================================ 對話框（一般手機的高度）

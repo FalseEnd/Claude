@@ -49,6 +49,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -68,11 +69,14 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Dates
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.Giphy
+import tw.xiaoliangkou.app.data.GiphySearcher
 import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.data.Supabase
 import tw.xiaoliangkou.app.service.ServiceNotice
@@ -88,6 +92,7 @@ import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.CuteCard
 import tw.xiaoliangkou.app.ui.components.CuteField
 import tw.xiaoliangkou.app.ui.components.EmojiBubble
+import tw.xiaoliangkou.app.ui.components.GiphyKeyCard
 import tw.xiaoliangkou.app.ui.components.MenuRow
 import tw.xiaoliangkou.app.ui.components.Note
 import tw.xiaoliangkou.app.ui.components.Pill
@@ -95,6 +100,7 @@ import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.Segmented
 import tw.xiaoliangkou.app.ui.components.SoftButton
+import tw.xiaoliangkou.app.ui.components.StickerImage
 import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.ToggleRow
 import tw.xiaoliangkou.app.ui.components.bouncyClick
@@ -162,7 +168,7 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
                     MenuRow(
                         Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號",
                         if (s.schemaOutdated) "資料庫需要更新，點這裡看怎麼做 🛠️"
-                        else if (s.stickersOutdated) "可以再更新一次資料庫（${upgradeGains(s).joinToString("、")}）📱"
+                        else if (s.stickersOutdated) "可以再更新一次資料庫（${upgradeGains(s).joinToString("、") { it.first }}）📱"
                         else "連線、邀請另一半、GIPHY 貼圖、改密碼、登出",
                     ) { open("account") }
                 } else {
@@ -400,7 +406,7 @@ fun HistoryScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
 }
 
 @Composable
-fun AccountScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
+fun AccountScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.container.giphy, back: () -> Unit) {
     val prefs by vm.prefs.collectAsState()
     val context = LocalContext.current
     var old by remember { mutableStateOf("") }
@@ -409,7 +415,7 @@ fun AccountScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenHeader("Supabase 與帳號", onBack = back) }
-        if (s.schemaOutdated || s.deviceInfoOutdated) item { SchemaUpgradeCard(prefs?.supabaseUrl, vm, minor = !s.schemaOutdated) }
+        if (s.schemaOutdated || s.deviceInfoOutdated || s.stickersOutdated) item { SchemaUpgradeCard(prefs?.supabaseUrl, vm, if (s.schemaOutdated) emptyList() else upgradeGains(s)) }
         item {
             CuteCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -458,6 +464,7 @@ fun AccountScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                 DateField("從哪天開始", s.couple?.togetherSince ?: LocalDate.now().toString()) { d -> vm.act("已更新 💞") { it.setTogetherSince(d) } }
             }
         }
+        if (s.paired) item { GiphyKeyCard(s, vm, giphy) }
         item {
             CuteCard {
                 Text("改密碼 🔑", style = MaterialTheme.typography.titleMedium)
@@ -477,9 +484,22 @@ fun AccountScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     }
 }
 
-/** 資料庫還是 0.1 版：一步一步教怎麼執行 upgrade-v2.sql，更新好再檢查一次（其他畫面的「資料庫需要更新」都指到這裡） */
+/**
+ * 新功能都能用了，再執行一次 upgrade-v2.sql 還會多出來的：（短的名稱, 一行說明）。
+ * 跑過舊版 upgrade-v2.sql 的資料庫：schema 2 沒有手機名稱與電信，schema 3 以前沒有 GIPHY 貼圖
+ */
+internal fun upgradeGains(s: AppState): List<Pair<String, String>> = listOfNotNull(
+    ("GIPHY 貼圖" to "🧸 心情和安撫可以附上 GIPHY 貼圖").takeIf { s.stickersOutdated },
+    ("手機名稱、電信" to "📱 看得到對方的手機名稱和電信").takeIf { s.deviceInfoOutdated },
+)
+
+/**
+ * 資料庫還是 0.1 版：一步一步教怎麼執行 upgrade-v2.sql，更新好再檢查一次（其他畫面的「資料庫需要更新」都指到這裡）。
+ * [gains] 不是空的：資料庫已經能用了，只是再跑一次會多這些（見 [upgradeGains]），不急
+ */
 @Composable
-private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, minor: Boolean = false) {
+private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, gains: List<Pair<String, String>> = emptyList()) {
+    val minor = gains.isNotEmpty()
     val uriHandler = LocalUriHandler.current
     fun open(url: String) { runCatching { uriHandler.openUri(url) }.onFailure { vm.toast("打不開瀏覽器，請到說明文件找「更新資料庫」那一節") } }
     val editor = Supabase.sqlEditorUrl(projectUrl)
@@ -490,17 +510,24 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, minor: Bool
         "跳出「Potential issue detected」的話，按「Run query」繼續",
         "下方出現「更新完成 🎉」就好了，回來按「重新檢查」",
     )
-    // minor：新功能都能用了，只是還沒有手機名稱與電信（跑過舊的 upgrade-v2.sql），不急
+    // minor：新功能都能用了，只是還少了 [gains]（跑過舊的 upgrade-v2.sql），不急
     CuteCard(color = if (minor) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f) else Cute.colors.butter.copy(alpha = 0.3f)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             EmojiBubble(if (minor) "📱" else "🛠️", Cute.colors.card, 44.dp)
             Column(Modifier.weight(1f)) {
                 TidyText(if (minor) "可以再更新一次資料庫" else "資料庫需要更新", style = MaterialTheme.typography.titleMedium)
                 TidyText(
-                    if (minor) "再執行一次 upgrade-v2.sql，對方的手機名稱和電信就會顯示。其他功能都已經可以用了"
+                    if (minor) "其他功能都能用了。再執行一次 upgrade-v2.sql 還會多了："
                     else "個人資料、備註、日曆的生活紀錄和備忘錄，要先更新資料庫才能用",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+        // 表情單獨一欄：換行時第二行對齊文字
+        gains.forEach { (_, line) ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(line.substringBefore(' '), style = MaterialTheme.typography.bodyMedium)
+                TidyText(line.substringAfter(' '), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
         }
         steps.forEachIndexed { i, t ->
@@ -522,9 +549,10 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, minor: Bool
             vm.act { r ->
                 r.refreshAll()
                 val st = r.state.value
+                // 現在的 upgrade-v2.sql 一次補齊：還缺貼圖就是還沒跑成功
                 vm.toast(
-                    if (st.schemaOutdated || (minor && st.deviceInfoOutdated)) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
-                    else if (minor) "資料庫更新好了，手機名稱和電信會顯示 🎉"
+                    if (st.schemaOutdated || (minor && st.stickersOutdated)) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
+                    else if (minor) "資料庫更新好了，${gains.joinToString("、") { it.first }}都有了 🎉"
                     else "資料庫更新好了，新功能都可以用了 🎉",
                 )
             }

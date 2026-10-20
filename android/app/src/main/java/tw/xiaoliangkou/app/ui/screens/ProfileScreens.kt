@@ -12,11 +12,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -604,7 +606,8 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
                 EmojiBubble("📞", MaterialTheme.colorScheme.secondaryContainer)
                 Column(Modifier.weight(1f)) {
                     Text("電話", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(phone, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // 字放大時號碼換到第二行，不會被切成「0912-3…」：一般的換行不會拆開「912-345」這種數字，所以「-」後面加個可以換行的地方
+                    TidyText(phone.replace("-", "-\u200B"), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 IconButton(onClick = { copyText(context, "電話", phone); vm.toast("已複製電話號碼") }) {
                     Icon(Icons.Rounded.ContentCopy, "複製電話", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
@@ -619,8 +622,9 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
         if (tiles.isNotEmpty()) {
             item { SectionTitle("身材與尺寸") }
             items(tiles.chunked(2), key = { "t" + it.first().first.key }) { pair ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    pair.forEach { (f, v) -> InfoTile(f.emoji, f.label, v, Modifier.weight(1f)) }
+                // 一排的兩格一樣高（其中一格換行變高時）
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pair.forEach { (f, v) -> InfoTile(f.emoji, f.label, v, Modifier.weight(1f).fillMaxHeight()) }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
@@ -721,16 +725,32 @@ private fun BirthdayCountdown(name: String, birthday: LocalDate, today: LocalDat
     }
 }
 
+/**
+ * 身材與尺寸的一格。尺寸是自己填的（最多 10 個字，例如「L、XL希望寬鬆一點」）：放不下就換行，不會變成「L、XL希望…」。
+ * 字放大時表情縮小、放到標題旁邊（像首頁的小卡），數值用整個寬度，「165.5 cm」才不會被拆成兩行
+ */
 @Composable
 private fun InfoTile(emoji: String, label: String, value: String, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(22.dp)
+    val valueStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+    if (LocalDensity.current.fontScale >= 1.3f) {
+        Column(modifier.clip(shape).background(Cute.colors.card).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EmojiBubble(emoji, MaterialTheme.colorScheme.surfaceVariant, 30.dp)
+                TidyText(label, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TidyText(value, style = valueStyle)
+        }
+        return
+    }
     Row(
-        modifier.clip(RoundedCornerShape(22.dp)).background(Cute.colors.card).padding(12.dp),
+        modifier.clip(shape).background(Cute.colors.card).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         EmojiBubble(emoji, MaterialTheme.colorScheme.surfaceVariant, 38.dp)
-        Column {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f)) {
+            TidyText(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TidyText(value, style = valueStyle)
         }
     }
 }

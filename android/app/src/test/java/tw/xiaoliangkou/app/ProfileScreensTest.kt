@@ -11,8 +11,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -25,6 +28,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -36,6 +40,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -118,6 +123,42 @@ class ProfileScreensTest {
     @Test fun newNoteSheet() = sheet("42_sheet_note_new") { NoteSheet(s, vm, null) {} }
 
     @Test fun partnerProfileDark() = shot("43_partner_profile_dark", dark = true) { PartnerProfileScreen(s, vm, {}) {} }
+
+    /** 自己填的尺寸、電話很長（尺寸最多 10 個字）：使用者的截圖裡「L、XL希望寬鬆一點」被切成「L、XL希望…」 */
+    private val longSizes: AppState
+        get() = s.copy(partner = s.partner!!.copy(info = ProfileInfo.build(mapOf(
+            ProfileInfo.HEIGHT to "165.5", ProfileInfo.WEIGHT to "52.5", ProfileInfo.PHONE to "+886 912-345-678",
+            ProfileInfo.CLOTHES_SIZE to "L、XL希望寬鬆一點", ProfileInfo.SHOE_SIZE to "28.5 or 41",
+        ), s.partner!!.info)))
+
+    /** 身材與尺寸的每一格、電話：字都排得下（沒有「…」、沒有被切掉、整段都畫出來） */
+    private fun assertNothingCut() {
+        // 電話的「-」後面有可以換行的地方（\u200B）
+        listOf("身高", "165.5 cm", "體重", "52.5 kg", "衣服尺寸", "L、XL希望寬鬆一點", "鞋子尺寸", "28.5 or 41", "+886 912-\u200B345-\u200B678").forEach { t ->
+            val node = compose.onNodeWithText(t, useUnmergedTree = true)
+            val layouts = mutableListOf<TextLayoutResult>()
+            node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(layouts)
+            val layout = layouts.single()
+            val drawn = layout.layoutInput.text.text
+            assertFalse("「$t」超出範圍", layout.hasVisualOverflow)
+            // TidyText 換行時會在換行的地方放「\n」
+            assertEquals("「$t」沒有整段畫出來", drawn.length, layout.getLineEnd(layout.lineCount - 1))
+            assertEquals(t.filterNot(Char::isWhitespace), drawn.filterNot(Char::isWhitespace))
+            assertEquals("「$t」被外框切到", node.getUnclippedBoundsInRoot(), node.getBoundsInRoot())
+        }
+    }
+
+    @Test @Config(qualifiers = "w360dp-h1500dp-xhdpi", fontScale = 1.3f)
+    fun partnerProfileLongSizes() {
+        shot("41b_partner_profile_long_sizes") { PartnerProfileScreen(longSizes, vm, {}) {} }
+        assertNothingCut()
+    }
+
+    @Test @Config(qualifiers = "w360dp-h1800dp-xhdpi", fontScale = 1.6f)
+    fun partnerProfileLongSizesHugeFont() {
+        shot("41c_partner_profile_long_sizes_huge_font") { PartnerProfileScreen(longSizes, vm, {}) {} }
+        assertNothingCut()
+    }
 
     @Test fun unpaired() = shot("44_partner_unpaired") { PartnerProfileScreen(s.copy(partner = null, couple = null), vm, {}) {} }
 

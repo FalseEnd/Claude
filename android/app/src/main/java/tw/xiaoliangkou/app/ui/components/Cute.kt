@@ -417,9 +417,10 @@ fun BannerCard(visible: Boolean, emoji: String, title: String, body: String?, on
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             EmojiBubble(emoji, MaterialTheme.colorScheme.primaryContainer, 44.dp)
+            // 悄悄話最長 200 字：卡片只放得下幾行，放不下時結尾一定看得到「…」（點進去看完整的），不會無聲無息被切掉
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
-                if (!body.isNullOrBlank()) Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                TidyText(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (!body.isNullOrBlank()) TidyText(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         }
     }

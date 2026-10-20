@@ -146,7 +146,8 @@ private fun ReceivedComfort(s: AppState, vm: AppViewModel, c: Comfort) {
             CuteButton("回抱 🤗", small = true, enabled = !vm.busy) {
                 vm.act("已經抱抱 ${s.partnerName} 🤗", hearts = true) { it.sendComfort("hug", null); it.readComfort(c.id) }
             }
-            SoftButton("收到了", small = true, enabled = !vm.busy) { vm.act { it.readComfort(c.id) } }
+            // 卡片是粉紅色的：「收到了」用白底才看得出是按鈕
+            CuteButton("收到了", small = true, color = Cute.colors.card, contentColor = MaterialTheme.colorScheme.primary, enabled = !vm.busy) { vm.act { it.readComfort(c.id) } }
         }
     }
 }

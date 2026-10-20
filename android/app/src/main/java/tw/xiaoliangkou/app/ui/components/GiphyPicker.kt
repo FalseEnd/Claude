@@ -37,13 +37,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.GifBox
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -61,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
@@ -70,6 +75,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -81,6 +87,7 @@ import kotlinx.coroutines.launch
 import tw.xiaoliangkou.app.R
 import tw.xiaoliangkou.app.container
 import tw.xiaoliangkou.app.core.Catalog
+import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.Giphy
@@ -94,15 +101,16 @@ import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.theme.Cute
 import kotlin.coroutines.cancellation.CancellationException
 
-/** 格子的底色：淺淺的，透明背景的貼圖在深色模式也看得清楚 */
-private val CELL = Color(0xFFFFF4F7)
+/** 格子的底色：淺淺的粉紅（深色模式也一樣），透明背景的貼圖才看得清楚；淺色模式也看得出一格一格 */
+private val CELL = Color(0xFFFCEAF0)
 
 /**
  * 選一張 GIPHY 貼圖：全螢幕的視窗，心情頁、安撫面板都用這一個（面板裡放不下會捲動的格子）。
  * 上面切換貼圖／GIF、搜尋、快速關鍵字，下面是結果和「Powered by GIPHY」。
  * [suggestion] 是依選的心情、安撫先幫忙查的（中文標籤 to 英文關鍵字），沒有就是熱門的。
  * 免費的 key 一小時只能查 100 次：打字停下來才查、查過的頁面不重查（[Giphy] 記在記憶體裡）、捲到底才載下一頁。
- * 還沒有 key 先教怎麼申請；示範模式、還沒配對不會連到 GIPHY。[searcher] 測試時換成假的
+ * 還沒有 key 先教怎麼申請；示範模式、還沒配對不會連到 GIPHY。[searcher] 測試時換成假的。
+ * 這是另一個視窗：App 下面的提示（vm.toast）會被蓋住，這裡的訊息都直接寫在畫面上
  */
 @Composable
 fun GiphyPickerDialog(
@@ -194,15 +202,20 @@ private fun GiphySearch(
             // 照 GIPHY 給的順序接在後面（不能重新排序、挑掉）
             r.items = r.items + page.items
             r.next = page.next
-            r.loaded = true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             r.error = (e as? GiphyException)?.reason ?: GiphyException.Reason.SERVER
-            r.loaded = true
         } finally {
             r.loading = false
         }
+        r.loaded = true
+    }
+
+    fun choose(q: String) {
+        showRecent = false
+        text = ""
+        query = q
     }
 
     LaunchedEffect(results, showRecent) {
@@ -229,7 +242,8 @@ private fun GiphySearch(
         return
     }
 
-    val chips = remember(suggestion) { listOfNotNull(suggestion) + Catalog.stickerQueries.filter { it.second != suggestion?.second } }
+    // 依心情、安撫推薦的放最前面，再來是熱門（沒有關鍵字）和常用的
+    val chips = remember(suggestion) { listOfNotNull(suggestion, "熱門" to "") + Catalog.stickerQueries.filter { it.second != start } }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Segmented(listOf(GiphyKind.STICKERS.path to "貼圖", GiphyKind.GIFS.path to "GIF"), kind.path) { k ->
@@ -243,25 +257,25 @@ private fun GiphySearch(
                     keyboard?.hide()
                     Giphy.query(text).takeIf { it.isNotEmpty() }?.let { showRecent = false; query = it }
                 },
-                onClear = { text = ""; query = start },
+                onClear = { choose(start) },
             )
         }
+        // 膠囊都不放表情：一樣高，排起來才整齊
         LazyRow(
             Modifier.padding(top = 10.dp),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (recent.isNotEmpty()) item { ChoiceChip("最近用過", showRecent, "🕘") { showRecent = true; text = "" } }
-            items(chips) { (label, q) ->
-                ChoiceChip(label, !showRecent && text.isEmpty() && query == q) { showRecent = false; text = ""; query = q }
-            }
+            if (recent.isNotEmpty()) item { ChoiceChip("最近用過", showRecent) { showRecent = true; text = "" } }
+            items(chips) { (label, q) -> ChoiceChip(label, !showRecent && text.isEmpty() && query == q) { choose(q) } }
         }
         Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
             val error = results.error
             when {
                 showRecent -> IdGrid(recent, { i -> "最近用過的貼圖 ${i + 1}" }, pick)
                 results.items.isEmpty() && error == GiphyException.Reason.RATE_LIMITED ->
-                    PickerState("⏳", GiphyException.Reason.RATE_LIMITED.text, if (recent.isNotEmpty()) "可以先從「最近用過」選一張" else null)
+                    PickerState("⏳", error.text, if (recent.isNotEmpty()) "可以先從「最近用過」選一張" else null)
                 results.items.isEmpty() && error != null -> PickerState(
                     if (error == GiphyException.Reason.NETWORK) "📡" else "🛠️", error.text,
                     if (error == GiphyException.Reason.NETWORK) "確認網路之後再試一次" else null,
@@ -280,7 +294,7 @@ private fun SearchBar(text: String, onChange: (String) -> Unit, onSearch: () -> 
     val shape = RoundedCornerShape(24.dp)
     Row(
         Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(shape).background(Cute.colors.card)
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape).padding(start = 14.dp, end = 4.dp),
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape).padding(start = 14.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
@@ -297,14 +311,18 @@ private fun SearchBar(text: String, onChange: (String) -> Unit, onSearch: () -> 
             decorationBox = { field ->
                 Box(contentAlignment = Alignment.CenterStart) {
                     if (text.isEmpty()) {
-                        Text("搜尋（英文結果較多）", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("搜尋（英文的結果比較多）", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     field()
                 }
             },
         )
-        if (text.isNotEmpty()) IconButton(onClick = onClear) { Icon(Icons.Rounded.Close, "清除", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-        else Spacer(Modifier.width(10.dp))
+        if (text.isNotEmpty()) {
+            Icon(
+                Icons.Rounded.Close, "清除", tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(36.dp).clip(CircleShape).bouncyClick(onClick = onClear).padding(8.dp),
+            )
+        }
     }
 }
 
@@ -317,7 +335,9 @@ private fun ResultGrid(results: Results, grid: LazyGridState, still: Boolean, pi
             GiphyCell(item.description, { pick(item.id) }) { UrlImage(if (still) item.still else item.animated) }
         }
         // 第一頁還沒回來：先放淡淡的格子
-        if (results.items.isEmpty() && results.loading) items(12) { Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))) }
+        if (results.items.isEmpty() && !results.loaded) items(12) {
+            Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(CELL.copy(alpha = 0.6f)))
+        }
         if (results.items.isNotEmpty() && results.loading) wide { Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { LoadingDots() } }
         val error = results.error
         if (results.items.isNotEmpty() && error != null) wide {
@@ -375,13 +395,24 @@ private fun UrlImage(url: String) {
     )
 }
 
-/** 示範模式不會連到 GIPHY：先用示範的貼圖（和最近用過的）試試 */
+/** 示範模式不能連到 GIPHY：先用示範的貼圖（和最近用過的）試試 */
 @Composable
 private fun DemoStickers(recent: List<String>, pick: (String) -> Unit) {
     val ids = remember(recent) { (listOf(DemoRepository.STICKER) + recent).distinct() }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(Modifier.padding(horizontal = 16.dp)) {
-            Note("示範模式不能連到 GIPHY 搜尋。用你們的 Supabase 登入、設定好 GIPHY 的 key，就能找各種貼圖。先用這張試試看 👇", "🧪")
+        // 標題、說明分開：都是短短的幾行，換行才換得漂亮
+        Row(
+            Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("🧪")
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                TidyText("示範模式不能連到 GIPHY", style = MaterialTheme.typography.titleSmall)
+                TidyText(
+                    "用你們的 Supabase 登入、設定好 key，就能搜尋各種貼圖。先用這張試試看 👇",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         IdGrid(ids, { i -> if (i == 0) "示範貼圖" else "最近用過的貼圖 $i" }, pick)
     }
@@ -407,44 +438,83 @@ private fun SetupScroll(content: @Composable () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp)) { content() }
 }
 
-/**
- * 還沒有 GIPHY 的 key（或 key 不能用了）：為什麼要、怎麼申請、貼上 key。
- * [recheck]：對方可能已經設定了，重新整理一下就能用
- */
+// ---------------------------------------------------------------- GIPHY 的 key
+
+/** 還沒有 GIPHY 的 key（或 key 不能用了）：為什麼要、怎麼申請、貼上 key；對方可能已經設定了，可以再檢查一次 */
 @Composable
-fun GiphySetupCard(s: AppState, vm: AppViewModel, searcher: GiphySearcher, badKey: Boolean = false, recheck: Boolean = true) {
+fun GiphySetupCard(s: AppState, vm: AppViewModel, searcher: GiphySearcher, badKey: Boolean = false) {
     CuteCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             EmojiBubble(if (badKey) "😵" else "🔑", Cute.colors.butter.copy(alpha = 0.35f), 44.dp)
-            Column(Modifier.weight(1f)) {
-                TidyText(if (badKey) "GIPHY 的 key 不能用了" else "先設定 GIPHY 的 key", style = MaterialTheme.typography.titleMedium)
-                TidyText(
-                    if (badKey) "可能被停用了，或複製時少了一段。照下面的步驟換一個新的" else "GIPHY 的 API key 是免費的，只要設定一次，${s.partnerName} 的手機也能用",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            TidyText(if (badKey) "GIPHY 的 key 不能用了" else "先設定 GIPHY 的 key", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
         }
+        // 說明用整個寬度：字放大時一句一行，不會被表情擠得東一段西一段
+        TidyText(
+            if (badKey) "可能被停用了，或沒有複製完整。照下面的步驟換一個新的"
+            else "貼圖來自 GIPHY，需要一個免費的 key。只要設定一次，你和 ${s.partnerName} 都能用",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         GiphyKeySteps()
-        GiphyDashboardButton(vm)
+        GiphyDashboardButton()
         GiphyKeyForm(s, vm, searcher)
-        if (recheck) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TidyText("${s.partnerName} 已經設定好了？", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SoftButton("再檢查一次", icon = Icons.Rounded.Refresh, small = true, enabled = !vm.busy) {
-                vm.act { r ->
-                    r.refreshAll()
-                    if (r.state.value.giphyKey == null) vm.toast("${s.partnerName} 也還沒設定，照上面的步驟設定一下吧")
-                }
-            }
-        }
+        GiphyRecheck(s, vm)
     }
 }
 
-/** 到 GIPHY Developers 申請 key 的三個步驟（跟網站上的按鈕一樣） */
+/** 「Supabase 與帳號」裡的 GIPHY 貼圖：設定好了沒、換一個 key、移除（兩個人共用同一個 key） */
+@Composable
+fun GiphyKeyCard(s: AppState, vm: AppViewModel, searcher: GiphySearcher) {
+    val key = s.giphyKey
+    var removing by remember { mutableStateOf(false) }
+    CuteCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            IconBubble(Icons.Rounded.GifBox, Cute.colors.lavender, Cute.colors.lavender.copy(alpha = 0.25f), 44.dp, 24.dp)
+            TidyText("GIPHY 貼圖", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            if (key != null) Pill("設定好了 ✓", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+            else Pill("還沒設定", Cute.colors.butter.copy(alpha = 0.4f))
+        }
+        TidyText(
+            "心情和安撫可以附上會動的貼圖。兩個人共用同一個 key：設定一次，你和 ${s.partnerName} 的手機都能用",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (s.stickersOutdated) {
+            Note("資料庫還存不了貼圖和 key：照上面的步驟再執行一次 upgrade-v2.sql 就能設定", "📱")
+            return@CuteCard
+        }
+        if (key != null) {
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)).padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("目前的 key", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 只露出開頭幾個字，認得出是哪一個就好
+                Text(masked(key), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+            }
+        } else GiphyKeySteps()
+        GiphyDashboardButton()
+        GiphyKeyForm(s, vm, searcher, if (key != null) "換成新的 key" else "GIPHY 的 API key", if (key != null) "換成這個 key" else "儲存")
+        if (key != null) SoftButton("移除 key", Modifier.fillMaxWidth(), icon = Icons.Rounded.Delete, enabled = !vm.busy) { removing = true }
+    }
+    if (removing) AlertDialog(
+        onDismissRequest = { removing = false },
+        title = { Text("移除 GIPHY 的 key？") },
+        text = { Text("你和 ${s.partnerName} 都不能再選新的貼圖，已經送出的貼圖還是看得到。之後可以再設定一次。") },
+        confirmButton = {
+            TextButton(onClick = { removing = false; vm.act("已移除 GIPHY 的 key") { it.setGiphyKey(null) } }) { Text("移除", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = { removing = false }) { Text("取消") } },
+    )
+}
+
+/** key 只顯示前 4 個字 */
+private fun masked(key: String) = key.take(4) + "•••"
+
+/** 到 GIPHY Developers 申請 key 的三個步驟（跟網站上的按鈕一樣；按鈕的名字用不換行的空白連起來，不會被拆成兩行） */
 @Composable
 fun GiphyKeySteps() {
     listOf(
-        "登入 GIPHY Developers（沒有帳號就免費註冊），按「Create an API Key」",
-        "選「API」→「Next Step」，App 名稱填「小倆口」，勾選同意條款後按「Create API Key」",
+        "登入 GIPHY Developers（免費註冊），按「Create\u00A0an\u00A0API\u00A0Key」",
+        "選「API」→「Next\u00A0Step」，填 App 名稱、勾選同意，按「Create\u00A0API\u00A0Key」",
         "複製那一串 key，貼到下面按「儲存」",
     ).forEachIndexed { i, t ->
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -457,44 +527,62 @@ fun GiphyKeySteps() {
 }
 
 @Composable
-fun GiphyDashboardButton(vm: AppViewModel) {
+fun GiphyDashboardButton() {
     val uriHandler = LocalUriHandler.current
+    var failed by remember { mutableStateOf(false) }
     SoftButton("打開 GIPHY Developers", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.OpenInNew) {
-        runCatching { uriHandler.openUri(Giphy.DASHBOARD) }.onFailure { vm.toast("打不開瀏覽器，請到 developers.giphy.com 申請") }
+        failed = runCatching { uriHandler.openUri(Giphy.DASHBOARD) }.isFailure
     }
+    if (failed) TidyText("打不開瀏覽器，請到 developers.giphy.com 申請", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
 }
 
-/** 貼上 key → 先用這個 key 查一次熱門貼圖（只花一次額度），能用才存起來 */
+/**
+ * 貼上 key → 先用這個 key 查一次熱門貼圖（只花一次額度），能用才存進你們的 Supabase。
+ * 錯誤直接寫在欄位下面（在選貼圖的視窗裡時，App 的提示會被蓋住）
+ */
 @Composable
-fun GiphyKeyForm(s: AppState, vm: AppViewModel, searcher: GiphySearcher, onSaved: () -> Unit = {}) {
+fun GiphyKeyForm(s: AppState, vm: AppViewModel, searcher: GiphySearcher, label: String = "GIPHY 的 API key", button: String = "儲存") {
     var key by remember { mutableStateOf("") }
     var checking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
     CuteField(
-        key, { key = it.filterNot(Char::isWhitespace).take(128); error = null }, "GIPHY 的 API key",
+        key, { key = it.filterNot(Char::isWhitespace).take(128); error = null }, label,
         password = true, isError = error != null, supporting = error ?: "存在你們的 Supabase，只用來搜尋貼圖",
     )
-    CuteButton(if (checking) "檢查中…" else "儲存", Modifier.fillMaxWidth(), icon = Icons.Rounded.Key, enabled = key.isNotEmpty() && !checking && !vm.busy) {
+    CuteButton(if (checking) "檢查中…" else button, Modifier.fillMaxWidth(), icon = Icons.Rounded.Key, enabled = key.isNotEmpty() && !checking) {
         val k = key
+        val repo = vm.repo.value ?: return@CuteButton
         if (!Giphy.isValidKey(k)) {
             error = RemoteRepository.BAD_GIPHY_KEY
             return@CuteButton
         }
         checking = true
-        scope.launch {
-            val problem = try {
-                searcher.checkKey(k)
-                null
+        error = null
+        // 按了「儲存」就做完，視窗關掉也一樣
+        vm.viewModelScope.launch {
+            try {
+                val problem = try {
+                    searcher.checkKey(k)
+                    null
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    keyProblem((e as? GiphyException)?.reason ?: GiphyException.Reason.SERVER)
+                }
+                if (problem != null) {
+                    error = problem
+                    return@launch
+                }
+                repo.setGiphyKey(k)
+                key = ""
+                vm.toast("設定好了 🎉 ${s.partnerName} 的手機也能用")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                keyProblem((e as? GiphyException)?.reason ?: GiphyException.Reason.SERVER)
+                error = (e as? AppException)?.message ?: "存不進去：${e.message ?: e.javaClass.simpleName}"
             } finally {
                 checking = false
             }
-            if (problem != null) error = problem
-            else vm.act("設定好了 🎉 ${s.partnerName} 的手機也能用", onDone = { key = ""; onSaved() }) { it.setGiphyKey(k) }
         }
     }
 }
@@ -505,4 +593,54 @@ private fun keyProblem(reason: GiphyException.Reason): String? = when (reason) {
     GiphyException.Reason.RATE_LIMITED -> null
     GiphyException.Reason.NETWORK -> "連不到 GIPHY，確認網路後再按一次「儲存」"
     GiphyException.Reason.SERVER -> reason.text
+}
+
+/** 對方可能已經設定好了：重新讀一次配對的資料（結果寫在按鈕下面） */
+@Composable
+private fun GiphyRecheck(s: AppState, vm: AppViewModel) {
+    var checking by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf<String?>(null) }
+    BesideOrBelow({ TidyText("${s.partnerName} 已經設定好了？", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }) {
+        SoftButton(if (checking) "檢查中…" else "再檢查一次", icon = Icons.Rounded.Refresh, small = true, enabled = !checking) {
+            val repo = vm.repo.value ?: return@SoftButton
+            checking = true
+            note = null
+            vm.viewModelScope.launch {
+                note = try {
+                    repo.refreshAll()
+                    // 有了的話這張卡片會自己換成搜尋
+                    if (repo.state.value.giphyKey == null) "${s.partnerName} 也還沒設定，照上面的步驟設定一下吧" else null
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    (e as? AppException)?.message ?: "連不到 Supabase，等一下再試"
+                } finally {
+                    checking = false
+                }
+            }
+        }
+    }
+    note?.let { TidyText(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+}
+
+/** 說明在左、按鈕在右；說明放不下一行（字放大、名字很長）時按鈕移到說明下面靠右，說明不會被擠成好幾行 */
+@Composable
+private fun BesideOrBelow(text: @Composable () -> Unit, action: @Composable () -> Unit) {
+    Layout(content = { text(); Box { action() } }, modifier = Modifier.fillMaxWidth()) { (textM, actionM), c ->
+        val gap = 8.dp.roundToPx()
+        val w = c.maxWidth
+        val a = actionM.measure(Constraints(maxWidth = w))
+        val beside = textM.maxIntrinsicWidth(Constraints.Infinity) + gap + a.width <= w
+        val t = textM.measure(Constraints(maxWidth = if (beside) w - a.width - gap else w))
+        val h = if (beside) maxOf(t.height, a.height) else t.height + gap + a.height
+        layout(w, h) {
+            if (beside) {
+                t.placeRelative(0, (h - t.height) / 2)
+                a.placeRelative(w - a.width, (h - a.height) / 2)
+            } else {
+                t.placeRelative(0, 0)
+                a.placeRelative(w - a.width, t.height + gap)
+            }
+        }
+    }
 }
