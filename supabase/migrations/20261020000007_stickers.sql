@@ -4,8 +4,21 @@
 -- 通知、桌面小工具、狀態列和舊版 App（0.2.1）都照常運作。
 -- GIPHY 的 API key 一對情侶一把（couples.giphy_key），兩個人都讀得到（app_me 的 couple.giphyKey），
 -- App 用 app_set_giphy_key 設定；key 不寫進歷史紀錄、通知或即時事件。
+-- 收到的安撫可以一次全部標成看過（app_read_comfort 的 all）。
 -- 包在 upgrade-v2.sql 裡：已經跑過 upgrade-v2.sql 的人再跑一次就好，可以重複執行。
 -- =============================================================================
+
+-- 0.2.1 以前的 App 從來沒有把收到的安撫標成看過（read_at 一直是空的）：第一次更新到這一版時，
+-- 一天以前收到的都標成看過，首頁「收到的安撫」和鈴鐺的紅點才不會把以前的安撫一則一則翻出來。
+-- 只做這一次：comforts 還沒有 sticker 欄位就是第一次（所以放在下面加欄位之前），
+-- 之後再執行 upgrade-v2.sql 時，新收到、還沒看過的安撫不會被標掉
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'comforts' and column_name = 'sticker') then
+    update public.comforts set read_at = now() where read_at is null and created_at < now() - interval '1 day';
+  end if;
+end $$;
 
 -- id 只能是英文字母和數字：App 用 id 組出 GIPHY 的網址，對方傳來奇怪的 id 也不會讓手機去載別的東西
 alter table public.moods add column if not exists sticker text check (sticker ~ '^[A-Za-z0-9]{1,64}$');
@@ -33,6 +46,19 @@ begin
   values (my_couple_id(), partner_id(), $1->>'kind', nullif($1->>'message', ''), nullif(btrim($1->>'sticker'), ''))
   returning to_jsonb(t) into v_row;
   return camel(v_row);
+end $$;
+
+-- {"id": n} 標一則看過了；{"all": true} 把收到的、還沒看過的全部標成看過（打開歷史紀錄時，一次就好）。
+-- 用登入者的身分執行：Row Level Security 只讓收到的人改 read_at，別人的安撫動不到
+create or replace function public.app_read_comfort(jsonb default '{}') returns jsonb
+language plpgsql set search_path = public set timezone to 'UTC' as $$
+begin
+  if truthy($1->'all') then
+    update comforts set read_at = now() where receiver_id = auth.uid() and read_at is null;
+  else
+    update comforts set read_at = now() where id = ($1->>'id')::bigint and read_at is null;
+  end if;
+  return jsonb_build_object('ok', true);
 end $$;
 
 

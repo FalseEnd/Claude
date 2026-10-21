@@ -318,6 +318,29 @@ select test.ok(test.error_of(format($$update public.comforts set sticker = 'abc'
                like '42501:%', 'the receiver cannot change the sticker');
 select test.ok(test.mentions('xlkSmokeKey_0123456789-abc') = 0, 'the GIPHY key never shows up in notifications, history or realtime events');
 
+-- 打開歷史紀錄：收到的、還沒看過的安撫一次全部標成看過；自己送出去的、別人的都不會動
+insert into public.comforts (couple_id, receiver_id, kind) values (public.my_couple_id(), test.id('zhe'), 'hug');
+update public.comforts set read_at = '2026-01-01 08:00+00' where id = (select min(id) from public.comforts);
+select count(*) as yu_unread from public.comforts where receiver_id = test.id('yu') and read_at is null \gset
+select test.ok(:yu_unread >= 3, 'yu has unread comforts');
+select test.login(test.id('mia'));
+select test.ok(public.app_read_comfort('{"all": true}') = '{"ok": true}', 'an outsider can call app_read_comfort {"all": true}');
+select test.login(test.id('zhe'));
+select test.ok((select count(*) from public.comforts where read_at is null) = :yu_unread + 1, '… and it marks nothing of the couple');
+select test.ok(public.app_read_comfort('{"all": true}') = '{"ok": true}', 'app_read_comfort {"all": true} answers ok');
+select test.ok(not exists (select 1 from public.comforts where receiver_id = test.id('zhe') and read_at is null),
+               'the caller''s received comforts are all marked read');
+select test.ok((select count(*) from public.comforts where receiver_id = test.id('yu') and read_at is null) = :yu_unread,
+               'comforts the caller sent stay unread for the partner');
+select test.login(test.id('yu'));
+select public.app_read_comfort('{"all": true}');
+select test.ok(not exists (select 1 from public.comforts where receiver_id = test.id('yu') and read_at is null),
+               'the partner marks everything they received in one call');
+select test.ok((select read_at from public.comforts where id = (select min(id) from public.comforts)) = '2026-01-01 08:00+00',
+               'comforts read earlier keep their time');
+select test.ok(not (select prosecdef from pg_proc where oid = 'public.app_read_comfort(jsonb)'::regprocedure),
+               'app_read_comfort runs as the caller, so Row Level Security decides what it can mark');
+
 -- ---------------------------------------------------------------- 經期分享
 select test.login(test.id('yu'));
 insert into public.cycle_periods (user_id, start_date, end_date) values (test.id('yu'), '2026-09-22', '2026-09-27');

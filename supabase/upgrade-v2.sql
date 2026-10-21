@@ -412,7 +412,14 @@ end $$;
 create or replace function public.app_health(jsonb default '{}') returns jsonb
 language sql stable set search_path = public set timezone to 'UTC' as $$
   select jsonb_build_object('ok', true, 'time', now(), 'schema', 3)
-$$;alter table public.moods add column if not exists sticker text check (sticker ~ '^[A-Za-z0-9]{1,64}$');
+$$;do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'comforts' and column_name = 'sticker') then
+    update public.comforts set read_at = now() where read_at is null and created_at < now() - interval '1 day';
+  end if;
+end $$;
+alter table public.moods add column if not exists sticker text check (sticker ~ '^[A-Za-z0-9]{1,64}$');
 alter table public.comforts add column if not exists sticker text check (sticker ~ '^[A-Za-z0-9]{1,64}$');
 alter table public.couples add column if not exists giphy_key text check (giphy_key ~ '^[A-Za-z0-9_-]{16,128}$');
 grant insert (sticker) on public.comforts to authenticated;
@@ -433,6 +440,16 @@ begin
   values (my_couple_id(), partner_id(), $1->>'kind', nullif($1->>'message', ''), nullif(btrim($1->>'sticker'), ''))
   returning to_jsonb(t) into v_row;
   return camel(v_row);
+end $$;
+create or replace function public.app_read_comfort(jsonb default '{}') returns jsonb
+language plpgsql set search_path = public set timezone to 'UTC' as $$
+begin
+  if truthy($1->'all') then
+    update comforts set read_at = now() where receiver_id = auth.uid() and read_at is null;
+  else
+    update comforts set read_at = now() where id = ($1->>'id')::bigint and read_at is null;
+  end if;
+  return jsonb_build_object('ok', true);
 end $$;
 create or replace function public.tg_mood_inserted() returns trigger
 language plpgsql security definer set search_path = public as $$
