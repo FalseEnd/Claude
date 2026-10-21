@@ -9,8 +9,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import org.junit.After
@@ -95,6 +98,9 @@ class ServerIntegrationTest {
         try { apiCall { block() } } catch (e: AppException) { return }
         throw AssertionError("應該要失敗：$what")
     }
+
+    /** 通知的 data、歷史紀錄的 payload 裡的貼圖 id（沒附貼圖時資料庫給 null） */
+    private fun JsonObject?.sticker() = (this?.get("sticker") as? JsonPrimitive)?.contentOrNull
 
     /** 上傳的檔案：之後解除配對時再檢查一次權限 */
     private class V2Files(val shared: MediaItem, val sharedBytes: ByteArray, val secret: MediaItem, val secretBytes: ByteArray)
@@ -334,6 +340,68 @@ class ServerIntegrationTest {
             assertTrue(b.title, b.title.contains("抱抱"))
             assertEquals("晚上請你吃好料", b.body)
 
+            // GIPHY 的 API key：一對情侶一把，誰設定都可以，兩個人都讀得到；交往紀念日不能被動到
+            val giphyKey = "xlkTestKey_$run"
+            assertNull(zhe.repo.state.value.giphyKey)
+            zhe.repo.setGiphyKey(giphyKey)
+            assertEquals(giphyKey, zhe.repo.state.value.giphyKey)
+            assertEquals(LocalDate.parse("2025-05-20"), zhe.repo.state.value.togetherSince)
+            eventually("對方拿到 GIPHY key") { yu.repo.state.value.giphyKey == giphyKey }
+            failsWith("invalid_input") { zhe.repo.setGiphyKey("壞 key") } // App 先擋
+            failsWith("invalid_input") { zhe.api.setGiphyKey(buildJsonObject { put("key", "壞 key") }) } // 資料庫也擋
+            assertEquals(giphyKey, apiCall { yu.api.me() }.couple?.giphyKey)
+            yu.repo.setGiphyKey("  ") // 空白是清掉
+            assertNull(yu.repo.state.value.giphyKey)
+            eventually("對方看到 key 清掉了") { zhe.repo.state.value.giphyKey == null }
+            yu.repo.setGiphyKey(giphyKey)
+            eventually("對方又拿到 GIPHY key") { zhe.repo.state.value.giphyKey == giphyKey }
+
+            // GIPHY 貼圖：心情、安撫可以附一張（只存 id），通知與歷史紀錄帶著 id；奇怪的 id App 和資料庫都擋
+            val sticker = "3oriO0OEd9QIDdllqo"
+            yu.repo.postMood("happy", null, sticker)
+            assertEquals(sticker, yu.repo.state.value.moods.first { it.userId == yu.userId }.sticker)
+            eventually("對方看到貼圖心情") { zhe.repo.state.value.moods.any { it.mood == "happy" && it.sticker == sticker } }
+            eventually("貼圖心情通知") { zhe.notes.any { it.kind == "mood" && it.data.sticker() == sticker } }
+            assertEquals("附上一張貼圖 ✨", zhe.notes.last { it.kind == "mood" && it.data.sticker() == sticker }.body)
+            failsWith("invalid_input") { yu.repo.postMood("happy", null, "../x") }
+            failsWith("invalid_input") { yu.api.postMood(buildJsonObject { put("mood", "happy"); put("sticker", "../x") }) }
+            failsWith("invalid_input") { zhe.api.postComfort(buildJsonObject { put("kind", "hug"); put("sticker", "a b") }) }
+            val stickerBanner = async { yu.repo.banners.first { it.kind == "comfort" && it.body == "傳了一張貼圖給你，點開看看 👀" } }
+            zhe.repo.sendComfort("hug", null, sticker)
+            assertEquals(sticker, zhe.repo.state.value.comforts.first { it.senderId == zhe.userId }.sticker)
+            withTimeout(6000) { stickerBanner.await() }
+            eventually("收到貼圖安撫") { yu.repo.state.value.comforts.any { it.receiverId == yu.userId && it.sticker == sticker } }
+            val got = yu.repo.state.value.comforts.first { it.receiverId == yu.userId && it.sticker == sticker }
+            assertNull(got.readAt)
+            val gotNote = yu.notes.last { it.kind == "comfort" && it.data.sticker() == sticker }
+            assertEquals(got.id, (gotNote.data?.get("comfort_id") as? JsonPrimitive)?.longOrNull)
+
+            // 已讀：只有收到的人標得了（送的人呼叫不會改到任何東西）；送的人那邊跟著更新
+            apiCall { zhe.api.readComfort(got.id) }
+            assertNull(apiCall { yu.api.comforts() }.first { it.id == got.id }.readAt)
+            yu.repo.readComfort(got.id)
+            assertNotNull(yu.repo.state.value.comforts.first { it.id == got.id }.readAt)
+            eventually("送的人看到已讀") { zhe.repo.state.value.comforts.first { it.id == got.id }.readAt != null }
+            // 首頁的「回抱」：抱回去，不附貼圖也不寫話時，對方收到原本的文字
+            val hugBack = async { zhe.repo.banners.first { it.kind == "comfort" && it.body == "點開回應一下吧" } }
+            yu.repo.sendComfort("hug", null)
+            withTimeout(6000) { hugBack.await() }
+            assertNull(zhe.notes.last { it.kind == "comfort" }.data.sticker())
+            // 打開歷史紀錄：收到的全部標成已讀（「晚上請你吃好料」那則也是），自己送出去的不算
+            assertTrue(yu.repo.state.value.comforts.any { it.receiverId == yu.userId && it.readAt == null })
+            yu.repo.markComfortsRead()
+            assertTrue(yu.repo.state.value.comforts.none { it.receiverId == yu.userId && it.readAt == null })
+            assertTrue(apiCall { yu.api.comforts() }.none { it.receiverId == yu.userId && it.readAt == null })
+            assertNull(apiCall { zhe.api.comforts() }.first { it.senderId == yu.userId }.readAt)
+            eventually("送的人看到全部已讀") { zhe.repo.state.value.comforts.filter { it.receiverId == yu.userId }.all { it.readAt != null } }
+            eventually("歷史紀錄帶著貼圖") {
+                zhe.repo.state.value.history.let { h ->
+                    h.any { it.kind == "mood" && it.payload.sticker() == sticker } && h.any { it.kind == "comfort" && it.payload.sticker() == sticker }
+                }
+            }
+            // key 不會跟著歷史紀錄出去（通知的部分最後再檢查一次全部）
+            listOf(zhe, yu).forEach { c -> assertTrue(apiCall { c.api.history(limit = 200) }.none { giphyKey in it.payload.toString() }) }
+
             // 地點與地理圍欄
             zhe.repo.savePlace(null, buildJsonObject {
                 put("name", "小雨公司"); put("icon", "work"); put("lat", 25.036); put("lng", 121.567); put("radiusM", 250); put("watch", "partner")
@@ -443,6 +511,14 @@ class ServerIntegrationTest {
             }
             assertNotNull(zhe.repo.state.value.me)
             afterUnpair(zhe, yu, v2)
+            // GIPHY key 跟著配對：解除後兩邊都讀不到，也不能再設定
+            assertNull(zhe.repo.state.value.giphyKey)
+            assertNull(apiCall { yu.api.me() }.couple)
+            failsWith("not_paired") { yu.repo.setGiphyKey(giphyKey) }
+            // 從頭到尾，key 沒有出現在任何一則通知裡
+            listOf(zhe, yu).forEach { c ->
+                assertTrue(synchronized(c.notes) { c.notes.toList() }.none { giphyKey in "${it.title}${it.body}${it.data}" })
+            }
             zhe.realtime.stop(); yu.realtime.stop()
             // 登出後 refresh token 失效：換新失敗就要請使用者重新登入
             apiCall { zhe.supabase.signOut(zhe.session.current!!.accessToken) }
