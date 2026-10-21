@@ -1,10 +1,12 @@
 # 小倆口：情侶 App
 
-可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.2.0**。
+可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.2.2**。
 
 > **已經在用 0.1 版？先更新資料庫 🛠️**
 >
 > 0.2 的新功能（個人資料、備註、日曆的生活紀錄、備忘錄、照片和語音）要在你們的 Supabase 多建幾張表和一個放照片的空間：到 Supabase 後台的 **SQL Editor** 執行一次 [`supabase/upgrade-v2.sql`](supabase/upgrade-v2.sql)（跟當初的 setup.sql 一樣，從 GitHub 的 **Raw** 頁面複製），看到「更新完成 🎉」就好。兩個人其中一個做一次就好，已經存的資料不受影響。
+>
+> **0.2.2（GIPHY 貼圖）**：之前跑過 upgrade-v2.sql 的話，再跑一次最新的 [`upgrade-v2.sql`](supabase/upgrade-v2.sql)，記心情、送安撫才能附上 GIPHY 貼圖（還沒跑 0.2.1 那次的話，手機名稱和電信也會一起補上）。這個檔可以放心重複執行，已經存的資料不受影響。兩支手機都要更新到 0.2.2 才看得到貼圖（還沒更新的 0.2.1 照常能用，只是看不到），再照下面的「[GIPHY 貼圖怎麼設定](#giphy-貼圖怎麼設定)」申請一個免費的 key。
 >
 > **0.2.1**：之前跑過 upgrade-v2.sql 的話，再跑一次（多了手機名稱和電信），對方的手機名稱和電信才會顯示；沒跑其他功能也都能用。
 >
@@ -18,7 +20,7 @@
 - **地圖與標點**：即時位置與距離；搜尋地址直接定位；設定標點，對方抵達或離開時通知；「現在在哪？」
 - **自動記帳**：讀取 LINE Pay（LINE錢包）、街口、Google 錢包、銀行的付款通知，自動抓店名和分類，同一筆消費只記一次；禮物模式讓驚喜不被拆穿
 - **猜花費**：對方開放的消費先藏起金額，猜完揭曉計分，猜中還有紙花
-- **心情與安撫**：設定今天的心情，對方心情不好時一鍵送抱抱、摸摸頭
+- **心情與安撫**：設定今天的心情，對方心情不好時一鍵送抱抱、摸摸頭，還能附上會動的 GIPHY 貼圖；收到的安撫放在首頁，可以直接回抱
 - **紀念日與約會**：在一起天數、生日、週年、520 與 1314；約會邀請、答應、提醒
 - **日曆生活紀錄**：除了約會，還能在日曆上用文字、照片、語音記錄那天的生活，兩個人一起寫
 - **備忘錄**：文字、照片、語音，可以只有自己看或和另一半共用，還能放在桌面小工具
@@ -37,6 +39,20 @@
 
 電腦不用開著，手機在哪裡都能連線。不想先設定？App 裡選「先看看示範」就能體驗所有畫面，還可以在「示範控制台」扮演對方。
 
+## GIPHY 貼圖怎麼設定
+
+記心情、送安撫時可以附一張會動的貼圖或 GIF（選填），貼圖來自 [GIPHY](https://giphy.com)。要先申請一個免費的 GIPHY API key，在 App 裡貼上一次就好：key 存在你們的 Supabase，你和另一半的手機共用同一個。
+
+1. 到 [GIPHY Developers](https://developers.giphy.com/dashboard/) 註冊或登入（免費），按「Create an API Key」。
+2. 選 **API**（不是預設選好的 SDK），按「Next Step」；填 App 名稱（隨意，例如「小倆口」）、Platform 選 Android，勾選同意條款，按「Create API Key」。
+3. 複製那一串 key。在 App 記心情或送安撫時按「加一張 GIPHY 貼圖」（或到「我的 › Supabase 與帳號 › GIPHY 貼圖」），貼上後按「儲存」。App 會先用這個 key 查一次，能用才存起來。
+
+- 一個人設定好，另一半的手機會自動拿到；還沒看到的話，在選貼圖的畫面按「再檢查一次」。
+- key 跟著這一次的配對：解除配對、重新配對之後要再貼一次（同一個 key 還能用）。
+- 免費的 key（GIPHY 叫 beta key）一小時只能查 100 次，兩支手機一起算。App 會等你打完字才查、查過的不再查（App 關掉前）、捲到最下面才載下一頁；已經送出的貼圖和「最近用過」不用查。用完了會說「GIPHY 這個小時用太多次了」，等一下再試就好。
+- 要換 key 或移除：「我的 › Supabase 與帳號 › GIPHY 貼圖」。移除後已經送出的貼圖還是看得到。
+- 要先配對，資料庫也要先跑過最新的 upgrade-v2.sql（見最上面）；示範模式不能搜尋 GIPHY。
+
 ## 隱私：誰看得到什麼
 
 權限規則寫在資料庫裡（PostgreSQL 的 Row Level Security 和 Storage 的規則），App 裡的金鑰繞不過去。
@@ -49,6 +65,7 @@
 | 日曆的生活紀錄 | 你們兩個；各自只能改、刪自己寫的。解除配對後雙方都看不到 |
 | 共用備忘錄 | 你們兩個都能看、能改；只有建立的人能刪除或改成私人。解除配對後只剩建立的人看得到 |
 | 私人備忘錄 | 只有自己，連什麼時候寫、什麼時候改，對方都不會知道 |
+| GIPHY 貼圖 | 附的貼圖跟著心情、安撫，誰看得到也一樣（資料庫只存貼圖的 id）；GIPHY 的 key 你們兩個都看得到。搜尋的字會送到 GIPHY，貼圖的圖片在兩支手機上都直接從 GIPHY 的伺服器載入，所以 GIPHY 看得到手機的 IP 位址 |
 
 照片和語音存在 Supabase Storage 一個不公開的 `media` 空間，每個檔案都要登入才讀得到：
 
@@ -62,9 +79,9 @@
 | 路徑 | 內容 |
 |---|---|
 | [`android/`](android) | Android App（Kotlin、Jetpack Compose、Material 3） |
-| [`supabase/`](supabase) | 資料庫結構、權限規則（Row Level Security）、App 呼叫的資料庫函式、即時通知與排程提醒、照片與語音的 Storage 規則；[`setup.sql`](supabase/setup.sql) 是貼到 SQL Editor 執行的完整版本，[`upgrade-v2.sql`](supabase/upgrade-v2.sql) 是 0.1 版的資料庫升級到 0.2 用的 |
+| [`supabase/`](supabase) | 資料庫結構、權限規則（Row Level Security）、App 呼叫的資料庫函式、即時通知與排程提醒、照片與語音的 Storage 規則；[`setup.sql`](supabase/setup.sql) 是貼到 SQL Editor 執行的完整版本，[`upgrade-v2.sql`](supabase/upgrade-v2.sql) 是舊版的資料庫升級到最新版用的（可以重複執行） |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | 設計文件：介面風格、功能規格、隱私原則、系統架構 |
-| [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) | Supabase 設定教學、從 0.1 版更新資料庫 |
+| [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) | Supabase 設定教學、更新資料庫 |
 | [`prototype/`](prototype) | 最早的網頁互動原型；`core.js` 是經期預測等共用邏輯的參考實作 |
 
 ## 建置 App
@@ -78,7 +95,7 @@ cd android
 
 Windows 用 `gradlew.bat assembleRelease`。正式上架前請換成自己的簽章金鑰（`android/app/build.gradle.kts` 的 `signingConfig`）。
 
-版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.2.0、`versionCode` 2），裝好後在 App「我的」最下面看得到。
+版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.2.2、`versionCode` 4），裝好後在 App「我的」最下面看得到。
 
 ## 測試
 
@@ -89,7 +106,7 @@ cd android && ./gradlew testDebugUnitTest     # App 核心邏輯與畫面
 cd android && ./gradlew recordRoborazziDebug  # 不用模擬器，把每個畫面畫成圖片（app/build/screens/）
 ```
 
-`npm run test:db` 會用 Supabase CLI 在本機啟動 Supabase（包含 Storage），測資料庫權限、App 用的函式、即時通知、排程、照片與語音的上傳下載和權限，也會拿 0.1 版的資料庫執行 `upgrade-v2.sql`、拿空的資料庫執行 `setup.sql` 各測一次。需要 Docker、psql 與 Node.js 22 以上；之前用不含 Storage 的參數啟動過 Supabase 的話，先執行 `npx supabase stop`。
+`npm run test:db` 會用 Supabase CLI 在本機啟動 Supabase（包含 Storage），測資料庫權限、App 用的函式、即時通知、排程、照片與語音的上傳下載和權限，也會拿 0.1、0.2.0、0.2.1 版的資料庫執行 `upgrade-v2.sql`、拿空的資料庫執行 `setup.sql` 各測一次。需要 Docker、psql 與 Node.js 22 以上；之前用不含 Storage 的參數啟動過 Supabase 的話，先執行 `npx supabase stop`。
 
 0.2 新增的 App 測試（只跑一個：`./gradlew testDebugUnitTest --tests '*MemoScreensTest*'`；畫成圖片：`./gradlew recordRoborazziDebug --tests '*MemoScreensTest*'`）：
 
@@ -103,12 +120,21 @@ cd android && ./gradlew recordRoborazziDebug  # 不用模擬器，把每個畫�
 | `MediaUiTest` | 照片縮圖、看大圖、語音、選照片和錄音的按鈕 |
 | `DataV2Test` | 新功能的資料層（示範模式）與照片快取 |
 | `RemoteV2Test` | 連 Supabase 時呼叫的函式與參數、Storage 的網址、資料庫還沒更新時的提醒（用假的 Supabase） |
+| `StickerScreensTest` | 心情和安撫附上 GIPHY 貼圖、首頁收到的安撫、歷史紀錄裡的貼圖、選貼圖的視窗（還沒設定 key、示範模式、找不到、key 不能用、用太多次、連不到）與查了幾次、帳號裡的 GIPHY key |
+| `GiphyTest`、`StickerImageTest`、`StickerNotificationTest` | 送到 GIPHY 的參數、回應與錯誤、查過的不再查；用 id 顯示貼圖、id 不對不載；通知先發文字、再換成有貼圖的同一則 |
+| `StickerRemoteTest`、`StickerDemoTest` | 貼圖和 GIPHY key 的資料層（假的 Supabase、示範模式）：舊的資料庫先擋下來、收到的安撫標成看過 |
 
-App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日曆紀錄、備忘錄、照片的權限）：先 `npx supabase start`，專案裡不能已經有帳號（可以先 `npx supabase db reset`），再執行
+App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日曆紀錄、備忘錄、照片的權限，0.2.2 的 GIPHY key、貼圖和已讀）：先 `npx supabase start`，專案裡不能已經有帳號（可以先 `npx supabase db reset`），再執行
 `XLK_TEST_SUPABASE_URL=http://127.0.0.1:54321 XLK_TEST_SUPABASE_KEY=<publishable key> ./gradlew testDebugUnitTest`。
 
 ## 更新紀錄
 
+- **0.2.2**：
+  - GIPHY 貼圖：記心情、送安撫時可以附一張會動的貼圖或 GIF（選填）。可以搜尋、看熱門的，或點「抱抱」「晚安」這些常用的；會依選的心情和安撫先幫你找，最近用過的也留著。首頁、歷史紀錄和通知都看得到貼圖。要先設定一個免費的 GIPHY key（見「[GIPHY 貼圖怎麼設定](#giphy-貼圖怎麼設定)」）。
+  - 首頁多了「收到的安撫」：對方傳來的抱抱、貼圖和悄悄話放在上面，可以直接「回抱 🤗」或按「收到了」。
+  - 收到的安撫會標成已讀了（按「回抱」「收到了」，或打開歷史紀錄），右上角鈴鐺的紅點終於會消失。
+  - 字放大時不會被切到：對方的身材與尺寸（例如「L、XL希望寬鬆一點」）會換行，同一排兩格一樣高；「這 7 天」的心情改用頭像，長名字不會被切成兩個字；對方的電話、別年的日期會換行；首頁心情的備註、App 開著時跳出的通知放不下時用「…」結尾。
+  - 資料庫：再執行一次 [`upgrade-v2.sql`](supabase/upgrade-v2.sql)，兩支手機都更新到 0.2.2。
 - **0.2.1**：
   - 定位：允許權限後馬上開始分享位置，地圖的「我的位置」不用打開分享也能定位，沒有 Google 服務的手機也能定位。
   - 步數：部分 OPPO 手機也能計步，重新開機也不會歸零。
@@ -123,6 +149,7 @@ App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日�
 
 - 字型：[jf open 粉圓](https://github.com/justfont/open-huninn-font)（SIL Open Font License 1.1）
 - 地圖：© [OpenStreetMap](https://www.openstreetmap.org/copyright) 貢獻者
+- 貼圖：[GIPHY](https://giphy.com)。用 GIPHY API 搜尋，選貼圖的畫面放 GIPHY 官方的「Powered by GIPHY」標誌；App 和資料庫只存貼圖的 id，不存圖片
 - 網頁原型圖示：[Lucide](https://lucide.dev)（ISC License）
 - 籤詩：元三大師觀音百籤（淺草寺的觀音百籤），古籍、屬於公有領域；App 只收錄籤號、吉凶和四句籤詩原文
 - 解籤：App 用瀏覽器打開[台灣好廟網](https://qiangua.temple01.com/qianshi.php?t=fs_akt100)的解籤頁，沒有複製網站的解說內容

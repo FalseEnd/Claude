@@ -4,12 +4,12 @@
 
 小倆口是給已經在一起的兩個人用的 **Android App**，資料存在**你們自己的免費 Supabase 專案**裡。它不取代 LINE，而是補上聊天軟體做不到的部分：**不用開口就知道對方的狀態**（在哪、電量、心情、花了什麼），以及**把在一起的日子記下來**（紀念日、約會、日曆上的生活紀錄、備忘錄、經期、歷史紀錄）。
 
-本文件對應 App 0.2.0（versionCode 2）。
+本文件對應 App 0.2.2（versionCode 4）。
 
 | 文件 | 內容 |
 |---|---|
 | 本文件 | 產品、介面風格、功能規格、隱私原則、系統架構 |
-| [SUPABASE_SETUP.md](SUPABASE_SETUP.md) | 建立 Supabase 專案、執行 setup.sql、在 App 連線、邀請另一半；從 0.1 版更新（upgrade-v2.sql） |
+| [SUPABASE_SETUP.md](SUPABASE_SETUP.md) | 建立 Supabase 專案、執行 setup.sql、在 App 連線、邀請另一半；從舊版更新（upgrade-v2.sql，可以重複執行） |
 | [`android/`](../android) | Android App 原始碼（Kotlin + Jetpack Compose） |
 | [`supabase/`](../supabase) | 資料庫結構、權限規則、App 呼叫的資料庫函式、即時通知與排程、照片與語音的 Storage 規則 |
 
@@ -34,6 +34,12 @@
 **配色**：櫻花粉為主色，搭配薄荷、薰衣草、奶油黃、天空藍等粉嫩色；兩個人各有代表色（我：天空藍、對方：櫻花粉），在頭像、地圖、帳本裡一致使用。支援深色模式（深莓色底）。
 
 **字型**：全 App 使用 jf open 粉圓（Huninn，SIL OFL 授權），圓潤的繁體中文字型。
+
+**字放大也不會被切到**：畫面測試用 360 dp 寬、系統字型 1.3 倍檢查（身材與尺寸到 1.6 倍）。字放不下就換行，不會無聲無息地切掉：
+- 中文用 `TidyText` 換行：盡量在標點、空白後面換，不留孤字，不把數字和單位拆開。
+- 真的要限制行數的地方，結尾一定有「…」，點進去看得到完整的：首頁心情的備註 2 行、App 開著時跳出的通知標題 2 行、內文 3 行。
+- 並排的按鈕放不下就換到下一排（`ButtonRow`）；同一排的小卡一樣高（`IntrinsicSize.Min`）。
+- 窄欄裡不放可能很長的名字：「這 7 天」的心情左邊用頭像，「梓梓的小宝」不會被切成「梓梓」。電話在「-」後面可以換行，別年的日期把星期換到第二行。
 
 **形狀**：大圓角卡片（26dp）、膠囊按鈕、圓滾滾的圖示底；底部分頁是懸浮的圓角膠囊。
 
@@ -64,8 +70,9 @@
 
 ```
 首頁 ─┬─ 吉祥物 + 在一起第 N 天 + 對方在哪、相距多遠
+      ├─ 收到的安撫（還沒看過的最新一則：貼圖、悄悄話；回抱｜收到了）
       ├─ 對方的手機（電量／網路／螢幕與勿擾／位置／步數、「現在在哪？」）
-      ├─ 今天的心情（雙方）＋「要不要安撫一下？」
+      ├─ 今天的心情（雙方，附了貼圖就顯示貼圖）＋「要不要安撫一下？」
       ├─ 快速功能：安撫｜猜花費｜經期｜紀念日
       ├─ 經期關懷提醒（經期前後才出現）
       ├─ 接下來（約會、紀念日、里程碑、經期預測）
@@ -80,7 +87,7 @@
       └─ 接下來的約會（答應／婉拒）
 我的 ─┬─ 頭像（照片或表情）、我的資料、對方的資料與備註、備忘錄、星座運勢與御神籤
       ├─ 心情紀錄、紀念日、經期、歷史紀錄
-      ├─ 分享與隱私、通知設定（通知列顯示對方狀態）、桌面小工具、權限與背景執行、Supabase 與帳號
+      ├─ 分享與隱私、通知設定（通知列顯示對方狀態）、桌面小工具、權限與背景執行、Supabase 與帳號（含 GIPHY 貼圖的 key）
       └─ 解除配對（示範模式：示範控制台、離開示範模式）
 ```
 
@@ -173,9 +180,10 @@
 
 ### 4.6 心情與安撫
 
-- 9 種心情（開心、甜蜜、平靜、想你、好累、焦慮、難過、生氣、不舒服）＋100 字備註，顯示兩人 7 天的心情。
+- 9 種心情（開心、甜蜜、平靜、想你、好累、焦慮、難過、生氣、不舒服）＋100 字備註＋選填的 GIPHY 貼圖（見 4.15），顯示兩人 7 天的心情（左邊是兩人的頭像）。
 - 負面心情時對方首頁出現「要不要安撫一下？」，吉祥物也會跟著難過。
-- 6 種安撫（抱抱、摸摸頭、親親、我在、加油、請你喝）＋悄悄話；送出時飄愛心。10 分鐘內最多 20 次。
+- 6 種安撫（抱抱、摸摸頭、親親、我在、加油、請你喝）＋悄悄話＋選填的 GIPHY 貼圖；送出時飄愛心。10 分鐘內最多 20 次。
+- **收到的安撫**：首頁在吉祥物下面放最新一則還沒看過的（誰、哪一種、附的貼圖和悄悄話）。按「回抱 🤗」回送一個抱抱並標成看過，按「收到了」只標成看過；打開歷史紀錄時，收到的安撫全部標成看過（安安靜靜地做，不跳提示）。右上角鈴鐺的紅點就是還沒看過的安撫數：0.2.1 以前 App 從來沒有標過（`comforts.read_at` 一直是空的），紅點永遠不會消失，0.2.2 修好了。標的時候畫面先改（紅點馬上消失），再一則一則呼叫 `app_read_comfort`，沒送到的改回來，下次再標。
 
 ### 4.7 紀念日與約會
 
@@ -212,12 +220,12 @@
 | 約會邀請、答應、提醒；紀念日；經期關懷 | 對方或兩人 | 可 |
 | 對方記錄那天的生活、新的共同備忘錄 | 對方 | 可 |
 
-App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「抱抱、心情與悄悄話」「抵達與離開」「約會與紀念日」「日曆紀錄與備忘錄」四個頻道，可在系統設定分別調整聲音）。
+App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「抱抱、心情與悄悄話」「抵達與離開」「約會與紀念日」「日曆紀錄與備忘錄」四個頻道，可在系統設定分別調整聲音）。附了 GIPHY 貼圖的心情和安撫，系統通知會補上貼圖的大圖（見 4.15）。
 
 ### 4.10 個人資料與私人備註
 
 - 我的資料：暱稱、生日（自動算年齡和星座）、身高、體重、電話、血型、MBTI、工作、興趣、喜歡的、不喜歡的、過敏、衣服與鞋子尺寸、自我介紹。存在 `profiles.info`（JSON，最多 4000 bytes），對方本來就讀得到 profiles，所以互相看得到。
-- 對方的資料：只顯示有填的欄位，電話可以直接撥，生日倒數。
+- 對方的資料：只顯示有填的欄位，電話可以直接撥，生日倒數。身材與尺寸排成兩欄，尺寸是自己填的（最多 10 個字），填得長（「L、XL希望寬鬆一點」）就換行，同一排兩格一樣高；字放大到 1.3 倍以上時表情縮小、放到標題旁邊，數值用整個寬度。
 - 只有我看得到的備註（`partner_notes`，每則最多 2000 字）：RLS 只給寫的人，對方讀不到，也不會從 Realtime、通知或歷史紀錄知道有沒有寫、什麼時候寫。只列出寫給目前這位對方（或沒配對時寫）的備註，換了對象不會看到寫給上一位的。
 
 電話可以按「從 SIM 卡帶入」：先用 Google 的 Phone Number Hint（不需要權限，跳出這支手機的號碼讓你點），沒有 Google 服務時才請「電話號碼」權限（`READ_PHONE_NUMBERS`）直接讀 SIM 卡，雙卡讓你選一個；+886 9xx 會整理成 09xx-xxx-xxx。台灣很多 SIM 卡沒有存號碼，讀不到就請使用者自己輸入。帶入後只是填進欄位，按「儲存」才會存。
@@ -251,13 +259,57 @@ App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「�
 - 解除配對後，原本共用的檔案雙方都讀不到；檔案不會自動刪除，要到 Supabase 後台的 Storage 手動清。
 - App 把下載過的檔案快取在手機裡（cache 資料夾，太大就從最舊的刪），登出時清掉。
 
-### 4.15 資料庫更新（0.1 → 0.2）
+### 4.15 GIPHY 貼圖
+
+記心情、送安撫時可以附一張 [GIPHY](https://giphy.com) 的貼圖（透明背景）或 GIF。貼圖是**選填的附件**：心情還是要選 9 種之一，安撫還是要選 6 種之一（預設抱抱），所以通知、桌面小工具、通知列的對方狀態、「要不要安撫一下？」和還沒更新的 0.2.1 都照常運作，只是看不到貼圖。
+
+**資料模型**：
+- `moods.sticker`、`comforts.sticker`：只存 GIPHY 的 id（英文字母和數字，最多 64 個），由資料表的 check 檢查，直接打 API 寫也擋得住。`app_post_mood`、`app_send_comfort` 多收一個選填的 `sticker`（空白當成沒有）；收到安撫的人一樣只能改 `read_at`。
+- 歷史紀錄的內容和通知的 data 都帶著 `sticker`（安撫的 data 一樣有 `comfort_id`）。只附貼圖、沒寫字時，心情的通知寫「附上一張貼圖 ✨」（負面心情一樣問「要不要安撫一下？」），安撫寫「傳了一張貼圖給你，點開看看 👀」。
+- **存 id，不存網址或圖片**：GIPHY 不准把圖片或 API 給的網址存起來；id 很短；而且 App 組網址前一定先用同一條規則檢查 id，對方傳來奇怪的 id 也不會讓手機去載別的東西（不對的 id 只顯示淡淡的 🖼️，不會去載）。
+- 手機裡只記「最近用過」的 id（最多 24 個，最近的在前，登出時清掉）。
+
+**GIPHY 的 key**：一對情侶一把，存在 `couples.giphy_key`（16–128 個英文字母、數字、`_`、`-`，一樣由 check 檢查）。
+- 用專用的 `app_set_giphy_key({key})` 設定，空白或沒給就清掉；不用 `app_update_couple`，因為它會一起改掉在一起的日子。App 存之前先用這個 key 查一次熱門貼圖（`limit=1`，只花一次額度），GIPHY 說不能用就不存（只是這個小時用完了的 key 還是好的，照樣存）。
+- 誰讀得到：只有目前配對的兩個人（`app_me` 的 `couple.giphyKey`；couples 的 RLS 本來就只給這兩個人讀），手機不另外存檔。一個人設定好，另一支手機收到 couples 的變動就重新載入，馬上能用；選貼圖的畫面也有「再檢查一次」。解除配對後雙方都讀不到；重新配對是新的一筆 couples，要再設定一次。
+- key 不會寫進歷史紀錄、通知、即時事件、log 或提示訊息（資料庫測試會檢查），App 裡只露出前 4 個字。它只出現在送到 `api.giphy.com` 的請求裡：GIPHY 規定搜尋要從手機直接呼叫，這種 key 本來就是放在 App 裡用的。
+
+**選貼圖的視窗**：心情頁和安撫面板共用一個全螢幕的視窗（安撫面板本身會捲動，裡面放不下會捲動的格子）。
+- 上面切換「貼圖」「GIF」、搜尋（輸入法的搜尋鍵、清除鈕；提示英文的結果比較多）和一排快速關鍵字：最近用過、依選的心情或安撫推薦的（例如難過 → sad、摸摸頭 → head pat）、熱門，再來是「抱抱」「晚安」「肚子餓」這些中文標籤（搜尋時用英文）。一打開就先查推薦的，沒有推薦就看熱門。
+- 格子是淺粉紅底的方格，透明背景的貼圖在深色模式也看得清楚；點一下就選好、關掉視窗。系統關掉動畫時（協助工具的「移除動畫」），格子和貼圖都用不會動的那張。載入中先放淡淡的格子，找不到時說「找不到，換個關鍵字試試」。
+- 還沒有 key：說明為什麼要（免費、設定一次兩個人都能用）、照 GIPHY Developers 實際畫面寫的三個步驟、「打開 GIPHY Developers」、用密碼欄位貼上 key。示範模式只有示範的貼圖和最近用過的（不呼叫 GIPHY 的 API）；還沒配對、資料庫還沒更新時說明原因。
+- 「我的 › Supabase 與帳號」有 GIPHY 貼圖的卡片：設定好了沒、目前的 key（只露出前 4 個字）、換一個 key（一樣先查一次）、移除（先確認；已經送出的貼圖還是看得到）。
+
+**送出的貼圖在哪裡看得到**：App 裡都用同一個元件 `StickerImage`。首頁的心情附了貼圖就用貼圖（約 72 dp）代替大表情，下面寫「😊 開心」，一樣看得出心情；首頁「收到的安撫」（約 120 dp）；歷史紀錄的心情和安撫（約 96 dp，在文字下面）。載入中是淡淡的圓角方塊，載不到或 id 不對是淡淡的 🖼️，不會當掉。系統通知也會補上大圖（見下面的「通知」）。
+
+**遵守 GIPHY 的規定**（[API 文件](https://developers.giphy.com/docs/api/)、API Terms）：
+- 選貼圖的視窗一直看得到 GIPHY 官方的「Powered by GIPHY」標誌（官方標誌包裡淺色、深色背景各一張）。
+- 搜尋結果用 API 回傳的網址、照回傳的順序原封不動地顯示，不和別家的圖混在一起（只有沒有可以顯示的網址的那張會跳過）。格子給螢幕閱讀器的說明是標題和作者。
+- 不存檔、不經過別的伺服器：圖片只放記憶體快取（Coil 不開磁碟快取），手機直接向 GIPHY 載入。
+- `rating=pg-13`；搜尋帶 `lang=zh-TW`；關鍵字去掉前後空白、最多 50 個字（GIPHY 的上限）。
+- **送出的貼圖怎麼顯示**：資料庫只有 id，所以用 id 組出 GIPHY 的圖片網址：Android 9 以上是會動的 `https://media.giphy.com/media/<id>/200w.webp`，Android 8 是 `…/200w.gif`，系統關掉動畫時和通知用不會動的 `…/200w_s.gif`（貼圖和 GIF 都確認過有這三種）。這樣不用再呼叫 API：不花額度，看貼圖的手機也不需要 key。GIPHY 的文件沒有講存下來的 id 該怎麼顯示，這是我們的選擇，組出來的網址也沒有 API 網址裡的追蹤參數；如果 GIPHY 之後要求，可以改成顯示前用依 id 查詢的 API（`/v1/gifs?ids=`、`/v1/content?ids=`）拿 API 給的網址（每次都會花額度）。
+
+**額度與快取**：免費的 beta key 一小時只能呼叫 100 次，兩支手機共用同一個 key，所以要省著用：
+- 打字停下來 0.6 秒才查（按輸入法的搜尋鍵就馬上查）。
+- 查過的每一頁（種類、關鍵字、從第幾張開始）記在記憶體裡，App 沒關掉前不會再查一次；出錯的不記，網路恢復或換了 key 再查就會重查。
+- 一頁 24 張，捲到最後一格才載下一頁，最多 96 張。
+- 顯示送出的貼圖、「最近用過」都不用查。
+- 錯誤：HTTP 401／403 是 key 不能用（直接換成設定 key 的畫面）；429 是這個小時用完了（「GIPHY 這個小時用太多次了，等一下再試 🙏」，可以先從「最近用過」選）；連不到是網路問題（「連不到 GIPHY」＋重試）；其他錯誤、看不懂的內容，和 GIPHY 文件說的「假的回應」（狀態 200 卻沒有 `response_id` 也沒有資料）都當成 GIPHY 暫時有狀況（可以重試）。回應裡的 `meta.status` 是 401、403、429 時也一樣。
+
+**通知**：背景收到附了貼圖的心情或安撫時，先照常發文字的通知，再到背景抓那張貼圖不會動的版本（最多等 5 秒、最大 1 MB）。抓到時，那則通知還在通知列上、也還是同一個登入，才把同一則換成有大圖的（`BigPictureStyle`：收合時貼圖在右邊，展開是大圖，不會再響一次）；抓不到就留著文字的。
+
+**資料庫還沒更新時**（schema 3 以前）：舊的資料庫會默默略過不認得的欄位，貼圖就這樣不見了，所以 App 在 schema 4 以前不顯示「加一張 GIPHY 貼圖」（改成一行「再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖」），送出時也先擋下來。萬一送出去了、回傳的那筆卻沒有貼圖（例如還沒檢查到版本），就說心情或安撫已經送出，只是貼圖沒存到，請再執行一次 upgrade-v2.sql，並記下資料庫還沒更新。
+
+**隱私**：搜尋的字會送到 GIPHY，不會存進你們的資料庫。貼圖的圖片在兩支手機上都直接從 GIPHY 的伺服器載入（選貼圖、看到貼圖、通知抓大圖時），所以 GIPHY 看得到兩支手機的 IP 位址，也知道載了哪些貼圖。連 GIPHY 用另外一組連線，不帶 Supabase 的金鑰和登入的 token；App 也不送 GIPHY 的使用者 id（`customer_id`、`random_id`），不回報分析事件。
+
+### 4.16 資料庫更新（0.1 → 0.2）
 
 0.1 版建立的專案要在 SQL Editor 執行一次 `supabase/upgrade-v2.sql`。`app_health` 回傳 `schema` 代表資料庫的版本：
 - 2：個人資料、備註、日曆紀錄、備忘錄、照片和語音（跑過 0.2.0 時的 upgrade-v2.sql）
 - 3：再加上手機名稱與電信（`device_status.device_name`、`carrier`，0.2.1）
+- 4：再加上 GIPHY 貼圖（`moods.sticker`、`comforts.sticker`、`couples.giphy_key`、`app_set_giphy_key`，0.2.2）
 
-小於 2 時，用到新功能的畫面會提醒「資料庫需要更新」；等於 2 時新功能都能用，只在「我的 › Supabase 與帳號」溫和地提醒「再執行一次 upgrade-v2.sql 就能顯示手機名稱和電信」。upgrade-v2.sql 包含 0.2 之後所有的資料庫變更、可以重複執行，所以不管跑過幾次，再跑一次就是最新的。「我的 › Supabase 與帳號」有一步一步的說明和「重新檢查」按鈕，回到 App 時也會自己再檢查一次。舊功能不受影響。
+小於 2 時，用到新功能的畫面會提醒「資料庫需要更新」；2 或 3 時新功能都能用，只在「我的 › Supabase 與帳號」溫和地提醒再執行一次 upgrade-v2.sql 會多出什麼（3 以前沒有 GIPHY 貼圖，2 也還沒有手機名稱和電信），記心情、送安撫的畫面也只寫一行「再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖」（見 4.15）。upgrade-v2.sql 包含 0.2 之後所有的資料庫變更、可以重複執行，所以不管跑過幾次，再跑一次就是最新的。「我的 › Supabase 與帳號」有一步一步的說明和「重新檢查」按鈕，回到 App 時也會自己再檢查一次。舊功能不受影響。
 
 ---
 
@@ -268,6 +320,7 @@ App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「�
 3. **反濫用**：沒有隱藏 App、偷偷開啟分享的功能；分享位置時常駐通知；任一方都能一鍵暫停或解除配對；分享頁提供 113 保護專線資訊。
 4. **最少化**：位置不留軌跡、Wi-Fi 名稱不上傳、經期症狀不分享、開銷可整類隱藏。
 5. **只有自己知道**：給對方寫的備註、私人備忘錄和它的照片語音，資料庫只讓本人讀，對方也不會收到任何變動通知。
+6. **GIPHY 看得到什麼**：資料庫只存貼圖的 id 和你們共用的 GIPHY key（只有目前配對的兩個人讀得到，不會出現在通知、歷史紀錄或即時事件裡）。搜尋的字會送到 GIPHY；貼圖的圖片在兩支手機上都直接從 GIPHY 的伺服器載入，所以 GIPHY 看得到兩支手機的 IP 位址和載了哪些貼圖（見 4.15）。
 
 ---
 
@@ -295,6 +348,8 @@ flowchart LR
   STO -. 權限規則查配對 .-> DB
   UI -- OpenStreetMap 圖磚、地址搜尋（Nominatim） --> OSM[(openstreetmap.org)]
   UI -- 地址搜尋（手機內建 Geocoder） --> GEO[(Google 地址服務)]
+  UI -- 搜尋貼圖（api.giphy.com）、貼圖圖片（media.giphy.com） --> GIPHY[(GIPHY)]
+  SVC -- 通知的貼圖（不會動的那張） --> GIPHY
 ```
 
 | 層 | 選擇 | 理由 |
@@ -304,7 +359,8 @@ flowchart LR
 | 定位 | Google Play 服務 Fused Location | 省電、室內也準 |
 | 地圖 | osmdroid（OpenStreetMap） | 免 API 金鑰、免費 |
 | 地址搜尋 | Android Geocoder，備援 OpenStreetMap Nominatim | 免 API 金鑰；有 Google 服務的手機台灣門牌最準，沒有的手機也能用 |
-| 本機設定 | DataStore | Supabase 網址與金鑰、登入權杖、標點進出狀態、步數基準（抽過的籤、手動選的星座只是小東西，放在 SharedPreferences） |
+| 貼圖 | GIPHY API（用 OkHttp 直接呼叫）、Coil 3（會動的 WebP 和 GIF） | 不用 GIPHY 的 SDK，只要一個免費的 API key；圖片只放記憶體快取（GIPHY 不准存檔）。Coil 用 3.2.0，3.3 以後要 Kotlin 2.2 |
+| 本機設定 | DataStore | Supabase 網址與金鑰、登入權杖、標點進出狀態、步數基準、最近用過的貼圖（抽過的籤、手動選的星座只是小東西，放在 SharedPreferences） |
 | 照片與語音 | 系統相片挑選器、MediaRecorder（AAC）、Supabase Storage | 選照片不需要讀取相簿的權限；檔案的權限規則跟資料表一樣寫在 SQL 裡 |
 | 後端 | Supabase 免費方案（Auth、PostgREST、Realtime、PostgreSQL、pg_cron、Storage） | 不用自己架伺服器；兩個人用遠低於免費額度 |
 | 資料存取 | 每個功能一個 `app_*` 資料庫函式（以登入者身分執行，受 RLS 保護），回傳 camelCase JSON | 權限與商業邏輯都在資料庫裡，App 不能繞過 |
@@ -314,7 +370,7 @@ flowchart LR
 
 **背景執行**：登入後啟動前景服務（Android 14 以上用 `location`＋`remoteMessaging` 類型），保持 Realtime 連線並回報狀態。需要使用者把電池最佳化設為「不限制」，部分品牌另需允許自動啟動。
 
-**資料模型**：見 [`supabase/migrations/`](../supabase/migrations)，主要資料表為 profiles、couples、couple_members、pair_invites、sharing_settings、device_status、locations、places、place_events、expenses、expense_guesses、moods、comforts、anniversaries、events、cycle_settings、cycle_periods、cycle_logs、activity_log、notification_prefs、notification_outbox、realtime_events，0.2 加了 partner_notes、day_entries、memos 與 Storage 的 `media` 空間。
+**資料模型**：見 [`supabase/migrations/`](../supabase/migrations)，主要資料表為 profiles、couples、couple_members、pair_invites、sharing_settings、device_status、locations、places、place_events、expenses、expense_guesses、moods、comforts、anniversaries、events、cycle_settings、cycle_periods、cycle_logs、activity_log、notification_prefs、notification_outbox、realtime_events，0.2 加了 partner_notes、day_entries、memos 與 Storage 的 `media` 空間，0.2.2 在 moods、comforts 加了 `sticker`、couples 加了 `giphy_key`。
 
 ---
 
@@ -324,9 +380,10 @@ flowchart LR
 |---|---|---|
 | App 核心邏輯 | `cd android && ./gradlew testDebugUnitTest` | 經期預測、地理圍欄、猜花費、付款通知解析、紀念日（與 JS 版相同案例）；地址搜尋（Geocoder → Nominatim 的順序、台灣地址改寫、找不到與連不上）；在地圖上拖曳時頁面不會搶走觸控；頭像的裁切與壓縮、常駐通知的對方狀態、桌面小工具的內容；自動記帳（LINE錢包的付款訊息、儲值和廣告不記、聊天不記、同一筆消費的好幾則通知只記一筆並補上店名） |
 | 0.2 新功能 | `./gradlew testDebugUnitTest --tests '*MemoScreensTest*'`（換成要跑的類別） | `ProfileScreensTest` 我的資料、對方的資料與私人備註；`JournalScreensTest` 日曆的生活紀錄；`MemoScreensTest`、`MemoWidgetTest` 備忘錄與備忘錄小工具在各種大小、大字時的排版；`WidgetRowScreensTest`、`StatusWidgetTest` 一格高的小工具和拉高後的大版面；`FortuneScreensTest`、`HoroscopeTest`、`OmikujiTest` 星座運勢與御神籤（日期邊界、同一天結果固定、78 組速配、100 籤四句五言、吉凶分布）；`MediaUiTest` 照片縮圖、看大圖、語音；`DataV2Test` 示範模式的新資料與照片快取；`RemoteV2Test` 用假的 Supabase 檢查呼叫的函式、Storage 網址、資料庫還沒更新時的提醒 |
+| GIPHY 貼圖 | `./gradlew testDebugUnitTest --tests '*Sticker*' --tests '*GiphyTest*'` | `GiphyTest` 送到 GIPHY 的參數、回應解析、錯誤、查過的頁面不再查；`StickerImageTest` 用 id 組網址、id 不對不載；`StickerNotificationTest` 通知先發文字、再換成有大圖的同一則；`StickerRemoteTest`、`StickerDemoTest` 資料層（舊的資料庫先擋下來、送出去才發現沒存到、收到的安撫標成看過、共用的 key）；`StickerScreensTest` 心情、安撫、首頁、歷史紀錄、選貼圖視窗的各種狀態和查了幾次、帳號裡的 key。圖片和搜尋都是假的（`TestXlkApp`、`FakeGiphy`），不連網路 |
 | App 畫面 | `./gradlew recordRoborazziDebug` | 不需模擬器，把每個畫面（含深色模式、大字）畫成圖片，放在 `app/build/screens/`；加 `--tests '*FortuneScreensTest*'` 只畫一部分 |
-| App ↔ Supabase | `XLK_TEST_SUPABASE_URL=… XLK_TEST_SUPABASE_KEY=… ./gradlew testDebugUnitTest` | App 的資料層對真的 Supabase（本機啟動、還沒有帳號）走完註冊、配對、頭像同步、狀態、通知、標點、記帳、猜花費、約會、經期、個人資料、備註、日曆紀錄、備忘錄、照片的搬移與權限、解除配對 |
-| 資料庫 | `npm run test:db` | 在本機 Supabase（包含 Storage）上跑權限測試、`app_*` 函式、即時通知、排程、照片與語音的上傳下載和權限；setup.sql、upgrade-v2.sql 與 migrations 的一致性；0.1 版資料庫執行 upgrade-v2.sql（兩次）和空資料庫執行 setup.sql 都要通過冒煙測試 |
+| App ↔ Supabase | `XLK_TEST_SUPABASE_URL=… XLK_TEST_SUPABASE_KEY=… ./gradlew testDebugUnitTest` | App 的資料層對真的 Supabase（本機啟動、還沒有帳號）走完註冊、配對、頭像同步、狀態、通知、標點、記帳、猜花費、約會、經期、個人資料、備註、日曆紀錄、備忘錄、照片的搬移與權限、共用的 GIPHY key、附貼圖的心情和安撫、收到的安撫標成看過、解除配對 |
+| 資料庫 | `npm run test:db` | 在本機 Supabase（包含 Storage）上跑權限測試、`app_*` 函式、即時通知、排程、照片與語音的上傳下載和權限；setup.sql、upgrade-v2.sql 與 migrations 的一致性；0.1 版資料庫執行 upgrade-v2.sql（兩次）、0.2.0 和 0.2.1 的資料庫再執行一次、空資料庫執行 setup.sql 都要通過冒煙測試；貼圖 id 和 GIPHY key 的格式、誰讀得到 key、key 不會出現在通知、歷史紀錄和即時事件裡 |
 | 共用邏輯（JS） | `npm test` | 17 項 |
 
 ---
