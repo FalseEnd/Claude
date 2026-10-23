@@ -76,6 +76,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -105,7 +106,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * 選一張 GIPHY 貼圖：全螢幕的視窗，心情頁、安撫面板都用這一個（面板裡放不下會捲動的格子）。
  * 上面切換貼圖／GIF、搜尋、快速關鍵字，下面是結果和「Powered by GIPHY」。
  * [suggestion] 是依選的心情、安撫先幫忙查的（中文標籤 to 英文關鍵字），沒有就是熱門的。
- * 免費的 key 一小時只能查 100 次：打字停下來才查、查過的頁面不重查（[Giphy] 記在記憶體裡）、捲到底才載下一頁。
+ * 免費的 key 一小時只能查 100 次：打字停下來才查、查過的頁面一小時內不重查（[Giphy] 記在記憶體裡）、捲到底（或按「載入更多」）才載下一頁。
  * 還沒有 key 先教怎麼申請；示範模式不搜尋 GIPHY（示範的貼圖一樣從 GIPHY 載入），還沒配對不會連到 GIPHY。[searcher] 測試時換成假的。
  * 這是另一個視窗：App 下面的提示（vm.toast）會被蓋住，這裡的訊息都直接寫在畫面上
  */
@@ -368,7 +369,8 @@ private fun ResultGrid(results: Results, grid: LazyGridState, still: Boolean, pi
 @Composable
 private fun IdGrid(ids: List<String>, label: (Int) -> String, pick: (String) -> Unit) {
     PickerGrid(rememberLazyGridState()) {
-        items(ids.size) { i -> GiphyCell(null, { pick(ids[i]) }) { StickerImage(ids[i], Modifier.fillMaxSize(), label(i)) } }
+        // StickerImage 自己會留邊：格子不再留一次，貼圖才跟搜尋結果一樣大
+        items(ids.size) { i -> GiphyCell(null, { pick(ids[i]) }, padding = 0.dp) { StickerImage(ids[i], Modifier.fillMaxSize(), label(i)) } }
     }
 }
 
@@ -389,12 +391,12 @@ private fun PickerGrid(state: LazyGridState, content: LazyGridScope.() -> Unit) 
 private fun LazyGridScope.wide(content: @Composable () -> Unit) = item(span = { GridItemSpan(maxLineSpan) }) { content() }
 
 @Composable
-private fun GiphyCell(description: String?, onClick: () -> Unit, image: @Composable () -> Unit) {
+private fun GiphyCell(description: String?, onClick: () -> Unit, padding: Dp = 6.dp, image: @Composable () -> Unit) {
     Box(
         // 跟選好的貼圖一樣的淺粉紅底：透明背景的貼圖在深色模式也看得清楚，淺色模式也看得出一格一格
         Modifier.aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(STICKER_CELL)
             .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier)
-            .bouncyClick(onClick = onClick).padding(6.dp),
+            .bouncyClick(onClick = onClick).padding(padding),
         contentAlignment = Alignment.Center,
     ) { image() }
 }
@@ -425,7 +427,7 @@ private fun DemoStickers(recent: List<String>, pick: (String) -> Unit) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 TidyText("示範模式不能搜尋 GIPHY", style = MaterialTheme.typography.titleSmall)
                 TidyText(
-                    "用你們的 Supabase 登入、設定好 key，就能搜尋各種貼圖。先用這張試試看 👇（示範的貼圖一樣是從 GIPHY 載入的）",
+                    "用你們的 Supabase 登入、設定好 key，就能搜尋各種貼圖。示範的貼圖一樣是從 GIPHY 載入的，先用這張試試看 👇",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

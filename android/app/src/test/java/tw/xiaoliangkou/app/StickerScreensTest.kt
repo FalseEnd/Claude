@@ -527,6 +527,10 @@ class StickerScreensTest {
         compose.waitUntil(WAIT) { compose.onAllNodesWithContentDescription("最近用過的貼圖", substring = true).fetchSemanticsNodes().size == 3 }
         screen("74d_giphy_recent")
         assertEquals(1, giphy.asked.size)
+        // 跟搜尋結果一樣，貼圖離格子的邊 6 dp（StickerImage 自己留的邊，格子不再多留一次）
+        val cell = compose.onNodeWithContentDescription("最近用過的貼圖 1").getBoundsInRoot()
+        val image = compose.onNodeWithContentDescription("最近用過的貼圖 1", useUnmergedTree = true).getBoundsInRoot()
+        assertEquals(12f, ((cell.right - cell.left) - (image.right - image.left)).value, 0.5f)
     }
 
     /** 連不到 GIPHY：說明和「重試」 */
