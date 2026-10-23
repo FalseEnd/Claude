@@ -78,7 +78,7 @@ App 0.2 加了個人資料（身高、血型、喜歡的東西…）、只有自
 
 **App 0.2.1（手機名稱與電信）**：之前已經跑過 upgrade-v2.sql 的人，照上面的步驟**再跑一次**（檔案裡多了手機名稱和電信兩個欄位），對方的手機卡片才會顯示手機名稱和電信。沒跑也沒關係，其他功能都能正常使用，App 只會在「我的 › Supabase 與帳號」提醒一下。
 
-**App 0.2.2（GIPHY 貼圖）**：之前已經跑過 upgrade-v2.sql 的人，照上面的步驟**再跑一次**（檔案裡多了存貼圖的欄位、你們共用的 GIPHY key 和設定 key 的函式），記心情、送安撫才能附上 GIPHY 貼圖；還沒跑 0.2.1 那次的話，手機名稱和電信也會一起補上。可以放心重複執行，已經存的資料不受影響。沒跑也沒關係，心情和安撫照常能送，只是不能附貼圖，App 會提醒「再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖」。跑完之後兩支手機都更新到 0.2.2，再照 README 的「[GIPHY 貼圖怎麼設定](../README.md#giphy-貼圖怎麼設定)」申請一個免費的 GIPHY key，在 App 裡貼上一次就好。
+**App 0.2.2（GIPHY 貼圖）**：之前已經跑過 upgrade-v2.sql 的人，照上面的步驟**再跑一次**（檔案裡多了存貼圖的欄位、你們共用的 GIPHY key 和設定 key 的函式），記心情、送安撫才能附上 GIPHY 貼圖；還沒跑 0.2.1 那次的話，手機名稱和電信也會一起補上。可以放心重複執行，已經存的資料不受影響。以前的 App 從來沒有把收到的安撫標成看過，所以第一次執行時，一天以前收到的安撫會一起標成看過（只有這一次）。沒跑也沒關係，心情和安撫照常能送，只是不能附貼圖，App 會提醒「再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖」。跑完之後兩支手機都更新到 0.2.2，再照 README 的「[GIPHY 貼圖怎麼設定](../README.md#giphy-貼圖怎麼設定)」申請一個免費的 GIPHY key，在 App 裡貼上一次就好。
 
 照片和語音存在 Supabase 的 **Storage**（檔案儲存），更新檔會自動建立一個不公開的 `media` 空間（之前自己建過叫 `media` 的空間也會改成不公開）：日曆和共用備忘錄的照片只有你們兩個看得到，私人備忘錄的照片只有自己看得到；解除配對後，原本共用的照片雙方都讀不到了。
 
@@ -105,8 +105,8 @@ GIPHY 貼圖在資料庫只存一小段 id，圖片直接從 GIPHY 載入，不�
 | App 說「資料庫還沒設定好」 | 第 2 步的 setup.sql 還沒執行，或執行時有錯誤 |
 | App 說「資料庫需要更新」 | 照上面「更新資料庫」那一節執行 upgrade-v2.sql |
 | 看不到對方的手機名稱、電信 | 再執行一次 upgrade-v2.sql（0.2.1 加了這兩個欄位），而且兩支手機都要更新到 0.2.1 |
-| 記心情、送安撫的畫面沒有「加一張 GIPHY 貼圖」的按鈕 | 再執行一次 upgrade-v2.sql（0.2.2 加了貼圖；App 寫著「再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖」就是這個原因），而且兩支手機都要更新到 0.2.2 |
-| App 說「GIPHY 的 API key 不能用」或「GIPHY 說這個 key 不能用」 | key 沒有整串複製到，或申請時沒有選 **API**（不是 SDK）；也可能在 GIPHY Developers 被刪掉或停用了。到 [GIPHY Developers](https://developers.giphy.com/dashboard/) 複製整串 key（或照 README 的「GIPHY 貼圖怎麼設定」重新申請一個），在選貼圖的畫面或「我的 › Supabase 與帳號 › GIPHY 貼圖」貼上 |
+| 記心情、送安撫的畫面沒有「加一張 GIPHY 貼圖」的按鈕 | 執行最新的 upgrade-v2.sql（0.2.2 加了貼圖；App 寫著「再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖」或「執行 upgrade-v2.sql 就能用 GIPHY 貼圖」就是這個原因），而且兩支手機都要更新到 0.2.2 |
+| App 說「GIPHY 的 key 不能用了」、「GIPHY 說這個 key 不能用」或「這看起來不是 GIPHY 的 API key」 | key 沒有整串複製到，或申請時沒有選 **API**（不是 SDK）；也可能在 GIPHY Developers 被刪掉或停用了。到 [GIPHY Developers](https://developers.giphy.com/dashboard/) 複製整串 key（或照 README 的「GIPHY 貼圖怎麼設定」重新申請一個），在選貼圖的畫面或「我的 › Supabase 與帳號 › GIPHY 貼圖」貼上 |
 | App 說「GIPHY 這個小時用太多次了」 | 免費的 GIPHY key 一小時只能查 100 次，你們兩支手機一起算。過一陣子再試；這段時間「最近用過」的貼圖照樣能選，已經送出的貼圖也照樣看得到 |
 | 貼圖只顯示 🖼️ | 手機連不到 GIPHY（換個網路試試），或 GIPHY 上已經沒有這張貼圖。貼圖的圖片直接從 GIPHY 載入，跟 Supabase 沒有關係 |
 | setup.sql 已經執行過，App 還是說「資料庫還沒設定好」 | 到 **Project Settings › Data API**：**Overview** 裡的 **Enable Data API** 要開著，**Settings** 裡的 **Exposed schemas** 要有 `public` |
