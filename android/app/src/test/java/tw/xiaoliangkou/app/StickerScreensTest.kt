@@ -323,12 +323,14 @@ class StickerScreensTest {
         assertEquals(0, sent)
     }
 
-    /** 0.2.1 以前從來沒有標過看過：首頁只拿最近 3 天的出來，「收到了」之後不會把以前的一則一則翻出來 */
+    /** 0.2.1 以前從來沒有標過看過：首頁只拿最近 3 天的出來，「收到了」之後換下一則最近的，不會把以前的一則一則翻出來 */
     @Test fun homeSkipsOldUnreadComforts() {
         val now = Instant.now()
         fun comfort(id: Long, ago: Duration, message: String) =
             Comfort(id, senderId = DemoRepository.PARTNER, receiverId = DemoRepository.ME, kind = "hug", message = message, createdAt = now.minus(ago).toString())
-        val db = MutableStateFlow(s.copy(comforts = listOf(comfort(9002, Duration.ofHours(2), "剛剛的抱抱"), comfort(9001, Duration.ofDays(10), "十天前的抱抱"))))
+        val db = MutableStateFlow(s.copy(comforts = listOf(
+            comfort(9003, Duration.ofHours(2), "剛剛的抱抱"), comfort(9002, Duration.ofHours(30), "昨天的抱抱"), comfort(9001, Duration.ofDays(10), "十天前的抱抱"),
+        )))
         setRepo(object : CoupleRepository by demo {
             override val state = db
             override suspend fun readComfort(id: Long) = db.update { st -> st.copy(comforts = st.comforts.map { if (it.id == id) it.copy(readAt = now.toString()) else it }) }
@@ -339,7 +341,11 @@ class StickerScreensTest {
         }
         compose.onNodeWithText("剛剛的抱抱").assertExists()
         compose.onNodeWithText("收到了").performClick()
-        idleUntil { !vm.busy && db.value.comforts.first().readAt != null }
+        idleUntil { !vm.busy && db.value.comforts.first { it.id == 9003L }.readAt != null }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("昨天的抱抱").assertExists()
+        compose.onNodeWithText("收到了").performClick()
+        idleUntil { !vm.busy && db.value.comforts.first { it.id == 9002L }.readAt != null }
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithText("十天前的抱抱").assertDoesNotExist()
         compose.onNodeWithText("收到了").assertDoesNotExist()
