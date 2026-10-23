@@ -1,5 +1,6 @@
 package tw.xiaoliangkou.app
 
+import android.content.ComponentCallbacks2
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
@@ -25,6 +26,7 @@ import coil3.test.FakeImageLoaderEngine
 import okhttp3.Authenticator
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
+import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
@@ -44,6 +46,7 @@ import org.robolectric.shadows.ShadowNetworkCapabilities
 import tw.xiaoliangkou.app.data.Giphy
 import tw.xiaoliangkou.app.data.GiphyMediaCache
 import tw.xiaoliangkou.app.data.giphyHttp
+import tw.xiaoliangkou.app.data.giphyMediaCache
 import tw.xiaoliangkou.app.data.giphyMediaHttp
 import tw.xiaoliangkou.app.ui.components.StickerImage
 import tw.xiaoliangkou.app.ui.components.animationsOff
@@ -122,7 +125,7 @@ class StickerImageTest {
         assertEquals(network.toString(), 1, network.size)
         assertNull(loader.diskCache)
         assertTrue(loader.components.decoderFactories.any { it is AnimatedImageDecoder.Factory })
-        assertTrue(giphyMediaHttp.interceptors.single() is GiphyMediaCache)
+        assertSame("清得掉的就是這一個", giphyMediaCache, giphyMediaHttp.interceptors.single())
         assertTrue(giphyMediaHttp.networkInterceptors.isEmpty())
         assertSame("共用連線池", giphyHttp.connectionPool, giphyMediaHttp.connectionPool)
         assertSame(Authenticator.NONE, giphyMediaHttp.authenticator)
@@ -183,6 +186,21 @@ class StickerImageTest {
         compose.setContent { XlkTheme { if (shown) StickerImage(sticker, Modifier.size(120.dp)) } }
         assertEquals(listOf(url, url), downloads(cache = false))
         assertEquals(listOf(url), downloads(cache = true))
+    }
+
+    /** 畫面收起來、記憶體不夠時：記著的貼圖檔清掉（背景服務讓 App 一直活著，不要一直佔著記憶體） */
+    @Test fun stickerFilesAreDroppedWhenTheAppIsHidden() {
+        giphyMediaCache.clear()
+        val http = giphyHttp.newBuilder().addInterceptor(giphyMediaCache).addInterceptor { chain ->
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .header("Content-Type", "image/png").body(png.toResponseBody("image/png".toMediaType())).build()
+        }.build()
+        http.newCall(Request.Builder().url(Giphy.stickerUrl(sticker)!!).build()).execute().close()
+        assertEquals(1, giphyMediaCache.count)
+        app.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE)
+        assertEquals("還在用、記憶體也還夠：留著", 1, giphyMediaCache.count)
+        app.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN)
+        assertEquals(0, giphyMediaCache.count)
     }
 
     /** 「Powered by GIPHY」用官方標誌包的大張（641×71）：16 dp 高在高解析度的手機上也清楚 */

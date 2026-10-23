@@ -282,11 +282,14 @@ class Giphy(
     }
 }
 
+/** 顯示貼圖用的圖片快取（[giphyMediaHttp] 裡的那一個）：App 退到背景、記憶體不夠時清掉（XlkApp.onTrimMemory） */
+internal val giphyMediaCache = GiphyMediaCache()
+
 /**
  * 顯示貼圖圖片的連線（只給 Coil 用，見 [tw.xiaoliangkou.app.ui.components.stickerImageLoader]）：
- * [giphyHttp] 加上記憶體裡的圖片快取 [GiphyMediaCache]。搜尋和通知的大圖還是用 [giphyHttp]
+ * [giphyHttp] 加上記憶體裡的圖片快取 [giphyMediaCache]。搜尋和通知的大圖還是用 [giphyHttp]
  */
-internal val giphyMediaHttp: OkHttpClient = giphyHttp.newBuilder().addInterceptor(GiphyMediaCache()).build()
+internal val giphyMediaHttp: OkHttpClient = giphyHttp.newBuilder().addInterceptor(giphyMediaCache).build()
 
 /**
  * 貼圖圖片的記憶體快取。Coil 只把不會動的圖放進它的記憶體快取（會動的每次都重新解碼），
@@ -320,6 +323,15 @@ class GiphyMediaCache(private val maxBytes: Long = MAX_BYTES, private val maxEnt
         res.close()
         put(key, Entry(bytes, type))
         return res.newBuilder().body(bytes.toResponseBody(type?.toMediaTypeOrNull())).build()
+    }
+
+    /** 記著幾張 */
+    val count: Int get() = synchronized(this) { entries.size }
+
+    /** 全部丟掉 */
+    fun clear() = synchronized(this) {
+        entries.clear()
+        size = 0
     }
 
     private fun put(key: String, e: Entry) = synchronized(this) {

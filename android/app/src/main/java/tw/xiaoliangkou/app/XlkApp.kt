@@ -1,6 +1,7 @@
 package tw.xiaoliangkou.app
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.graphics.BitmapFactory
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -51,6 +52,7 @@ import tw.xiaoliangkou.app.data.Supabase
 import tw.xiaoliangkou.app.data.SupabaseClient
 import tw.xiaoliangkou.app.data.VoicePlayer
 import tw.xiaoliangkou.app.data.apiCall
+import tw.xiaoliangkou.app.data.giphyMediaCache
 import tw.xiaoliangkou.app.service.AutoBookkeeping
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.ShareService
@@ -74,6 +76,12 @@ open class XlkApp : Application() {
             osmdroidTileCache = cacheDir.resolve("tiles")
         }
         container = AppContainer(this)
+    }
+
+    // 畫面收起來、系統記憶體不夠：下載過的貼圖檔不用留著（背景服務讓 App 一直活著，不要一直佔著記憶體），回來再載
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) giphyMediaCache.clear()
     }
 }
 
