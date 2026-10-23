@@ -387,13 +387,18 @@ class ServerIntegrationTest {
             yu.repo.sendComfort("hug", null)
             withTimeout(6000) { hugBack.await() }
             assertNull(zhe.notes.last { it.kind == "comfort" }.data.sticker())
-            // 打開歷史紀錄：收到的全部標成已讀（「晚上請你吃好料」那則也是），自己送出去的不算
+            // 打開歷史紀錄：收到的全部標成已讀（「晚上請你吃好料」那則也是），自己送出去的不算。
+            // schema 4 一次標完（app_read_comfort 的 {"all": true}）
+            assertEquals(RemoteRepository.STICKER_SCHEMA, yu.repo.state.value.dbSchema)
             assertTrue(yu.repo.state.value.comforts.any { it.receiverId == yu.userId && it.readAt == null })
             yu.repo.markComfortsRead()
             assertTrue(yu.repo.state.value.comforts.none { it.receiverId == yu.userId && it.readAt == null })
             assertTrue(apiCall { yu.api.comforts() }.none { it.receiverId == yu.userId && it.readAt == null })
             assertNull(apiCall { zhe.api.comforts() }.first { it.senderId == yu.userId }.readAt)
             eventually("送的人看到全部已讀") { zhe.repo.state.value.comforts.filter { it.receiverId == yu.userId }.all { it.readAt != null } }
+            // 阿哲的 {"all": true} 標的是他自己收到的（剛剛的回抱）
+            apiCall { zhe.api.readAllComforts() }
+            assertNotNull(apiCall { zhe.api.comforts() }.first { it.senderId == yu.userId }.readAt)
             eventually("歷史紀錄帶著貼圖") {
                 zhe.repo.state.value.history.let { h ->
                     h.any { it.kind == "mood" && it.payload.sticker() == sticker } && h.any { it.kind == "comfort" && it.payload.sticker() == sticker }

@@ -122,7 +122,6 @@ class StickerDemoTest {
             repeat(30) { settings.addRecentSticker("s$it") }
             val recent = settings.load().recentStickers
             assertEquals("最多 24 個", 24, recent.size)
-            assertEquals(SettingsStore.RECENT_STICKERS, recent.size)
             assertEquals("s29", recent.first())
             assertEquals("舊的擠掉", "s6", recent.last())
             settings.clear()

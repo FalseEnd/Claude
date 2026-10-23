@@ -245,6 +245,24 @@ class StickerRemoteTest {
         assertTrue(r.state.value.comforts.filter { it.receiverId == "u-1" }.all { it.readAt != null })
     }
 
+    /** schema 3 一則一則標到一半失敗：送到的留著，沒送到的改回沒看過（下次再標） */
+    @Test fun oldDatabaseKeepsWhatWasMarked() = runBlocking<Unit> {
+        val read = Collections.synchronizedSet(mutableSetOf<Long>())
+        val r = repo(3)
+        rpc("app_comforts") { comforts(read) }
+        r.refreshAll()
+        routes["POST /rest/v1/rpc/app_read_comfort"] = { req ->
+            val id = req.json["id"].toString().toLong()
+            if (id == 3L) Res(500, """{"message":"upstream timeout"}""".toByteArray()) else { read += id; Res(200, """{"ok":true}""".toByteArray()) }
+        }
+        fails("server_error") { r.markComfortsRead() }
+        assertEquals(listOf("""{"id":4}""", """{"id":3}"""), calls("app_read_comfort").map { it.json.toString() })
+        val readAt = r.state.value.comforts.associate { it.id to it.readAt }
+        assertNotNull("送到的留著", readAt[4])
+        assertNull("沒送到的改回來", readAt[3])
+        assertNull(readAt[1])
+    }
+
     @Test fun failedReadMarkComesBack() = runBlocking<Unit> {
         val r = repo(4, comforts = "[${comfort(3, "u-2", "u-1")},${comfort(1, "u-2", "u-1")}]")
         rpc("app_read_comfort", 500) { """{"message":"upstream timeout"}""" }
