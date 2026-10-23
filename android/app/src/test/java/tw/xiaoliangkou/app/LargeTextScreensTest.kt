@@ -31,6 +31,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
@@ -468,6 +470,26 @@ class LargeTextScreensTest {
         }
     }
 
+    /** 對方心情的話很長：首頁最多兩行，結尾看得到「…」（點進心情紀錄看得到全部），不會無聲無息被切掉 */
+    @Config(qualifiers = TALL)
+    @Test fun homeLongMoodNote() {
+        val pm = Derived.moodToday(s, DemoRepository.PARTNER)!!
+        val note = "今天被主管念了一整個下午，" + "報告改了又改還是不滿意，".repeat(4)
+        shot("15c_home_long_mood_note") { HomeScreen(s.copy(moods = s.moods.map { if (it.id == pm.id) it.copy(note = note) else it }), vm, {}, {}) }
+        val layout = layoutOf(note)
+        assertEquals(2, layout.lineCount)
+        assertTrue("第二行要有「…」", layout.isLineEllipsized(1))
+    }
+
+    /** 很長的通知標題：最多兩行，結尾看得到「…」 */
+    @Test fun bannerLongTitle() {
+        val title = "梓梓的小宝 給了你一個大大的抱抱，還傳了一張很可愛的貼圖給你，快點開來看看吧，看完記得回抱一下喔"
+        shot("23c_banner_long_title") { Column(Modifier.padding(top = 24.dp)) { BannerCard(true, "🤗", title, "今天辛苦了") {} } }
+        val layout = layoutOf(title)
+        assertEquals(2, layout.lineCount)
+        assertTrue("第二行要有「…」", layout.isLineEllipsized(1))
+    }
+
     /** 很長的悄悄話：通知卡片最多三行，放不下時結尾看得到「…」，不會無聲無息被切掉 */
     @Test fun bannerLongMessage() {
         val long = "今天辛苦了，" + "晚上一起吃熱炒好不好？我已經在路上了，".repeat(6)
@@ -732,6 +754,12 @@ class LargeTextScreensTest {
         val layout = layoutOf(text)
         assertFalse("「$text」超出範圍", layout.hasVisualOverflow)
         assertEquals(text, layout.layoutInput.text.text.replace("\n", ""))
+        // 日期換成兩行，旁邊的時間也一樣高
+        assertTrue(layout.lineCount > 1)
+        val date = compose.onNode(hasClickAction() and hasText("日期")).getBoundsInRoot()
+        val time = compose.onNode(hasClickAction() and hasText("時間")).getBoundsInRoot()
+        assertEquals(date.top, time.top)
+        assertEquals(date.bottom, time.bottom)
     }
 
     @Test fun anniversarySheet() = sheet("71_sheet_anniversary") { AnniversarySheet(s, vm, null) {} }
@@ -986,6 +1014,8 @@ class LargeTextScreensTest {
         recents()
         picker(s)
         waitStickers(1, "示範貼圖")
+        assertTrue(has("示範模式不能搜尋 GIPHY"))
+        assertTrue("示範模式不呼叫 GIPHY 的 API", giphy.asked.isEmpty())
         screen("99h_dialog_giphy_demo")
     }
 

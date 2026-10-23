@@ -397,11 +397,11 @@ private fun PaymentLogRow(e: tw.xiaoliangkou.app.service.AutoBookkeeping.Entry, 
 
 /** 點一下跳出日期選擇器的欄位 */
 @Composable
-fun DateField(label: String, value: String, onChange: (String) -> Unit) {
+fun DateField(label: String, value: String, modifier: Modifier = Modifier, onChange: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (open) 0.97f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "date")
     Column(
-        Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }.clip(RoundedCornerShape(18.dp))
+        modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }.clip(RoundedCornerShape(18.dp))
             .background(Cute.colors.card).bouncyClick { open = true }.padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

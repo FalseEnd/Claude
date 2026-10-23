@@ -13,9 +13,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -343,10 +345,11 @@ fun EventSheet(s: AppState, vm: AppViewModel, id: String?, date: LocalDate, clos
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("🍲 吃火鍋", "🎬 看電影", "🌃 看夜景", "🧺 野餐", "☕ 咖啡廳").forEach { idea -> ChoiceChip(idea, title == idea.substringAfter(" ")) { title = idea.substringAfter(" ") } }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.weight(1f)) { DateField("日期", day) { day = it } }
+        // 日期換成兩行（別年的日期、字放大）時，旁邊的時間也一樣高
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.weight(1f).fillMaxHeight()) { DateField("日期", day, Modifier.fillMaxHeight()) { day = it } }
             Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(Cute.colors.card).bouncyClick { pickTime = true }.padding(horizontal = 16.dp, vertical = 10.dp),
+                Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(18.dp)).background(Cute.colors.card).bouncyClick { pickTime = true }.padding(horizontal = 16.dp, vertical = 10.dp),
             ) {
                 Text("時間", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("%02d:%02d".format(time.hour, time.minute), style = MaterialTheme.typography.titleMedium)

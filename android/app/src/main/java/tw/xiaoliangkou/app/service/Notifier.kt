@@ -32,6 +32,8 @@ class Notifier(private val context: Context) {
         const val EXTRA_ROUTE = "route"
         private const val PINK = 0xFFFF7AA2.toInt()
         private const val PARTNER = 0xFFFF7FA8.toInt()
+        /** 附了貼圖時，內容在幾個字以內才展開成大圖：大圖下面的摘要只有一兩行，長的悄悄話會被切掉 */
+        const val PICTURE_BODY = 18
     }
 
     fun createChannels() {
@@ -67,8 +69,18 @@ class Notifier(private val context: Context) {
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     /**
+     * 這一種通知使用者看得到：可以發通知、App 的通知沒有整個關掉、這個頻道也沒有被封鎖（還沒建立的頻道當作看得到）。
+     * 背景抓貼圖之前先問：看不到的通知不用向 GIPHY 抓圖
+     */
+    fun canShow(kind: String): Boolean {
+        if (!canPost()) return false
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return false
+        return nm.areNotificationsEnabled() && nm.getNotificationChannel(channelFor(kind))?.importance != NotificationManager.IMPORTANCE_NONE
+    }
+
+    /**
      * 資料庫來的通知（[id] 是 outbox 的 id）。
-     * [picture] 是附的 GIPHY 貼圖（不會動的那張）：展開時顯示大圖；同一則補上圖片時不會再響一次
+     * [picture] 是附的 GIPHY 貼圖（不會動的那張）：放在右邊，內容很短時展開是大圖；同一則補上圖片時不會再響一次
      */
     fun show(id: Long, title: String, body: String, kind: String, data: JsonObject? = null, picture: Bitmap? = null) {
         if (!canPost()) return
@@ -80,14 +92,15 @@ class Notifier(private val context: Context) {
             .setAutoCancel(true)
             .setPriority(if (channelFor(kind) == CH_LOVE) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(openApp(RemoteRepository.routeFor(kind, data), id.toInt()))
-        if (picture == null) {
-            b.setStyle(NotificationCompat.BigTextStyle().bigText(body))
-        } else {
-            // 收合時貼圖在右邊；展開時是大圖，右邊就不用再放一次
-            b.setStyle(NotificationCompat.BigPictureStyle().bigPicture(picture).setSummaryText(body).bigLargeIcon(null as Bitmap?))
-                .setLargeIcon(picture)
-                .setOnlyAlertOnce(true)
+        when {
+            picture == null -> b.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            // 短短一句（「附上一張貼圖 ✨」）：展開時是大圖，字放在圖下面；大圖展開了，右邊就不用再放一次
+            body.codePointCount(0, body.length) <= PICTURE_BODY ->
+                b.setStyle(NotificationCompat.BigPictureStyle().bigPicture(picture).setSummaryText(body).bigLargeIcon(null as Bitmap?))
+            // 長的悄悄話、心情的話：大圖下面只放得下一兩行，所以照樣展開成全文，貼圖只放在右邊
+            else -> b.setStyle(NotificationCompat.BigTextStyle().bigText(body))
         }
+        if (picture != null) b.setLargeIcon(picture).setOnlyAlertOnce(true)
         runCatching { NotificationManagerCompat.from(context).notify(androidId(id), b.build()) }
     }
 

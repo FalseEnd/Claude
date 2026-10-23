@@ -387,7 +387,11 @@ fun CuteField(
         singleLine = singleLine,
         isError = isError,
         supportingText = supporting?.let { { TidyText(it) } },
-        keyboardOptions = KeyboardOptions(keyboardType = keyboard),
+        // 密碼、key 的欄位也要讓鍵盤知道：不然鍵盤會自動校正，還會把打的字記進字典，之後在別的 App 當成建議跳出來
+        keyboardOptions = KeyboardOptions(
+            keyboardType = if (password && keyboard == KeyboardType.Text) KeyboardType.Password else keyboard,
+            autoCorrectEnabled = if (password) false else null,
+        ),
         visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         shape = RoundedCornerShape(18.dp),
         colors = OutlinedTextFieldDefaults.colors(

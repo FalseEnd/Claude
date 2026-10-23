@@ -53,6 +53,11 @@ data class AppState(
     val deviceInfoOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.DEVICE_SCHEMA
     /** 資料庫還存不了 GIPHY 貼圖（schema 3 以前）：心情、安撫照樣能送，只是不能附貼圖。再跑一次 upgrade-v2.sql 就好 */
     val stickersOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.STICKER_SCHEMA
+    /**
+     * 可以附 GIPHY 貼圖、設定 key（schema 4 以後）。還沒跑過 upgrade-v2.sql 的 0.1 資料庫（[schemaOutdated]）也不行；
+     * 還不知道版本時先當作可以，送出去才發現沒存到會再說
+     */
+    val stickersReady get() = !schemaOutdated && (dbSchema ?: RemoteRepository.STICKER_SCHEMA) >= RemoteRepository.STICKER_SCHEMA
     /** 兩個人共用的 GIPHY API key，還沒設定是 null */
     val giphyKey get() = couple?.giphyKey?.takeIf { it.isNotBlank() }
 

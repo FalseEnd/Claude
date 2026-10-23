@@ -10,9 +10,13 @@ import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -68,26 +72,30 @@ fun interface GiphySearcher {
 
 /**
  * GIPHY 的搜尋與熱門（https://developers.giphy.com/docs/api/）。
- * 免費的 beta key 一小時只能呼叫 100 次：查過的每一頁都記在記憶體裡，App 沒關掉前不會再問一次。
+ * 免費的 beta key 一小時只能呼叫 100 次：查過的每一頁都記在記憶體裡，一小時內不會再問一次（之後熱門的才會換新）。
  * 只用 [giphyHttp] 連線，不會帶到 Supabase 的金鑰和登入的 token
  */
 class Giphy(
     private val http: OkHttpClient = giphyHttp,
     /** Android 9（API 28）以上才能顯示會動的 WebP */
     private val sdk: Int = Build.VERSION.SDK_INT,
+    /** 現在的時間（毫秒）；測試時換成假的 */
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : GiphySearcher {
-    /** 查過的頁面：(種類, offset, 關鍵字) → 結果 */
-    private val pages = object : LinkedHashMap<String, GiphyPage>(32, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, GiphyPage>?) = size > MAX_PAGES
+    /** 查過的頁面：(種類, offset, 關鍵字) → (查的時間, 結果) */
+    private val pages = object : LinkedHashMap<String, Pair<Long, GiphyPage>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, GiphyPage>>?) = size > MAX_PAGES
     }
 
     override suspend fun page(q: GiphyQuery): GiphyPage {
         if (!isValidKey(q.key)) throw GiphyException(GiphyException.Reason.BAD_KEY)
         val text = query(q.query)
         val key = "${q.kind.path}|${q.offset}|$text"
-        synchronized(pages) { pages[key] }?.let { return it }
+        // 背景服務讓 App 一直活著：超過 [PAGE_TTL_MS] 的重查，熱門的才會換新、GIPHY 拿掉的圖也不會一直留著
+        val now = clock()
+        synchronized(pages) { pages[key] }?.takeIf { now - it.first < PAGE_TTL_MS }?.let { return it.second }
         // 找不到、出錯的不記：網路恢復或換了 key 再查就會重查
-        return parse(get(url(q.key, q.kind, text, q.offset, LIMIT)), q.offset, sdk).also { p -> synchronized(pages) { pages[key] = p } }
+        return parse(get(url(q.key, q.kind, text, q.offset, LIMIT)), q.offset, sdk).also { p -> synchronized(pages) { pages[key] = clock() to p } }
     }
 
     /** 拿熱門貼圖的第一張試試看（只花一次呼叫） */
@@ -181,6 +189,8 @@ class Giphy(
         /** 通知的大圖最多抓多大 */
         const val MAX_STILL_BYTES = 1024L * 1024
         private const val MAX_PAGES = 64
+        /** 查過的頁面記多久：一小時（免費 key 的額度也是一小時算一次） */
+        const val PAGE_TTL_MS = 60 * 60 * 1000L
 
         // 跟資料庫的 check 一樣：GIPHY 的 id 只有英數字；組網址前一定先檢查，對方傳來奇怪的 id 也不會讓手機去載別的東西
         private val ID = Regex("^[A-Za-z0-9]{1,64}$")
@@ -192,6 +202,12 @@ class Giphy(
 
         fun isValidId(id: String?) = id != null && ID.matches(id)
         fun isValidKey(key: String?) = key != null && KEY.matches(key)
+
+        /**
+         * 注音輸入法還在選字（「ㄅㄠˋ」、「抱ㄅㄠ」）：打字停下來時先不查，選好字或按搜尋鍵才查（一小時只有 100 次）。
+         * 英文、拼音看不出打完了沒，照常停一下就查
+         */
+        fun hasZhuyin(text: String) = text.any { it in '㄀'..'ㄯ' || it in 'ㆠ'..'ㆿ' || it in "ˊˇˋ˙" }
 
         /** 送出去的關鍵字：去掉前後空白，最多 [MAX_QUERY] 個字 */
         fun query(raw: String): String {
@@ -263,5 +279,65 @@ class Giphy(
         private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
         // 寬高、數量都可能是字串（"200"）
         private fun JsonObject.number(key: String): Int? = (this[key] as? JsonPrimitive)?.content?.toIntOrNull()
+    }
+}
+
+/**
+ * 顯示貼圖圖片的連線（只給 Coil 用，見 [tw.xiaoliangkou.app.ui.components.stickerImageLoader]）：
+ * [giphyHttp] 加上記憶體裡的圖片快取 [GiphyMediaCache]。搜尋和通知的大圖還是用 [giphyHttp]
+ */
+internal val giphyMediaHttp: OkHttpClient = giphyHttp.newBuilder().addInterceptor(GiphyMediaCache()).build()
+
+/**
+ * 貼圖圖片的記憶體快取。Coil 只把不會動的圖放進它的記憶體快取（會動的每次都重新解碼），
+ * 沒有這個的話，會動的貼圖每次出現都要再向 GIPHY 下載一次：回到首頁、捲回來的格子先閃一下載入中，
+ * 沒網路時剛剛還看得到的貼圖就變成 🖼️。
+ * 只放在 App 的記憶體裡、App 關掉就沒了（GIPHY 不准存檔），全部最多 [maxBytes]；
+ * 只記 GIPHY 圖片網址（media*.giphy.com、i.giphy.com）的 GET、200 的回應，一張超過 [maxEntry] 的不記。網址原封不動當作 key
+ */
+class GiphyMediaCache(private val maxBytes: Long = MAX_BYTES, private val maxEntry: Long = Giphy.MAX_STILL_BYTES) : Interceptor {
+    private class Entry(val bytes: ByteArray, val type: String?)
+
+    /** 網址 → 圖片；最久沒用到的在前面 */
+    private val entries = LinkedHashMap<String, Entry>(64, 0.75f, true)
+    private var size = 0L
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val req = chain.request()
+        if (req.method != "GET" || !req.url.isHttps || !MEDIA_HOST.matches(req.url.host)) return chain.proceed(req)
+        val key = req.url.toString()
+        synchronized(this) { entries[key] }?.let { e ->
+            return Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .apply { if (e.type != null) header("Content-Type", e.type) }
+                .body(e.bytes.toResponseBody(e.type?.toMediaTypeOrNull())).build()
+        }
+        val res = chain.proceed(req)
+        if (res.code != 200) return res
+        // 先偷看：太大的不記，原本的回應照樣往下傳
+        val bytes = res.peekBody(maxEntry + 1).bytes()
+        if (bytes.size > maxEntry) return res
+        val type = res.header("Content-Type")
+        res.close()
+        put(key, Entry(bytes, type))
+        return res.newBuilder().body(bytes.toResponseBody(type?.toMediaTypeOrNull())).build()
+    }
+
+    private fun put(key: String, e: Entry) = synchronized(this) {
+        entries.put(key, e)?.let { size -= it.bytes.size }
+        size += e.bytes.size
+        // 超過了：從最久沒用到的開始丟
+        val it = entries.values.iterator()
+        while (size > maxBytes && it.hasNext()) {
+            val old = it.next()
+            if (old === e) break
+            size -= old.bytes.size
+            it.remove()
+        }
+    }
+
+    companion object {
+        /** 全部最多放多少（一張會動的貼圖大約 10–100 KB） */
+        const val MAX_BYTES = 12L * 1024 * 1024
+        private val MEDIA_HOST = Regex("^(media\\d*|i)\\.giphy\\.com$")
     }
 }

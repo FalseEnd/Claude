@@ -733,8 +733,10 @@ private fun BirthdayCountdown(name: String, birthday: LocalDate, today: LocalDat
 private fun InfoTile(emoji: String, label: String, value: String, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(22.dp)
     val valueStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+    // 一格一起唸（「衣服尺寸 L、XL希望寬鬆一點」），不會把標題和數值拆開
+    val tile = modifier.semantics(mergeDescendants = true) {}.clip(shape).background(Cute.colors.card).padding(12.dp)
     if (LocalDensity.current.fontScale >= 1.3f) {
-        Column(modifier.clip(shape).background(Cute.colors.card).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(tile, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 EmojiBubble(emoji, MaterialTheme.colorScheme.surfaceVariant, 30.dp)
                 TidyText(label, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -744,7 +746,7 @@ private fun InfoTile(emoji: String, label: String, value: String, modifier: Modi
         return
     }
     Row(
-        modifier.clip(shape).background(Cute.colors.card).padding(12.dp),
+        tile,
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         EmojiBubble(emoji, MaterialTheme.colorScheme.surfaceVariant, 38.dp)

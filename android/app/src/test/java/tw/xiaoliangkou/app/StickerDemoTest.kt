@@ -16,11 +16,16 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.data.AppException
+import tw.xiaoliangkou.app.data.Comfort
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.DemoRepository.Companion.ME
 import tw.xiaoliangkou.app.data.DemoRepository.Companion.PARTNER
 import tw.xiaoliangkou.app.data.RemoteRepository
 import tw.xiaoliangkou.app.data.SettingsStore
+import tw.xiaoliangkou.app.ui.Derived
+import tw.xiaoliangkou.app.ui.components.stickerChips
+import java.time.Duration
+import java.time.Instant
 
 /** 示範模式的貼圖、收到的安撫標成看過了、GIPHY key、最近用過的貼圖、心情和安撫的 GIPHY 關鍵字 */
 @RunWith(RobolectricTestRunner::class)
@@ -116,8 +121,10 @@ class StickerDemoTest {
             assertEquals("最近的在前、不重複", listOf("aaa", "bbb"), settings.load().recentStickers)
             repeat(30) { settings.addRecentSticker("s$it") }
             val recent = settings.load().recentStickers
+            assertEquals("最多 24 個", 24, recent.size)
             assertEquals(SettingsStore.RECENT_STICKERS, recent.size)
             assertEquals("s29", recent.first())
+            assertEquals("舊的擠掉", "s6", recent.last())
             settings.clear()
             assertEquals("登出就清掉", emptyList<String>(), settings.load().recentStickers)
         } finally {
@@ -134,5 +141,40 @@ class StickerDemoTest {
         assertTrue((Catalog.moods.map { it.giphyQuery } + Catalog.comforts.map { it.giphyQuery }).all { it.isNotBlank() && it.length <= 50 })
         assertEquals("hug", Catalog.stickerQueries.first().second)
         assertEquals(12, Catalog.stickerQueries.size)
+    }
+
+    /** 選貼圖的快速關鍵字：推薦的在最前面，同一個關鍵字、同一個名字的不會出現兩次 */
+    @Test fun stickerChipsHaveNoDuplicates() {
+        val cheer = Catalog.comfort("cheer")!!.let { it.label to it.giphyQuery }
+        assertEquals("加油" to "you can do it", cheer)
+        val chips = stickerChips(cheer)
+        assertEquals(listOf(cheer, "熱門" to ""), chips.take(2))
+        assertEquals("只有一個「加油」", 1, chips.count { it.first == "加油" })
+        assertEquals(13, chips.size)
+        val hug = stickerChips("抱抱" to "hug")
+        assertEquals(1, hug.count { it.second == "hug" })
+        assertEquals(13, hug.size)
+        assertEquals(listOf("熱門" to "") + Catalog.stickerQueries, stickerChips(null))
+        for (m in Catalog.moods.map { it.label to it.giphyQuery } + Catalog.comforts.map { it.label to it.giphyQuery }) {
+            val c = stickerChips(m)
+            assertEquals(m.first, c.size, c.map { it.first }.distinct().size)
+            assertEquals(m.first, c.size, c.map { it.second }.distinct().size)
+        }
+    }
+
+    /** 首頁「收到的安撫」只看最近 3 天收到、還沒看過的（0.2.1 以前從來沒有標過看過，以前的不會被翻出來） */
+    @Test fun homeOnlyShowsRecentReceivedComforts() = runTest {
+        val s = DemoRepository(backgroundScope).also { it.running = false }.state.value
+        val now = Instant.parse("2026-10-21T12:00:00Z")
+        fun comfort(id: Long, hoursAgo: Long, to: String = ME, readAt: String? = null) =
+            Comfort(id, senderId = if (to == ME) PARTNER else ME, receiverId = to, kind = "hug", createdAt = now.minus(Duration.ofHours(hoursAgo)).toString(), readAt = readAt)
+        fun received(vararg c: Comfort) = Derived.receivedComfort(s.copy(comforts = c.toList()), now)?.id
+        assertEquals(5L, received(comfort(6, 1, to = PARTNER), comfort(5, 2), comfort(4, 30)))
+        assertEquals("看過的跳過", 4L, received(comfort(5, 2, readAt = now.toString()), comfort(4, 30)))
+        assertEquals(3L, received(comfort(3, 71)))
+        assertNull("超過 3 天", received(comfort(2, 73)))
+        assertNull(received(comfort(1, 24 * 20), comfort(0, 24 * 30)))
+        // 示範模式昨天晚上收到的那則一定看得到
+        assertEquals(DemoRepository.STICKER, Derived.receivedComfort(s)?.sticker)
     }
 }

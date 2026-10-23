@@ -192,22 +192,37 @@ class StickerRemoteTest {
         assertTrue(calls("app_post_mood").isEmpty() && calls("app_send_comfort").isEmpty())
     }
 
+    /** 假的 app_read_comfort：記下送來的參數，{"all": true} 把收到、還沒看過的全部標起來；[during] 在請求進來時（還沒回應前）跑 */
+    private fun readRoute(read: MutableSet<Long>, received: List<Long>, during: (Req) -> Unit = {}) = rpc("app_read_comfort") { req ->
+        during(req)
+        if (req.json["all"]?.toString() == "true") read += received else read += req.json["id"].toString().toLong()
+        """{"ok":true}"""
+    }
+
+    private fun comforts(read: Set<Long>): String {
+        fun at(id: Long) = if (id in read) "2026-10-20T03:00:00+00:00" else null
+        return "[${comfort(4, "u-2", "u-1", readAt = at(4))},${comfort(3, "u-2", "u-1", sticker, at(3))},${comfort(2, "u-1", "u-2")},${comfort(1, "u-2", "u-1", readAt = at(1))}]"
+    }
+
+    /** schema 4：一則是 {"id": n}；全部標成看過只要一次 {"all": true}。送出去之前畫面就先標好了（紅點馬上消失） */
     @Test fun receivedComfortsAreMarkedRead() = runBlocking<Unit> {
         val read = Collections.synchronizedSet(mutableSetOf<Long>())
-        fun at(id: Long) = if (id in read) "2026-10-20T03:00:00+00:00" else null
+        val seenRead = Collections.synchronizedList(mutableListOf<Set<Long>>())
         val r = repo(4)
-        rpc("app_comforts") { "[${comfort(3, "u-2", "u-1", sticker, at(3))},${comfort(2, "u-1", "u-2")},${comfort(1, "u-2", "u-1", readAt = at(1))}]" }
-        rpc("app_read_comfort") { req -> read += req.json["id"].toString().toLong(); """{"ok":true}""" }
+        rpc("app_comforts") { comforts(read) }
+        readRoute(read, listOf(4, 3, 1)) { seenRead += r.state.value.comforts.filter { it.readAt != null }.map { it.id }.toSet() }
         r.refreshAll()
         val before = calls("app_comforts").size
         r.readComfort(3)
-        assertEquals(listOf(3L), calls("app_read_comfort").map { it.json["id"].toString().toLong() })
-        assertNotNull("畫面先標成看過了", r.state.value.comforts.first { it.id == 3L }.readAt)
+        assertEquals(listOf("""{"id":3}"""), calls("app_read_comfort").map { it.json.toString() })
+        assertEquals("畫面先標成看過了（還在送的時候）", setOf(3L), seenRead.single())
+        assertNotNull(r.state.value.comforts.first { it.id == 3L }.readAt)
         assertNull(r.state.value.comforts.first { it.id == 1L }.readAt)
 
-        // 全部標成看過了：只送收到的、還沒看過的，一筆一筆送，最後重新載入一次
+        // 全部標成看過了：一次就好，送出去之前畫面就先標好了；最後重新載入一次
         r.markComfortsRead()
-        assertEquals(listOf(3L, 1L), calls("app_read_comfort").map { it.json["id"].toString().toLong() })
+        assertEquals(listOf("""{"id":3}""", """{"all":true}"""), calls("app_read_comfort").map { it.json.toString() })
+        assertEquals(setOf(4L, 3L, 1L), seenRead.last())
         assertEquals(before + 2, calls("app_comforts").size)
         assertTrue(r.state.value.comforts.filter { it.receiverId == "u-1" }.all { it.readAt != null })
         assertNull("自己送出去的不用標", r.state.value.comforts.first { it.id == 2L }.readAt)
@@ -216,11 +231,43 @@ class StickerRemoteTest {
         assertEquals(2, calls("app_read_comfort").size)
     }
 
+    /** schema 3 的資料庫還不認得 all：一則一則標，第一則送出去之前全部都先標好了 */
+    @Test fun oldDatabaseMarksComfortsOneByOne() = runBlocking<Unit> {
+        val read = Collections.synchronizedSet(mutableSetOf<Long>())
+        val seenRead = Collections.synchronizedList(mutableListOf<Set<Long>>())
+        val r = repo(3)
+        rpc("app_comforts") { comforts(read) }
+        readRoute(read, listOf(4, 3, 1)) { seenRead += r.state.value.comforts.filter { it.readAt != null }.map { it.id }.toSet() }
+        r.refreshAll()
+        r.markComfortsRead()
+        assertEquals(listOf("""{"id":4}""", """{"id":3}""", """{"id":1}"""), calls("app_read_comfort").map { it.json.toString() })
+        assertEquals(setOf(4L, 3L, 1L), seenRead.first())
+        assertTrue(r.state.value.comforts.filter { it.receiverId == "u-1" }.all { it.readAt != null })
+    }
+
     @Test fun failedReadMarkComesBack() = runBlocking<Unit> {
-        val r = repo(4, comforts = "[${comfort(3, "u-2", "u-1")}]")
+        val r = repo(4, comforts = "[${comfort(3, "u-2", "u-1")},${comfort(1, "u-2", "u-1")}]")
         rpc("app_read_comfort", 500) { """{"message":"upstream timeout"}""" }
         fails("server_error") { r.readComfort(3) }
-        assertNull("沒送到：改回沒看過，下次再標", r.state.value.comforts.single().readAt)
+        assertTrue("沒送到：改回沒看過，下次再標", r.state.value.comforts.all { it.readAt == null })
+        fails("server_error") { r.markComfortsRead() }
+        assertTrue(r.state.value.comforts.all { it.readAt == null })
+    }
+
+    /** 送出去了就是送出去了：之後重新整理失敗（網路不穩）不能說失敗，不然使用者再按一次，對方就收到兩次 */
+    @Test fun sentEvenIfTheReloadFails() = runBlocking<Unit> {
+        val r = repo(4)
+        rpc("app_send_comfort") { comfort(9, "u-1", "u-2") }
+        rpc("app_comforts", 503) { """{"message":"upstream timeout"}""" }
+        r.sendComfort("hug", null)
+        assertEquals(1, calls("app_send_comfort").size)
+        rpc("app_post_mood") { mood(1, null) }
+        rpc("app_moods", 503) { """{"message":"upstream timeout"}""" }
+        r.postMood("happy", null)
+        assertEquals(1, calls("app_post_mood").size)
+        // 貼圖有沒有存到看的是送出去回傳的那一筆，跟重新整理無關
+        rpc("app_send_comfort") { comfort(10, "u-1", "u-2") }
+        fails(RemoteRepository.STICKERS_OUTDATED_CODE) { r.sendComfort("hug", null, sticker) }
     }
 
     @Test fun giphyKeyIsSharedByTheCouple() = runBlocking<Unit> {
@@ -249,6 +296,28 @@ class StickerRemoteTest {
         // key 不能跟著狀態被印出來
         assertFalse(Couple("c-1", giphyKey = key).toString().contains(key))
         assertFalse(r.state.value.copy(couple = Couple("c-1", giphyKey = key)).toString().contains(key))
+    }
+
+    /** 還沒跑過 upgrade-v2.sql 的 0.1 資料庫：不能附貼圖、不能存 key，說的是「資料庫需要更新」，不是「再執行一次」 */
+    @Test fun v1DatabaseHasNoStickers() = runBlocking<Unit> {
+        val r = repo(null)
+        val st = r.state.value
+        assertTrue(st.schemaOutdated)
+        assertFalse("stickersOutdated 只說 schema 2、3", st.stickersOutdated)
+        assertFalse(st.stickersReady)
+        val e = fails(Errors.SCHEMA_OUTDATED_CODE) { r.setGiphyKey(key) }
+        assertEquals(Errors.SCHEMA_OUTDATED, e.message)
+        assertTrue("沒送出去", calls("app_set_giphy_key").isEmpty())
+        assertTrue(r.state.value.schemaOutdated)
+    }
+
+    @Test fun stickersReadyFollowsTheSchema() = runBlocking<Unit> {
+        val st = repo(4).state.value
+        assertTrue(st.stickersReady)
+        assertTrue("還不知道版本：先當作可以", st.copy(dbSchema = null).stickersReady)
+        assertFalse(st.copy(dbSchema = 3).stickersReady)
+        assertFalse(st.copy(dbSchema = 2).stickersReady)
+        assertFalse(st.copy(schemaOutdated = true, dbSchema = 0).stickersReady)
     }
 
     @Test fun oldDatabaseCannotStoreTheKey() = runBlocking<Unit> {

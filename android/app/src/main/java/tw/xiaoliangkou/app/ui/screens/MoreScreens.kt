@@ -66,6 +66,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -362,8 +363,9 @@ fun HistoryScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     val filters = listOf("all" to "全部", "place" to "位置", "mood" to "心情", "comfort" to "安撫", "money" to "開銷", "date" to "約會", "device" to "手機", "pair" to "分享")
     val list = s.history.filter { filter == "all" || Fmt.historyGroup(it.kind) == filter }
     val groups = list.groupBy { Fmt.localDate(it.time) }
-    // 看到紀錄了：收到的安撫都標成看過（首頁的紅點跟著消失）。安安靜靜地做，失敗了下次再標
-    LaunchedEffect(Unit) { runCatching { vm.repo.value?.markComfortsRead() } }
+    // 看到紀錄了：收到的安撫都標成看過（首頁的紅點跟著消失）。安安靜靜地做，失敗了下次再標；
+    // 交給 ViewModel 做完：很快就離開這一頁也不會只標到一半，剩下的又跑回來
+    LaunchedEffect(Unit) { vm.viewModelScope.launch { runCatching { vm.repo.value?.markComfortsRead() } } }
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { ScreenHeader("歷史紀錄", onBack = back) }
         item {

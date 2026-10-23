@@ -320,7 +320,8 @@ class AppContainer(private val app: Application) {
     internal fun postNotification(n: RealtimeClient.Event.Notification, current: () -> Boolean): Job? {
         notifier.show(n.id, n.title, n.body, n.kind, n.data)
         val sticker = (n.data?.get("sticker") as? JsonPrimitive)?.contentOrNull?.takeIf(Giphy::isValidId) ?: return null
-        if (!notifier.canPost()) return null
+        // 看不到的通知（沒有權限、App 的通知關掉了、這個頻道被封鎖）就不用向 GIPHY 抓圖
+        if (!notifier.canShow(n.kind)) return null
         val client = giphy
         return scope.launch {
             val picture = withContext(Dispatchers.IO) {

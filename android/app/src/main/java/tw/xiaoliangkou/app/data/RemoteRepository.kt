@@ -270,16 +270,17 @@ class RemoteRepository(
         return r
     }
 
+    // 送出去了就是送出去了：重新整理失敗（網路不穩）不能說失敗，不然使用者再按一次，對方就收到兩次
     override suspend fun postMood(mood: String, note: String?, sticker: String?) {
         val s = checkSticker(sticker)
         val row = apiCall { api.postMood(buildJsonObject { put("mood", mood); put("note", note ?: ""); if (s != null) put("sticker", s) }) }
-        loadMoods()
+        reloadQuietly(::loadMoods)
         stickerSaved(s, row.sticker, MOOD_STICKER_NOT_SAVED)
     }
     override suspend fun sendComfort(kind: String, message: String?, sticker: String?) {
         val s = checkSticker(sticker)
         val row = apiCall { api.postComfort(buildJsonObject { put("kind", kind); put("message", message ?: ""); if (s != null) put("sticker", s) }) }
-        loadComforts()
+        reloadQuietly(::loadComforts)
         stickerSaved(s, row.sticker, COMFORT_STICKER_NOT_SAVED)
     }
 
@@ -308,17 +309,26 @@ class RemoteRepository(
     override suspend fun markComfortsRead() {
         val st = _state.value
         val me = st.myId ?: return
-        markRead(st.comforts.filter { it.receiverId == me && it.readAt == null }.map { it.id })
+        // schema 4 以後一次標完；舊的資料庫只能一則一則標
+        markRead(st.comforts.filter { it.receiverId == me && it.readAt == null }.map { it.id }, all = (st.dbSchema ?: 0) >= STICKER_SCHEMA)
     }
 
-    /** 畫面先標成看過了（紅點馬上消失），再一筆一筆告訴資料庫；沒送到的改回來，下次再標 */
-    private suspend fun markRead(ids: List<Long>) {
+    /**
+     * 畫面先標成看過了（紅點馬上消失），再告訴資料庫：[all] 是一次標完收到的全部，不然一則一則送。
+     * 沒送到的改回來，下次再標
+     */
+    private suspend fun markRead(ids: List<Long>, all: Boolean = false) {
         if (ids.isEmpty()) return
         val now = Instant.now().toString()
         _state.update { st -> st.copy(comforts = st.comforts.map { if (it.id in ids && it.readAt == null) it.copy(readAt = now) else it }) }
         val done = mutableSetOf<Long>()
         try {
-            ids.forEach { id -> apiCall { api.readComfort(id) }; done += id }
+            if (all) {
+                apiCall { api.readAllComforts() }
+                done += ids
+            } else {
+                ids.forEach { id -> apiCall { api.readComfort(id) }; done += id }
+            }
         } catch (e: Exception) {
             _state.update { st -> st.copy(comforts = st.comforts.map { if (it.id !in done && it.id in ids && it.readAt == now) it.copy(readAt = null) else it }) }
             throw e
@@ -327,6 +337,8 @@ class RemoteRepository(
     }
 
     override suspend fun setGiphyKey(key: String?) {
+        // 還沒跑過 upgrade-v2.sql（0.1 的資料庫）：整個資料庫都要更新，不是「再執行一次」
+        if (_state.value.schemaOutdated) throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
         val k = key?.trim()?.takeIf { it.isNotEmpty() }
         if (k != null && !Giphy.isValidKey(k)) throw AppException(BAD_GIPHY_KEY, "invalid_input")
         try {

@@ -74,6 +74,7 @@ import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.ToggleRow
 import tw.xiaoliangkou.app.ui.components.Wiggle
 import tw.xiaoliangkou.app.ui.components.bouncyClick
+import tw.xiaoliangkou.app.ui.components.stickersUpgradeHint
 import tw.xiaoliangkou.app.ui.theme.Cute
 import java.time.LocalDate
 
@@ -98,12 +99,14 @@ fun MoodScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.containe
                         row.forEach { m -> MoodBubble(m.emoji, m.label, pick == m.key, Modifier.weight(1f)) { pick = m.key } }
                     }
                 }
-                StickerChoice(s, vm, sticker, Catalog.mood(pick)?.let { it.label to it.giphyQuery }, giphy) { sticker = it }
+                // 沒有分享心情時對方看不到，貼圖也一樣
+                val hint = if (s.mySharing?.shareMood == true) STICKER_HINT else "選填（目前沒有分享心情，對方看不到）"
+                StickerChoice(s, vm, sticker, Catalog.mood(pick)?.let { it.label to it.giphyQuery }, giphy, hint) { sticker = it }
                 CuteField(note, { note = it.take(100) }, "想多說一點（選填）", placeholder = "例如：今天被誇獎了")
                 CuteButton("更新心情", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Send, enabled = pick != null && !vm.busy) {
                     val m = pick ?: return@CuteButton
                     vm.act(if (s.mySharing?.shareMood == true) "已更新，${s.partnerName} 收到通知了 ${Catalog.mood(m)?.emoji}" else "已更新（沒有分享給對方）", hearts = Catalog.mood(m)?.valence ?: 0 > 0, onDone = back) {
-                        it.postMood(m, note.trim(), sticker.takeUnless { s.stickersOutdated })
+                        it.postMood(m, note.trim(), sticker.takeIf { s.stickersReady })
                     }
                 }
                 TidyText(
@@ -139,18 +142,29 @@ fun MoodScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.containe
 /** 「這 7 天」左邊頭像那一欄的寬度 */
 private val WHO = 36.dp
 
+/** 「加一張 GIPHY 貼圖」下面的說明 */
+private const val STICKER_HINT = "選填，對方會看到會動的貼圖"
+
 /**
- * 選填的 GIPHY 貼圖：還沒選是「加一張」，選了顯示貼圖和「換一張」「移除」。
+ * 選填的 GIPHY 貼圖：還沒選是「加一張」（下面寫 [hint]），選了顯示貼圖和「換一張」「移除」。
  * 資料庫還存不了貼圖就只說要更新（送出去也會被擋下來）。[suggestion] 是選貼圖時先幫忙查的
  */
 @Composable
-private fun StickerChoice(s: AppState, vm: AppViewModel, sticker: String?, suggestion: Pair<String, String>?, giphy: GiphySearcher, onChange: (String?) -> Unit) {
+private fun StickerChoice(
+    s: AppState,
+    vm: AppViewModel,
+    sticker: String?,
+    suggestion: Pair<String, String>?,
+    giphy: GiphySearcher,
+    hint: String = STICKER_HINT,
+    onChange: (String?) -> Unit,
+) {
     var picking by remember { mutableStateOf(false) }
     when {
-        s.stickersOutdated -> TidyText("再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        !s.stickersReady -> TidyText(stickersUpgradeHint(s), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         sticker == null -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SoftButton("加一張 GIPHY 貼圖", Modifier.fillMaxWidth(), icon = Icons.Rounded.GifBox) { picking = true }
-            TidyText("選填，對方會看到會動的貼圖", Modifier.padding(start = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TidyText(hint, Modifier.padding(start = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             StickerImage(sticker, Modifier.size(120.dp))
@@ -195,7 +209,7 @@ fun ComfortSheet(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.contai
         CuteField(message, { message = it.take(200) }, "悄悄話（選填）", placeholder = "辛苦了，晚上帶你去吃好吃的", singleLine = false)
         CuteButton("送出${Catalog.comfort(pick)?.label}", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Send, enabled = !vm.busy) {
             val label = Catalog.comfort(pick)?.label
-            vm.act("已送出$label，${s.partnerName} 收到通知了 💗", hearts = true, onDone = close) { it.sendComfort(pick, message.trim(), sticker.takeUnless { s.stickersOutdated }) }
+            vm.act("已送出$label，${s.partnerName} 收到通知了 💗", hearts = true, onDone = close) { it.sendComfort(pick, message.trim(), sticker.takeIf { s.stickersReady }) }
         }
     }
 }

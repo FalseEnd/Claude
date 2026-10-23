@@ -60,6 +60,8 @@ class Api(private val rest: RestService, private val storage: StorageService? = 
     suspend fun comforts(limit: Int = 50): List<Comfort> = call("app_comforts", buildJsonObject { put("limit", limit) })
     suspend fun postComfort(body: JsonObject): Comfort = call("app_send_comfort", body)
     suspend fun readComfort(id: Long): JsonObject = call("app_read_comfort", buildJsonObject { put("id", id) })
+    /** 收到的、還沒看過的全部標成看過（schema 4 以後；舊的資料庫不認得 all，什麼都不會做） */
+    suspend fun readAllComforts(): JsonObject = call("app_read_comfort", buildJsonObject { put("all", true) })
     /** 兩個人共用的 GIPHY API key：{"key": …}，沒給或空白是清掉；回傳更新後的配對 */
     suspend fun setGiphyKey(body: JsonObject): Couple = call("app_set_giphy_key", body)
 

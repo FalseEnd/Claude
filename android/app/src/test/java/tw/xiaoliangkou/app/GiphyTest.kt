@@ -22,6 +22,7 @@ import tw.xiaoliangkou.app.data.GiphyException
 import tw.xiaoliangkou.app.data.GiphyException.Reason
 import tw.xiaoliangkou.app.data.GiphyItem
 import tw.xiaoliangkou.app.data.GiphyKind
+import tw.xiaoliangkou.app.data.GiphyMediaCache
 import tw.xiaoliangkou.app.data.GiphyPage
 import tw.xiaoliangkou.app.data.GiphyQuery
 import tw.xiaoliangkou.app.data.GiphySearcher
@@ -223,6 +224,68 @@ class GiphyTest {
         fails(Reason.SERVER) { g.page(GiphyQuery(key, GiphyKind.GIFS, "cat")) }
         assertEquals(1, g.page(GiphyQuery(key, GiphyKind.GIFS, "cat")).items.size)
         assertEquals(5, requests.size)
+    }
+
+    /** 背景服務讓 App 一直活著：查過的頁面記一小時，之後重查（熱門的才會換新、GIPHY 拿掉的圖不會一直留著） */
+    @Test fun pagesAreForgottenAfterAnHour() = runBlocking<Unit> {
+        var now = 1_000_000L
+        val g = Giphy(http { ok(page(happyGif)) }, 34) { now }
+        g.page(GiphyQuery(key, GiphyKind.STICKERS))
+        now += Giphy.PAGE_TTL_MS - 60_000
+        g.page(GiphyQuery(key, GiphyKind.STICKERS))
+        assertEquals("一小時內不再問", 1, requests.size)
+        now += 2 * 60_000
+        g.page(GiphyQuery(key, GiphyKind.STICKERS))
+        assertEquals("超過一小時就重查", 2, requests.size)
+        g.page(GiphyQuery(key, GiphyKind.STICKERS))
+        assertEquals("重查的又記一小時", 2, requests.size)
+    }
+
+    /** 注音還在選字：打字停下來時先不查（一小時只有 100 次）；英文、拼音、選好的中文照常查 */
+    @Test fun zhuyinBeingTypedIsNotSearched() {
+        for (t in listOf("ㄅㄠˋ", "抱ㄅㄠ", "ㄅ", "ㆠ", "好ˇ", "晚ㄢ˙")) assertTrue(t, Giphy.hasZhuyin(t))
+        for (t in listOf("抱抱", "hug", "baobao", "晚安 good night", "", "😀")) assertFalse(t, Giphy.hasZhuyin(t))
+    }
+
+    /** 貼圖的圖片記在記憶體裡（Coil 不記會動的圖）：同一個網址只下載一次；不是 GIPHY 的圖、不是 200、太大的不記；放不下時丟掉最久沒用到的 */
+    @Test fun stickerImagesAreKeptInMemory() {
+        val client = giphyHttp.newBuilder().addInterceptor(GiphyMediaCache(maxBytes = 250, maxEntry = 100)).addInterceptor { chain ->
+            val req = chain.request()
+            requests += req
+            val path = req.url.encodedPath
+            Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(if ("/missing/" in path) 404 else 200).message("X")
+                .header("Content-Type", "image/webp")
+                .body(ByteArray(if ("/big/" in path) 101 else 80) { path.length.toByte() }.toResponseBody("image/webp".toMediaType())).build()
+        }.build()
+        fun get(url: String) = client.newCall(Request.Builder().url(url).build()).execute().use { Triple(it.code, it.header("Content-Type"), it.body!!.bytes().size) }
+        fun hits(url: String) = requests.count { it.url.toString() == url }
+
+        val a = "https://media.giphy.com/media/aaa/200w.webp"
+        assertEquals(Triple(200, "image/webp", 80), get(a))
+        assertEquals("從記憶體拿的一模一樣", Triple(200, "image/webp", 80), get(a))
+        assertEquals("同一張只下載一次", 1, hits(a))
+        // API 給的網址：media0–4.giphy.com，後面的追蹤參數原封不動算在網址裡
+        val b = "https://media2.giphy.com/media/v1.Y2lk/bbb/200w_d.webp?cid=c4cfd7d7&rid=200w_d.webp&ct=s"
+        get(b)
+        get(b)
+        assertEquals(1, hits(b))
+        // 不記：搜尋的 API、找不到（404）、太大的（還是整張都拿得到）
+        val big = "https://media.giphy.com/media/big/200w.webp"
+        for (u in listOf("https://api.giphy.com/v1/stickers/trending?api_key=$key", "https://media.giphy.com/media/missing/200w.webp", big)) {
+            assertEquals(u, get(u), get(u))
+            assertEquals(u, 2, hits(u))
+        }
+        assertEquals(101, get(big).third)
+        // 放不下了（最多 250 bytes，一張 80）：丟掉最久沒用到的那張
+        val c = "https://i.giphy.com/ccc.webp"
+        val d = "https://media.giphy.com/media/ddd/200w.webp"
+        get(c)
+        get(a)
+        get(d)
+        for (u in listOf(a, c, d)) get(u)
+        assertEquals(listOf(1, 1, 1), listOf(a, c, d).map(::hits))
+        get(b)
+        assertEquals("最久沒用到的被丟掉了", 2, hits(b))
     }
 
     @Test fun checksTheKeyWithOneTrendingSticker() = runBlocking<Unit> {

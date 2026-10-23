@@ -5,11 +5,13 @@ import tw.xiaoliangkou.app.core.Cycle
 import tw.xiaoliangkou.app.core.Dates
 import tw.xiaoliangkou.app.core.Geo
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.Comfort
 import tw.xiaoliangkou.app.data.Expense
 import tw.xiaoliangkou.app.data.Mood
 import tw.xiaoliangkou.app.data.toInstantOrNull
 import java.time.Instant
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 /** 由 AppState 算出畫面要顯示的內容 */
 object Derived {
@@ -28,6 +30,18 @@ object Derived {
             .maxByOrNull { it.first }?.second
 
     fun partnerNeedsComfort(s: AppState) = Catalog.mood(moodToday(s, s.partner?.id)?.mood)?.needsComfort == true
+
+    /** 首頁「收到的安撫」只看最近幾天收到的 */
+    const val RECEIVED_DAYS = 3L
+
+    /**
+     * 首頁「收到的安撫」：最近 [RECEIVED_DAYS] 天收到、還沒看過的最新一則（s.comforts 新的在前）。
+     * 0.2.1 以前從來沒有標過看過：太久以前的不拿出來，更新後才不會把以前的安撫一則一則翻出來，也不會對很久以前的安撫「回抱」
+     */
+    fun receivedComfort(s: AppState, now: Instant = Instant.now()): Comfort? {
+        val since = now.minus(RECEIVED_DAYS, ChronoUnit.DAYS)
+        return s.comforts.firstOrNull { it.receiverId == s.myId && it.readAt == null && it.createdAt.toInstantOrNull()?.isAfter(since) == true }
+    }
 
     /** 對方在哪：標點名稱 > 移動方式 */
     fun partnerWhere(s: AppState): String {

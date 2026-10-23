@@ -102,8 +102,8 @@ import java.time.LocalDate
 
 @Composable
 fun HomeScreen(s: AppState, vm: AppViewModel, open: (String) -> Unit, sheet: (SheetSpec) -> Unit) {
-    // 收到、還沒看過的安撫（最新的一則）：放在手機狀態上面，一打開就看得到
-    val received = s.comforts.firstOrNull { it.receiverId == s.myId && it.readAt == null }
+    // 最近收到、還沒看過的安撫（最新的一則）：放在手機狀態上面，一打開就看得到
+    val received = Derived.receivedComfort(s)
     // 每一項都有 key：安撫的卡片出現、消失時，畫面不會跳
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item(key = "top") { TopBar(s, open) }
@@ -144,7 +144,8 @@ private fun ReceivedComfort(s: AppState, vm: AppViewModel, c: Comfort) {
         )
         ButtonRow {
             CuteButton("回抱 🤗", small = true, enabled = !vm.busy) {
-                vm.act("已經抱抱 ${s.partnerName} 🤗", hearts = true) { it.sendComfort("hug", null); it.readComfort(c.id) }
+                // 先標成看過（卡片馬上收起來）再抱：標不起來就不送，送出去後也不會因為卡片還在又抱一次
+                vm.act("已經抱抱 ${s.partnerName} 🤗", hearts = true) { it.readComfort(c.id); it.sendComfort("hug", null) }
             }
             // 卡片是粉紅色的：「收到了」用白底才看得出是按鈕
             CuteButton("收到了", small = true, color = Cute.colors.card, contentColor = MaterialTheme.colorScheme.primary, enabled = !vm.busy) { vm.act { it.readComfort(c.id) } }

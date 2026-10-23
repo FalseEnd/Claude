@@ -152,6 +152,13 @@ class ProfileScreensTest {
     fun partnerProfileLongSizes() {
         shot("41b_partner_profile_long_sizes") { PartnerProfileScreen(longSizes, vm, {}) {} }
         assertNothingCut()
+        // 一排的兩格一樣高：衣服尺寸換成兩行時，旁邊的鞋子尺寸也跟著變高
+        val clothes = compose.onNode(hasText("衣服尺寸")).getBoundsInRoot()
+        val shoes = compose.onNode(hasText("鞋子尺寸")).getBoundsInRoot()
+        assertEquals(clothes.top, shoes.top)
+        assertEquals(clothes.bottom, shoes.bottom)
+        // 一格一起唸：標題和數值在同一個節點
+        compose.onNode(hasText("衣服尺寸") and hasText("L、XL希望寬鬆一點")).assertExists()
     }
 
     @Test @Config(qualifiers = "w360dp-h1800dp-xhdpi", fontScale = 1.6f)
