@@ -391,6 +391,10 @@ test('心情、安撫、離線補送', { skip }, async () => {
   await ok(A, 'app_send_comfort', { kind: 'pat' });
   B.sock = await connect(B);
   await B.sock.next((m) => m.type === 'notification' && /摸摸你的頭/.test(m.title));
+  // 打開歷史紀錄：收到的、還沒看過的一次全部標成看過
+  assert.ok((await ok(B, 'app_comforts', { limit: 50 })).some((x) => x.receiverId === B.id && !x.readAt));
+  assert.deepEqual(await ok(B, 'app_read_comfort', { all: true }), { ok: true });
+  assert.ok((await ok(B, 'app_comforts', { limit: 50 })).filter((x) => x.receiverId === B.id).every((x) => x.readAt));
 });
 
 test('GIPHY 貼圖：心情和安撫附上貼圖 id，通知也帶著；API key 兩個人都讀得到，但不會出現在通知或歷史紀錄', { skip }, async () => {
