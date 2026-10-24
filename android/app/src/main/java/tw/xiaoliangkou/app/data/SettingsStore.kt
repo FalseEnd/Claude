@@ -10,7 +10,9 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import tw.xiaoliangkou.app.core.StepCounter
 import tw.xiaoliangkou.app.ui.StatusText
 
@@ -97,22 +99,28 @@ class SettingsStore(private val context: Context) {
 
     suspend fun load(): Prefs = read(context.dataStore.data.first())
 
-    suspend fun setDemo() = context.dataStore.edit { it[K.mode] = Mode.DEMO.name }
+    /**
+     * DataStore 會在呼叫的那個協程裡執行 [block]：一律換到 IO 執行緒，寫檔不卡畫面，
+     * 呼叫的協程（例如主執行緒上的）停住時也不會讓之後的寫入一直等
+     */
+    private suspend fun edit(block: suspend (MutablePreferences) -> Unit) = withContext(Dispatchers.IO) { context.dataStore.edit(block) }
+
+    suspend fun setDemo() = edit { it[K.mode] = Mode.DEMO.name }
 
     /** 測試連線成功後存起來 */
-    suspend fun setSupabase(url: String, key: String) = context.dataStore.edit {
+    suspend fun setSupabase(url: String, key: String) = edit {
         it[K.supabaseUrl] = url
         it[K.supabaseKey] = key
     }
 
     /** 登入或註冊成功 */
-    suspend fun setSession(s: Session) = context.dataStore.edit {
+    suspend fun setSession(s: Session) = edit {
         it[K.mode] = Mode.REMOTE.name
         writeSession(it, s)
     }
 
     /** token 換新：只在還是登入狀態時更新，避免登出後又被寫回去 */
-    suspend fun updateSession(s: Session) = context.dataStore.edit {
+    suspend fun updateSession(s: Session) = edit {
         if (it[K.mode] == Mode.REMOTE.name && it[K.userId] == s.userId) writeSession(it, s)
     }
 
@@ -125,28 +133,28 @@ class SettingsStore(private val context: Context) {
     }
 
     /** 登出：清掉登入狀態，保留 Supabase 網址、金鑰與 Email，方便重新登入 */
-    suspend fun clear() = context.dataStore.edit {
+    suspend fun clear() = edit {
         listOf(K.mode, K.accessToken, K.refreshToken, K.userId).forEach { k -> it.remove(k) }
         it.remove(K.expiresAt); it.remove(K.insidePlaces); it.remove(K.onboarded); it.remove(K.recentStickers)
         K.legacy.forEach { k -> it.remove(k) }
     }
 
-    suspend fun setOnboarded(v: Boolean) = context.dataStore.edit { it[K.onboarded] = v }
-    suspend fun setAutoBookkeeping(v: Boolean) = context.dataStore.edit { it[K.autoBookkeeping] = v }
-    suspend fun setStatusNotification(v: Boolean) = context.dataStore.edit { it[K.statusNotification] = v }
-    suspend fun setStatusItems(items: Set<String>) = context.dataStore.edit { it[K.statusItems] = items }
-    suspend fun setMorningWeather(on: Boolean, minutes: Int) = context.dataStore.edit {
+    suspend fun setOnboarded(v: Boolean) = edit { it[K.onboarded] = v }
+    suspend fun setAutoBookkeeping(v: Boolean) = edit { it[K.autoBookkeeping] = v }
+    suspend fun setStatusNotification(v: Boolean) = edit { it[K.statusNotification] = v }
+    suspend fun setStatusItems(items: Set<String>) = edit { it[K.statusItems] = items }
+    suspend fun setMorningWeather(on: Boolean, minutes: Int) = edit {
         it[K.morningWeather] = on
         it[K.morningMinutes] = minutes.coerceIn(0, 24 * 60 - 1)
     }
 
     /** 選了一張貼圖：放到「最近用過」的最前面 */
-    suspend fun addRecentSticker(id: String) = context.dataStore.edit {
+    suspend fun addRecentSticker(id: String) = edit {
         if (Giphy.isValidId(id)) it[K.recentStickers] = (listOf(id) + stickers(it[K.recentStickers])).distinct().take(RECENT_STICKERS).joinToString(",")
     }
 
     suspend fun insidePlaces(): Set<String> = context.dataStore.data.first()[K.insidePlaces] ?: emptySet()
-    suspend fun setInsidePlaces(ids: Set<String>) = context.dataStore.edit { it[K.insidePlaces] = ids }
+    suspend fun setInsidePlaces(ids: Set<String>) = edit { it[K.insidePlaces] = ids }
 
     /** 今天到目前為止的步數（背景服務最後一次讀到的）；今天還沒讀到是 null */
     suspend fun stepsSoFar(day: Long): Int? {
@@ -160,7 +168,7 @@ class SettingsStore(private val context: Context) {
     /** 今日步數（換算方式見 [StepCounter]） */
     suspend fun stepsToday(r: StepCounter.Reading): Int {
         var steps = 0L
-        context.dataStore.edit {
+        edit {
             val day = it[K.stepDay]
             val prev = if (day == null) null else StepCounter.State(
                 day = day,
