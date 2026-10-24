@@ -97,10 +97,10 @@ fun MoodScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.containe
         item {
             CuteCard {
                 Text("你現在覺得…", style = MaterialTheme.typography.titleLarge)
-                GroupedChoices(Catalog.moodGroups, { !it.extra || s.moreMoodsReady || it.key == pick }) { m, modifier ->
+                GroupedChoices(Catalog.moodGroups, { s.canPick(it.since) || it.key == pick }) { m, modifier ->
                     MoodBubble(m.emoji, m.label, pick == m.key, modifier) { pick = m.key }
                 }
-                if (!s.moreMoodsReady) MoreChoicesHint(s, "心情")
+                if (Catalog.moods.any { !s.canPick(it.since) }) MoreChoicesHint(s, "心情")
                 // 沒有分享心情時對方看不到，貼圖也一樣
                 val hint = if (s.mySharing?.shareMood == true) STICKER_HINT else "選填（目前沒有分享心情，對方看不到）"
                 StickerChoice(s, vm, sticker, Catalog.mood(pick)?.let { it.label to it.giphyQuery }, giphy, hint) { sticker = it }
@@ -237,10 +237,10 @@ fun ComfortSheet(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.contai
             Text("安撫 ${s.partnerName} 🤗", style = MaterialTheme.typography.titleLarge)
             Text("${s.partnerName} 的手機會立刻跳出通知", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        GroupedChoices(Catalog.comfortGroups, { !it.extra || s.moreMoodsReady }) { c, modifier ->
+        GroupedChoices(Catalog.comfortGroups, { s.canPick(it.since) }) { c, modifier ->
             MoodBubble(c.emoji, c.label, pick == c.key, modifier) { pick = c.key }
         }
-        if (!s.moreMoodsReady) MoreChoicesHint(s, "安撫")
+        if (Catalog.comforts.any { !s.canPick(it.since) }) MoreChoicesHint(s, "安撫")
         StickerChoice(s, vm, sticker, Catalog.comfort(pick)?.let { it.label to it.giphyQuery }, giphy) { sticker = it }
         CuteField(message, { message = it.take(200) }, "悄悄話（選填）", placeholder = "辛苦了，晚上帶你去吃好吃的", singleLine = false)
         CuteButton("送出${Catalog.comfort(pick)?.label}", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Send, enabled = !vm.busy) {

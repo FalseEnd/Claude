@@ -274,15 +274,15 @@ class RemoteRepository(
     // 送出去了就是送出去了：重新整理失敗（網路不穩）不能說失敗，不然使用者再按一次，對方就收到兩次
     override suspend fun postMood(mood: String, note: String?, sticker: String?) {
         val s = checkSticker(sticker)
-        val extra = checkMoreMoods(Catalog.mood(mood)?.extra == true)
-        val row = moreMoods(extra) { apiCall { api.postMood(buildJsonObject { put("mood", mood); put("note", note ?: ""); if (s != null) put("sticker", s) }) } }
+        val since = checkMoreMoods(Catalog.mood(mood)?.since ?: 0)
+        val row = moreMoods(since) { apiCall { api.postMood(buildJsonObject { put("mood", mood); put("note", note ?: ""); if (s != null) put("sticker", s) }) } }
         reloadQuietly(::loadMoods)
         stickerSaved(s, row.sticker, MOOD_STICKER_NOT_SAVED)
     }
     override suspend fun sendComfort(kind: String, message: String?, sticker: String?) {
         val s = checkSticker(sticker)
-        val extra = checkMoreMoods(Catalog.comfort(kind)?.extra == true)
-        val row = moreMoods(extra) { apiCall { api.postComfort(buildJsonObject { put("kind", kind); put("message", message ?: ""); if (s != null) put("sticker", s) }) } }
+        val since = checkMoreMoods(Catalog.comfort(kind)?.since ?: 0)
+        val row = moreMoods(since) { apiCall { api.postComfort(buildJsonObject { put("kind", kind); put("message", message ?: ""); if (s != null) put("sticker", s) }) } }
         reloadQuietly(::loadComforts)
         stickerSaved(s, row.sticker, COMFORT_STICKER_NOT_SAVED)
     }
@@ -307,20 +307,20 @@ class RemoteRepository(
     /** 記下資料庫還沒有貼圖（之後回到 App 會再檢查一次） */
     private fun stickersBehind() = _state.update { it.copy(dbSchema = (it.dbSchema ?: STICKER_SCHEMA).coerceAtMost(STICKER_SCHEMA - 1)) }
 
-    /** 0.2.3 才多的心情、安撫（[extra]）：資料庫還存不了就先擋下來 */
-    private fun checkMoreMoods(extra: Boolean): Boolean {
+    /** 後來才多的心情、安撫（資料庫要到 schema [since]）：資料庫還存不了就先擋下來 */
+    private fun checkMoreMoods(since: Int): Int {
         val st = _state.value
-        if (extra && st.schemaOutdated) throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
-        if (extra && st.moodsOutdated) throw AppException(MOODS_OUTDATED, MOODS_OUTDATED_CODE)
-        return extra
+        if (since > 0 && st.schemaOutdated) throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
+        if (!st.canPick(since)) throw AppException(MOODS_OUTDATED, MOODS_OUTDATED_CODE)
+        return since
     }
 
     /** 還不知道資料庫的版本就送了新的種類，被舊的資料庫的 check 擋下來：記下資料庫還是舊的，說要更新 */
-    private suspend fun <T> moreMoods(extra: Boolean, send: suspend () -> T): T = try {
+    private suspend fun <T> moreMoods(since: Int, send: suspend () -> T): T = try {
         send()
     } catch (e: AppException) {
-        if (!extra || e.code != "invalid_input") throw e
-        _state.update { it.copy(dbSchema = (it.dbSchema ?: MOODS_SCHEMA).coerceAtMost(MOODS_SCHEMA - 1)) }
+        if (since == 0 || e.code != "invalid_input") throw e
+        _state.update { it.copy(dbSchema = (it.dbSchema ?: MOODS_SCHEMA).coerceAtMost(since - 1)) }
         throw AppException(MOODS_OUTDATED, MOODS_OUTDATED_CODE, e.status)
     }
 
@@ -635,8 +635,8 @@ class RemoteRepository(
         const val DEVICE_SCHEMA = 3
         /** 有 GIPHY 貼圖的資料庫版本：沒有的話心情、安撫照樣能送，只是不能附貼圖 */
         const val STICKER_SCHEMA = 4
-        /** 有 0.2.3 多的心情和安撫的資料庫版本：沒有的話只能選原本的 */
-        const val MOODS_SCHEMA = 5
+        /** 有最新的心情和安撫的資料庫版本（5 是 0.2.3 多的，6 是 0.2.6 再多的安撫）：沒有的話只能選原本的 */
+        const val MOODS_SCHEMA = 6
 
         const val STICKERS_OUTDATED_CODE = "stickers_outdated"
         /** 舊的資料庫（schema 3 以前）存不了貼圖 */

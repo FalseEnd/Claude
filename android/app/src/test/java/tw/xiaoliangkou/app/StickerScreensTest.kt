@@ -891,6 +891,9 @@ class StickerScreensTest {
         assertTrue(has("可以再更新一次資料庫（更多心情和安撫）📱"))
         st = st.copy(dbSchema = 5)
         compose.waitForIdle()
+        assertTrue(has("可以再更新一次資料庫（更多安撫）📱"))
+        st = st.copy(dbSchema = 6)
+        compose.waitForIdle()
         assertTrue(has("連線、邀請另一半、GIPHY 貼圖、改密碼、登出"))
     }
 

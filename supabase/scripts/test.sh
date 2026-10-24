@@ -46,8 +46,8 @@ quiet() { local out; out="$("$@" 2>&1)" || { echo "$out" >&2; return 1; }; }
 run_sql() { quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -f "$1"; }
 backlog() { quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -v step="$1" -f supabase/tests/comfort_backlog.sql; }
 smoke() { psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -f supabase/tests/rls_smoke.sql 2>&1 | sed 's/^psql:[^ ]* NOTICE:  //'; }
-schema_is_5() {
-  [ "$(psql "$DATABASE_URL" -X -tAc "select public.app_health()->>'schema'")" = 5 ] || { echo "app_health 沒有回傳 schema 5" >&2; exit 1; }
+schema_is_latest() {
+  [ "$(psql "$DATABASE_URL" -X -tAc "select public.app_health()->>'schema'")" = 6 ] || { echo "app_health 沒有回傳 schema 6" >&2; exit 1; }
 }
 
 echo "== 舊版資料庫執行 upgrade-v2.sql（兩次）"
@@ -55,13 +55,13 @@ quiet "${sb[@]}" db reset --version 20261015000004
 quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -c "insert into storage.buckets (id, name, public) values ('media', 'media', true)"
 run_sql supabase/upgrade-v2.sql
 run_sql supabase/upgrade-v2.sql
-schema_is_5
+schema_is_latest
 quiet smoke
 
 echo "== 跑過舊的 upgrade-v2.sql 的資料庫再執行新的 upgrade-v2.sql（加上手機名稱、電信與 GIPHY 貼圖）"
 quiet "${sb[@]}" db reset --version 20261016000005
 run_sql supabase/upgrade-v2.sql
-schema_is_5
+schema_is_latest
 quiet smoke
 
 echo "== 以前收到的安撫只在第一次執行新的 upgrade-v2.sql 時標成看過"
@@ -75,13 +75,13 @@ backlog again
 echo "== 0.2.1 的資料庫再執行新的 upgrade-v2.sql（加上 GIPHY 貼圖）"
 quiet "${sb[@]}" db reset --version 20261017000006
 run_sql supabase/upgrade-v2.sql
-schema_is_5
+schema_is_latest
 quiet smoke
 
 echo "== 0.2.2 的資料庫再執行新的 upgrade-v2.sql（加上更多心情和安撫）"
 quiet "${sb[@]}" db reset --version 20261020000007
 run_sql supabase/upgrade-v2.sql
-schema_is_5
+schema_is_latest
 quiet smoke
 
 echo "== 新專案執行 setup.sql"
@@ -91,7 +91,7 @@ mkdir -p "$empty/supabase/migrations"
 cp supabase/config.toml "$empty/supabase/"
 quiet "${sb[@]}" db reset --workdir "$empty"
 run_sql supabase/setup.sql
-schema_is_5
+schema_is_latest
 quiet smoke
 
 echo "== 套用 migrations"

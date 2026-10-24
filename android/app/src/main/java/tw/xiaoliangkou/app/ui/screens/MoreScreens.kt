@@ -488,10 +488,14 @@ fun AccountScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.conta
 
 /**
  * 新功能都能用了，再執行一次 upgrade-v2.sql 還會多出來的：（短的名稱, 一行說明）。
- * 跑過舊版 upgrade-v2.sql 的資料庫：schema 2 沒有手機名稱與電信，schema 3 以前沒有 GIPHY 貼圖，schema 4 以前沒有更多心情和安撫
+ * 跑過舊版 upgrade-v2.sql 的資料庫：schema 2 沒有手機名稱與電信，schema 3 以前沒有 GIPHY 貼圖，schema 4 以前沒有更多心情和安撫，schema 5 以前沒有 0.2.6 再多的安撫
  */
 internal fun upgradeGains(s: AppState): List<Pair<String, String>> = listOfNotNull(
-    ("更多心情和安撫" to "😊 心情多到 21 種、安撫多到 15 種").takeIf { s.moodsOutdated },
+    when {
+        !s.moodsOutdated -> null
+        s.canPick(5) -> "更多安撫" to "💞 安撫多到 ${Catalog.comforts.size} 種"
+        else -> "更多心情和安撫" to "😊 心情多到 ${Catalog.moods.size} 種、安撫多到 ${Catalog.comforts.size} 種"
+    },
     ("GIPHY 貼圖" to "🧸 心情和安撫可以附上 GIPHY 貼圖").takeIf { s.stickersOutdated },
     ("手機名稱、電信" to "📱 看得到對方的手機名稱和電信").takeIf { s.deviceInfoOutdated },
 )

@@ -107,7 +107,7 @@ internal fun QuickComfort(s: AppState, send: (String?) -> Unit, close: () -> Uni
             if (s.partnerSharing?.locationLive == true) {
                 SoftButton("📍 ${s.partnerName} 現在在哪？", Modifier.fillMaxWidth(), icon = Icons.Rounded.MyLocation) { send(null) }
             }
-            GroupedChoices(Catalog.comfortGroups, { !it.extra || s.moreMoodsReady }) { c, modifier ->
+            GroupedChoices(Catalog.comfortGroups, { s.canPick(it.since) }) { c, modifier ->
                 MoodBubble(c.emoji, c.label, picked == c.key, modifier) {
                     picked = c.key
                     send(c.key)

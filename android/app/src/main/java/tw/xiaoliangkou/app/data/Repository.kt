@@ -58,10 +58,12 @@ data class AppState(
      * 還不知道版本時先當作可以，送出去才發現沒存到會再說
      */
     val stickersReady get() = !schemaOutdated && (dbSchema ?: RemoteRepository.STICKER_SCHEMA) >= RemoteRepository.STICKER_SCHEMA
-    /** 資料庫還沒有 0.2.3 多的心情和安撫（schema 4 以前）：原本的選項照樣能用，再跑一次 upgrade-v2.sql 就好 */
+    /** 資料庫還沒有最新的心情和安撫（0.2.3 的 schema 5、0.2.6 的 schema 6）：原本的選項照樣能用，再跑一次 upgrade-v2.sql 就好 */
     val moodsOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.MOODS_SCHEMA
-    /** 能選 0.2.3 多的心情和安撫（schema 5 以後）；還不知道版本時先當作可以，送出去被擋下來會再說 */
-    val moreMoodsReady get() = !schemaOutdated && (dbSchema ?: RemoteRepository.MOODS_SCHEMA) >= RemoteRepository.MOODS_SCHEMA
+    /** 全部的心情和安撫都能選；還不知道版本時先當作可以，送出去被擋下來會再說 */
+    val moreMoodsReady get() = canPick(RemoteRepository.MOODS_SCHEMA)
+    /** 資料庫存得進去 schema [since] 才多的心情、安撫（0＝一開始就有的，一定可以） */
+    fun canPick(since: Int) = since == 0 || (!schemaOutdated && (dbSchema ?: RemoteRepository.MOODS_SCHEMA) >= since)
     /** 兩個人共用的 GIPHY API key，還沒設定是 null */
     val giphyKey get() = couple?.giphyKey?.takeIf { it.isNotBlank() }
 

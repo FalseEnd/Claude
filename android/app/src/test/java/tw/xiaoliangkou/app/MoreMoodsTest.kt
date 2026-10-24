@@ -119,8 +119,8 @@ class MoreMoodsTest {
         throw AssertionError("應該要失敗：$code")
     }
 
-    @Test fun schemaFiveSendsTheNewOnes() = runBlocking<Unit> {
-        val r = repo(5)
+    @Test fun latestSchemaSendsTheNewOnes() = runBlocking<Unit> {
+        val r = repo(RemoteRepository.MOODS_SCHEMA)
         assertTrue(r.state.value.moreMoodsReady)
         assertFalse(r.state.value.moodsOutdated)
         rpc("app_post_mood") { mood(1, null) }
@@ -128,7 +128,34 @@ class MoreMoodsTest {
         assertEquals("\"jealous\"", calls("app_post_mood").single().json["mood"].toString())
         rpc("app_send_comfort") { comfort(5, "u-1", "u-2") }
         r.sendComfort("night", null)
-        assertEquals("\"night\"", calls("app_send_comfort").single().json["kind"].toString())
+        r.sendComfort("kitty", null)
+        assertEquals(listOf("\"night\"", "\"kitty\""), calls("app_send_comfort").map { it.json["kind"].toString() })
+    }
+
+    /** 跑過 0.2.3 的 upgrade-v2.sql（schema 5）：0.2.3 多的都能送，0.2.6 再多的安撫先擋下來 */
+    @Test fun schemaFiveRefusesOnlyTheNewestComforts() = runBlocking<Unit> {
+        val r = repo(5)
+        assertTrue(r.state.value.moodsOutdated)
+        assertFalse(r.state.value.moreMoodsReady)
+        rpc("app_post_mood") { mood(1, null) }
+        rpc("app_send_comfort") { comfort(5, "u-1", "u-2") }
+        r.postMood("jealous", null)
+        r.sendComfort("night", null)
+        val e = fails(RemoteRepository.MOODS_OUTDATED_CODE) { r.sendComfort("gift", null) }
+        assertTrue(e.message!!.contains("upgrade-v2.sql"))
+        assertEquals(1, calls("app_send_comfort").size)
+    }
+
+    /** 以為資料庫是新的，送了 0.2.6 的安撫卻被 schema 5 的 check 擋下來：記成 5，0.2.3 的照樣能選 */
+    @Test fun aSchemaFiveDatabaseRejectingANewComfortIsNoticed() = runBlocking<Unit> {
+        val r = repo(RemoteRepository.MOODS_SCHEMA)
+        rpc("app_send_comfort", status = 400) {
+            """{"code":"23514","message":"new row for relation \"comforts\" violates check constraint \"comforts_kind_check\""}"""
+        }
+        fails(RemoteRepository.MOODS_OUTDATED_CODE) { r.sendComfort("joke", null) }
+        assertEquals(5, r.state.value.dbSchema)
+        assertTrue(r.state.value.canPick(5))
+        assertFalse(r.state.value.canPick(6))
     }
 
     /** 跑過舊的 upgrade-v2.sql（schema 4）：原本的照常送，新的先擋下來、不送出去 */
@@ -174,7 +201,11 @@ class MoreMoodsTest {
         assertFalse(base.moodsOutdated)
         assertFalse(base.copy(dbSchema = 4).moreMoodsReady)
         assertTrue(base.copy(dbSchema = 4).moodsOutdated)
-        assertTrue(base.copy(dbSchema = 5).moreMoodsReady)
+        assertFalse(base.copy(dbSchema = 5).moreMoodsReady)
+        assertTrue(base.copy(dbSchema = 5).canPick(5))
+        assertFalse(base.copy(dbSchema = 5).canPick(6))
+        assertTrue(base.copy(dbSchema = 6).moreMoodsReady)
+        assertTrue("一開始就有的一定可以", base.copy(schemaOutdated = true, dbSchema = 0).canPick(0))
         assertFalse("0.1 的資料庫另外提醒", base.copy(schemaOutdated = true, dbSchema = 0).moodsOutdated)
         assertFalse(base.copy(schemaOutdated = true, dbSchema = 0).moreMoodsReady)
     }
@@ -212,7 +243,7 @@ class MoreMoodsTest {
     @Test fun comfortsMatchTheDatabase() {
         assertEquals(Catalog.comforts.map { it.key }.toSet() + "custom", lastList("add constraint comforts_kind_check check (kind in (").toSet())
         assertEquals(Catalog.comforts.associate { it.key to it.push }, lastCases("comfort_text"))
-        assertEquals("15 種安撫", 15, Catalog.comforts.size)
+        assertEquals("29 種安撫", 29, Catalog.comforts.size)
         assertEquals("沒有重複的", Catalog.comforts.size, Catalog.comforts.map { it.key }.toSet().size)
     }
 
@@ -223,5 +254,17 @@ class MoreMoodsTest {
             Regex("'([^']*)'").findAll(v1.substringAfter("create table public.$table (").substringAfter(prefix).substringBefore(")")).map { it.groupValues[1] }.toSet()
         assertEquals(Catalog.moods.filterNot { it.extra }.map { it.key }.toSet(), list("moods", "check (mood in ("))
         assertEquals(Catalog.comforts.filterNot { it.extra }.map { it.key }.toSet() + "custom", list("comforts", "check (kind in ("))
+    }
+
+    /** since = 5 的正好是 0.2.3 的資料庫多的，since = 6 的是 0.2.6 再多的 */
+    @Test fun sinceMatchesTheMigrationThatAddedIt() {
+        fun kinds(file: String) = Regex("'([^']*)'").findAll(
+            File("../../supabase/migrations/$file").readText().substringAfter("add constraint comforts_kind_check check (kind in (").substringBefore(")"),
+        ).map { it.groupValues[1] }.toSet()
+        val v5 = kinds("20261024000008_more_moods.sql")
+        val v6 = kinds("20261024000009_more_comforts.sql")
+        assertEquals(v5 - "custom", Catalog.comforts.filter { it.since <= 5 }.map { it.key }.toSet())
+        assertEquals(v6 - v5, Catalog.comforts.filter { it.since == 6 }.map { it.key }.toSet())
+        assertTrue(Catalog.comforts.all { it.since in setOf(0, 5, 6) })
     }
 }

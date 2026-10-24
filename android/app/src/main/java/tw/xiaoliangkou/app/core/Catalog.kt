@@ -2,7 +2,7 @@ package tw.xiaoliangkou.app.core
 
 /** 心情、安撫、消費類別、來源的文字與表情符號 */
 object Catalog {
-    /** 畫面上的一組選項（心情、安撫都分成三組，選項多了比較好找） */
+    /** 畫面上的一組選項（心情分成三組、安撫分成四組，選項多了比較好找） */
     data class Group<T>(val title: String, val items: List<T>)
 
     /**
@@ -11,9 +11,11 @@ object Catalog {
      */
     data class Mood(val key: String, val label: String, val emoji: String, val valence: Int, val giphyQuery: String, val extra: Boolean = false) {
         val needsComfort get() = valence < 0
+        /** 資料庫要到哪一版才存得進去（0＝一開始就有） */
+        val since get() = if (extra) 5 else 0
     }
 
-    // 種類和文字要和資料庫一樣（supabase/migrations/20261024000008_more_moods.sql；CatalogSqlTest 會比對）
+    // 種類和文字要和資料庫一樣（supabase/migrations/20261024000008_more_moods.sql、…09_more_comforts.sql；MoreMoodsTest 會比對）
     val moodGroups = listOf(
         Group(
             "好心情",
@@ -58,7 +60,10 @@ object Catalog {
 
     fun mood(key: String?) = moods.firstOrNull { it.key == key }
 
-    data class Comfort(val key: String, val label: String, val emoji: String, val push: String, val giphyQuery: String, val extra: Boolean = false)
+    /** [since] 是資料庫要到哪一版才存得進去：0＝一開始就有，5＝0.2.3 多的，6＝0.2.6 多的 */
+    data class Comfort(val key: String, val label: String, val emoji: String, val push: String, val giphyQuery: String, val since: Int = 0) {
+        val extra get() = since > 0
+    }
 
     val comfortGroups = listOf(
         Group(
@@ -68,27 +73,46 @@ object Catalog {
                 Comfort("pat", "摸摸頭", "💆", "摸摸你的頭，說辛苦了", "head pat"),
                 Comfort("here", "我在", "💬", "說：我在，想聊隨時找我", "here for you"),
                 Comfort("cheer", "加油", "💪", "幫你加油打氣", "you can do it"),
-                Comfort("support", "挺你", "🛡️", "說永遠站在你這邊", "i got you", extra = true),
+                Comfort("support", "挺你", "🛡️", "說永遠站在你這邊", "i got you", since = 5),
                 Comfort("treat", "請你喝", "🥤", "說等等請你喝一杯", "bubble tea"),
+                Comfort("listen", "聽你說", "👂", "說想聽你說說今天", "i am listening", since = 6),
+                Comfort("holdhand", "牽手", "🤝", "牽起你的手", "holding hands", since = 6),
+                Comfort("proud", "你最棒", "🏆", "說你是最棒的", "proud of you", since = 6),
             ),
         ),
         Group(
             "甜蜜",
             listOf(
                 Comfort("kiss", "親親", "😘", "親了你一下", "kiss"),
-                Comfort("love", "愛你", "❤️", "說愛你", "love you", extra = true),
-                Comfort("missyou", "想你", "💭", "說好想你", "miss you", extra = true),
-                Comfort("flower", "送花", "💐", "送你一束花", "flowers for you", extra = true),
-                Comfort("morning", "早安", "☀️", "跟你說早安", "good morning", extra = true),
-                Comfort("night", "晚安", "🌙", "跟你說晚安，好夢", "good night", extra = true),
+                Comfort("love", "愛你", "❤️", "說愛你", "love you", since = 5),
+                Comfort("missyou", "想你", "💭", "說好想你", "miss you", since = 5),
+                Comfort("flower", "送花", "💐", "送你一束花", "flowers for you", since = 5),
+                Comfort("morning", "早安", "☀️", "跟你說早安", "good morning", since = 5),
+                Comfort("night", "晚安", "🌙", "跟你說晚安，好夢", "good night", since = 5),
+                Comfort("heart", "比心", "💗", "對你比了一個愛心", "finger heart", since = 6),
+                Comfort("cuddle", "蹭蹭", "🐻", "蹭蹭你撒嬌", "cuddle", since = 6),
+                Comfort("date", "想約會", "💑", "說想跟你約會", "date night", since = 6),
             ),
         ),
         Group(
             "關心",
             listOf(
-                Comfort("water", "多喝水", "💧", "提醒你記得多喝水", "drink water", extra = true),
-                Comfort("meal", "吃飯沒", "🍱", "問你吃飯了沒", "lets eat", extra = true),
-                Comfort("rest", "早點睡", "🛌", "叫你早點休息", "go to sleep", extra = true),
+                Comfort("water", "多喝水", "💧", "提醒你記得多喝水", "drink water", since = 5),
+                Comfort("meal", "吃飯沒", "🍱", "問你吃飯了沒", "lets eat", since = 5),
+                Comfort("rest", "早點睡", "🛌", "叫你早點休息", "go to sleep", since = 5),
+                Comfort("warm", "穿暖", "🧣", "提醒你穿暖一點", "stay warm", since = 6),
+                Comfort("gethome", "到家沒", "🏠", "問你到家了沒", "home safe", since = 6),
+                Comfort("safe", "路上小心", "🚗", "叫你路上小心", "be safe", since = 6),
+            ),
+        ),
+        Group(
+            "逗你開心",
+            listOf(
+                Comfort("joke", "冷笑話", "🤡", "講了一個冷笑話給你", "bad joke", since = 6),
+                Comfort("silly", "扮鬼臉", "😜", "對你扮了一個鬼臉", "silly face", since = 6),
+                Comfort("kitty", "送小貓", "🐱", "送你一隻可愛的小貓", "cute kitten", since = 6),
+                Comfort("dessert", "吃甜點", "🍰", "說要請你吃甜點", "dessert", since = 6),
+                Comfort("gift", "小禮物", "🎁", "說準備了小禮物給你", "gift for you", since = 6),
             ),
         ),
     )

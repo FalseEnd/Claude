@@ -81,7 +81,7 @@ class ReviewFix4Test {
     private val paired = """{"user":{"id":"u-1","displayName":"阿哲"},"couple":{"id":"c-1"},"partner":{"id":"u-2","displayName":"小雨"},"partnerOnline":false}"""
     private val single = """{"user":{"id":"u-1","displayName":"阿哲"},"partnerOnline":false}"""
     private val v1Health = """{"ok":true,"time":"2026-10-16T00:00:00Z"}"""
-    private val v2Health = """{"ok":true,"schema":5}"""
+    private val v2Health = """{"ok":true,"schema":${RemoteRepository.MOODS_SCHEMA}}"""
 
     private fun memo(id: String, user: String, shared: Boolean, pinned: Boolean = false, media: String = "[]") =
         """{"id":"$id","userId":"$user","title":"便利貼","body":"","media":$media,"shared":$shared,"pinned":$pinned,"color":"pink","createdAt":"2026-10-15T02:16:21+00:00"}"""
