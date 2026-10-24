@@ -80,6 +80,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import tw.xiaoliangkou.app.data.Banner
 import tw.xiaoliangkou.app.data.SettingsStore
+import tw.xiaoliangkou.app.data.toInstantOrNull
 import tw.xiaoliangkou.app.ui.components.BannerCard
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.HeartBurstOverlay
@@ -132,7 +133,8 @@ import java.time.LocalDate
 
 /** 底部面板的種類 */
 sealed interface SheetSpec {
-    data object Comfort : SheetSpec
+    /** 安撫：[replyTo] 是要回應的那則收到的安撫（點收到安撫的通知打開的） */
+    data class Comfort(val replyTo: Long? = null) : SheetSpec
     data class GuessIt(val id: String) : SheetSpec
     data class ExpenseEdit(val id: String?) : SheetSpec
     data class ExpenseView(val id: String) : SheetSpec
@@ -286,11 +288,25 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
     var calendarJump by remember { mutableStateOf<Pair<LocalDate, Long>?>(null) }
     val tabIds = TABS.map { it.first }
     val open: (String) -> Unit = { target ->
-        // 生活紀錄的通知：「calendar/2026-10-15」直接打開那一天
-        val r = if (target.startsWith("calendar/")) {
-            runCatching { LocalDate.parse(target.substringAfter('/')) }.getOrNull()?.let { calendarJump = it to System.nanoTime() }
-            "calendar"
-        } else target
+        val r = when {
+            // 生活紀錄、紀念日的通知：「calendar/2026-10-15」直接打開那一天
+            target.startsWith("calendar/") -> {
+                runCatching { LocalDate.parse(target.substringAfter('/')) }.getOrNull()?.let { calendarJump = it to System.nanoTime() }
+                "calendar"
+            }
+            // 約會的通知：打開那一天，在那裡答應、婉拒（還沒載入的話就是日曆）
+            target.startsWith("event/") -> {
+                s.events.firstOrNull { it.id == target.substringAfter('/') }?.startsAt?.toInstantOrNull()
+                    ?.let { calendarJump = Fmt.localDate(it) to System.nanoTime() }
+                "calendar"
+            }
+            // 收到安撫、對方心情不好的通知、常駐通知的「更多安撫」：首頁打開安撫（「comfort/12」是回應那一則）
+            target == "comfort" || target.startsWith("comfort/") -> {
+                sheet = SheetSpec.Comfort(target.substringAfter('/', "").toLongOrNull())
+                "home"
+            }
+            else -> target
+        }
         if (r in tabIds) nav.navigate(r) {
             popUpTo(nav.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true
@@ -375,7 +391,7 @@ private fun SheetHost(s: tw.xiaoliangkou.app.data.AppState, vm: AppViewModel, cu
     val guarded = current is SheetSpec.DayEntryEdit || current is SheetSpec.MemoEdit || current is SheetSpec.NoteEdit
     XlkSheet(guarded, close) {
         when (current) {
-            SheetSpec.Comfort -> ComfortSheet(s, vm, close = close)
+            is SheetSpec.Comfort -> ComfortSheet(s, vm, replyTo = current.replyTo, close = close)
             is SheetSpec.GuessIt -> GuessSheet(s, vm, current.id, close)
             is SheetSpec.ExpenseEdit -> ExpenseEditSheet(s, vm, current.id, close)
             is SheetSpec.ExpenseView -> ExpenseViewSheet(s, current.id, close)

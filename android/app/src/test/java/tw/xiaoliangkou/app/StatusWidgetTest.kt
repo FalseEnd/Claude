@@ -35,6 +35,7 @@ import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.Sharing
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.ServiceNotice
+import tw.xiaoliangkou.app.service.StatusActionReceiver
 import tw.xiaoliangkou.app.ui.StatusText
 import tw.xiaoliangkou.app.widget.PartnerWidget
 import tw.xiaoliangkou.app.widget.TogetherWidget
@@ -107,7 +108,17 @@ class StatusWidgetTest {
         assertEquals(Notifier.CH_STATUS, n.channelId)
         assertTrue(n.extras.getCharSequence(Notification.EXTRA_TITLE).toString().startsWith("小雨 在"))
         assertNotNull(n.getLargeIcon())
-        assertEquals(listOf("📍 現在在哪？", "🤗 抱抱"), n.actions.map { it.title.toString() })
+        assertEquals(listOf("📍 現在在哪？", "🤗 抱抱", "💞 更多安撫"), n.actions.map { it.title.toString() })
+        // 「更多安撫」打開 App 的安撫
+        val more = Shadows.shadowOf(n.actions[2].actionIntent).savedIntent
+        assertEquals(MainActivity::class.java.name, more.component?.className)
+        assertEquals("comfort", more.getStringExtra(Notifier.EXTRA_ROUTE))
+        // 對方沒分享位置：沒有「現在在哪？」，多一個親親（最多三個按鈕）
+        val noLocation = notifier.serviceNotification(ServiceNotice.of(s.copy(partnerSharing = s.partnerSharing!!.copy(shareLocation = false)), true, StatusText.DEFAULTS))
+        assertEquals(listOf("🤗 抱抱", "😘 親親", "💞 更多安撫"), noLocation.actions.map { it.title.toString() })
+        val kiss = Shadows.shadowOf(noLocation.actions[1].actionIntent).savedIntent
+        assertEquals(StatusActionReceiver.COMFORT, kiss.action)
+        assertEquals("kiss", kiss.getStringExtra(StatusActionReceiver.EXTRA_KIND))
         assertTrue(n.flags and Notification.FLAG_ONGOING_EVENT != 0)
         val plain = notifier.serviceNotification(ServiceNotice.of(s, false, StatusText.DEFAULTS))
         assertEquals(Notifier.CH_SERVICE, plain.channelId)

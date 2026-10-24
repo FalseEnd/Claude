@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,8 +50,10 @@ import kotlinx.serialization.json.put
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Cycle
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.Comfort
 import tw.xiaoliangkou.app.data.Giphy
 import tw.xiaoliangkou.app.data.GiphySearcher
+import tw.xiaoliangkou.app.data.toInstantOrNull
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Derived
 import tw.xiaoliangkou.app.ui.Fmt
@@ -217,13 +220,23 @@ private fun MoodBubble(emoji: String, label: String, selected: Boolean, modifier
 // ---------------------------------------------------------------- 安撫
 
 @Composable
-fun ComfortSheet(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.container.giphy, close: () -> Unit) {
+fun ComfortSheet(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.container.giphy, replyTo: Long? = null, close: () -> Unit) {
     var pick by remember { mutableStateOf("hug") }
     var message by remember { mutableStateOf("") }
     var sticker by remember { mutableStateOf<String?>(null) }
+    // 點收到安撫的通知打開的：上面放對方傳來的那則，打開就算看過了
+    val received = replyTo?.let { id -> s.comforts.firstOrNull { it.id == id && it.receiverId == s.myId } }
+    LaunchedEffect(received?.id) {
+        if (received != null && received.readAt == null) runCatching { vm.repo.value?.readComfort(received.id) }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("安撫 ${s.partnerName} 🤗", style = MaterialTheme.typography.titleLarge)
-        Text("${s.partnerName} 的手機會立刻跳出通知", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (received != null) {
+            Text("回應 ${s.partnerName} 💌", style = MaterialTheme.typography.titleLarge)
+            ReceivedQuote(s, received)
+        } else {
+            Text("安撫 ${s.partnerName} 🤗", style = MaterialTheme.typography.titleLarge)
+            Text("${s.partnerName} 的手機會立刻跳出通知", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         GroupedChoices(Catalog.comfortGroups, { !it.extra || s.moreMoodsReady }) { c, modifier ->
             MoodBubble(c.emoji, c.label, pick == c.key, modifier) { pick = c.key }
         }
@@ -234,6 +247,26 @@ fun ComfortSheet(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.contai
             val label = Catalog.comfort(pick)?.label
             vm.act("已送出$label，${s.partnerName} 收到通知了 💗", hearts = true, onDone = close) { it.sendComfort(pick, message.trim(), sticker.takeIf { s.stickersReady }) }
         }
+    }
+}
+
+/** 回應時上面放的：對方傳來的那則安撫（哪一種、貼圖、悄悄話） */
+@Composable
+private fun ReceivedQuote(s: AppState, c: Comfort) {
+    val kind = Catalog.comfort(c.kind)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Cute.colors.partnerSoft).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Avatar(s.partnerName, Cute.colors.partner, 32.dp, image = s.partner?.avatarUrl)
+            Column(Modifier.weight(1f)) {
+                TidyText("${s.partnerName} ${kind?.push ?: "安撫了你"} ${kind?.emoji ?: "🤗"}", style = MaterialTheme.typography.titleSmall)
+                Text(Fmt.rel(c.createdAt.toInstantOrNull()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        c.sticker?.takeIf(Giphy::isValidId)?.let { StickerImage(it, Modifier.size(96.dp)) }
+        c.message?.trim()?.takeIf { it.isNotEmpty() }?.let { TidyText(it, style = MaterialTheme.typography.bodyMedium) }
     }
 }
 

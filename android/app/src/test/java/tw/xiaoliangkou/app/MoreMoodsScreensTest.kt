@@ -1,5 +1,6 @@
 package tw.xiaoliangkou.app
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,7 @@ import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DemoRepository
+import tw.xiaoliangkou.app.service.StatusActionReceiver
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.screens.ComfortSheet
 import tw.xiaoliangkou.app.ui.screens.MoodScreen
@@ -147,6 +149,43 @@ class MoreMoodsScreensTest {
         compose.onNodeWithText("送出晚安").performClick()
         idleUntil { closed }
         assertEquals(listOf("night"), sent)
+    }
+
+    /** 點收到安撫的通知：安撫打開成「回應」，上面是對方傳來的那則，打開就算看過了，回什麼都可以 */
+    @Test fun replyingToAReceivedComfort() {
+        val received = s.comforts.first { it.receiverId == s.myId && it.readAt == null }
+        val read = mutableListOf<Long>()
+        val sent = mutableListOf<String>()
+        setRepo(object : CoupleRepository by demo {
+            override suspend fun readComfort(id: Long) { read += id }
+            override suspend fun sendComfort(kind: String, message: String?, sticker: String?) { sent += kind }
+        })
+        var closed = false
+        sheet { ComfortSheet(s, vm, giphy, replyTo = received.id) { closed = true } }
+        assertTrue(has("回應 小雨 💌"))
+        assertTrue(has(received.message!!))
+        idleUntil { read == listOf(received.id) }
+        capture("37d_sheet_comfort_reply")
+        compose.onNodeWithText("愛你").performClick()
+        compose.onNodeWithText("送出愛你").performClick()
+        idleUntil { closed }
+        assertEquals(listOf("love"), sent)
+    }
+
+    /** 常駐通知的「😘 親親」：不用打開 App 就送出去 */
+    @Test fun statusNotificationSendsAComfort() {
+        val app = RuntimeEnvironment.getApplication()
+        vm.container.startDemo()
+        idleUntil { vm.container.repo.value?.state?.value?.loaded == true }
+        app.sendBroadcast(Intent(app, StatusActionReceiver::class.java).setAction(StatusActionReceiver.COMFORT).putExtra(StatusActionReceiver.EXTRA_KIND, "kiss"))
+        idleUntil { vm.container.repo.value!!.state.value.comforts.any { it.senderId == s.myId && it.kind == "kiss" } }
+        // 不認得的種類不送
+        val before = vm.container.repo.value!!.state.value.comforts.size
+        app.sendBroadcast(Intent(app, StatusActionReceiver::class.java).setAction(StatusActionReceiver.COMFORT).putExtra(StatusActionReceiver.EXTRA_KIND, "slap"))
+        ShadowLooper.idleMainLooper()
+        Thread.sleep(300)
+        ShadowLooper.idleMainLooper()
+        assertEquals(before, vm.container.repo.value!!.state.value.comforts.size)
     }
 
     // ================================================================ 字放大（360 dp、1.3 倍）

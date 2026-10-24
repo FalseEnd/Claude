@@ -423,7 +423,7 @@ private fun MoodCard(s: AppState, open: (String) -> Unit, sheet: (SheetSpec) -> 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TidyText("${s.partnerName} 覺得${m.label}，要不要安撫一下？", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                CuteButton("抱抱", small = true, onClick = { sheet(SheetSpec.Comfort) })
+                CuteButton("抱抱", small = true, onClick = { sheet(SheetSpec.Comfort()) })
             }
         }
     }
@@ -475,7 +475,7 @@ private fun NameAndTime(name: String, time: String?) {
 private fun QuickActions(s: AppState, open: (String) -> Unit, sheet: (SheetSpec) -> Unit) {
     val pending = s.partnerExpenses.count { it.waitingForGuess }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Quick("🤗", "安撫", Cute.colors.partnerSoft, Modifier.weight(1f)) { sheet(SheetSpec.Comfort) }
+        Quick("🤗", "安撫", Cute.colors.partnerSoft, Modifier.weight(1f)) { sheet(SheetSpec.Comfort()) }
         Quick("💰", "猜花費", Cute.colors.butter.copy(alpha = 0.35f), Modifier.weight(1f), badge = pending) { open("money") }
         Quick("🌸", "經期", Cute.colors.periodSoft, Modifier.weight(1f)) { open("cycle") }
         Quick("🎂", "紀念日", Cute.colors.lavender.copy(alpha = 0.3f), Modifier.weight(1f)) { open("anniv") }

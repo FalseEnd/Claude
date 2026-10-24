@@ -30,6 +30,8 @@ class Notifier(private val context: Context) {
         const val CH_SHARE = "share"
         const val SERVICE_ID = 1
         const val EXTRA_ROUTE = "route"
+        /** 常駐通知「更多安撫」的 PendingIntent（別的通知用 outbox 的 id，不會撞到） */
+        private const val MORE_COMFORTS = Int.MAX_VALUE - 1
         private const val PINK = 0xFFFF7AA2.toInt()
         private const val PARTNER = 0xFFFF7FA8.toInt()
         /** 附了貼圖時，內容在幾個字以內才展開成大圖：大圖下面的摘要只有一兩行，長的悄悄話會被切掉 */
@@ -142,7 +144,12 @@ class Notifier(private val context: Context) {
         (n.big ?: n.text).takeIf { it.isNotEmpty() }?.let { b.setStyle(NotificationCompat.BigTextStyle().bigText(it)) }
         if (n.whenMs != null) b.setWhen(n.whenMs).setShowWhen(true) else b.setShowWhen(false)
         if (n.locate) b.addAction(0, "📍 現在在哪？", StatusActionReceiver.intent(context, StatusActionReceiver.LOCATE))
-        if (n.hug) b.addAction(0, "🤗 抱抱", StatusActionReceiver.intent(context, StatusActionReceiver.HUG))
+        if (n.hug) {
+            // 通知最多三個按鈕：抱抱一定有，沒有「現在在哪？」時多一個親親，最後一個打開 App 選其他的安撫
+            b.addAction(0, "🤗 抱抱", StatusActionReceiver.intent(context, StatusActionReceiver.HUG))
+            if (!n.locate) b.addAction(0, "😘 親親", StatusActionReceiver.comfort(context, "kiss"))
+            b.addAction(0, "💞 更多安撫", openApp("comfort", MORE_COMFORTS))
+        }
         return b.build()
     }
 

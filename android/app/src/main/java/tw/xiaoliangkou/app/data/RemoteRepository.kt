@@ -665,14 +665,23 @@ class RemoteRepository(
         fun routeFor(kind: String, data: JsonObject? = null) = when (kind) {
             "place" -> "map"
             "guess" -> "money"
-            "diary" -> (data?.get("day") as? JsonPrimitive)?.contentOrNull
-                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }?.let { "calendar/$it" } ?: "calendar"
-            "event", "anniversary" -> "calendar"
+            "diary" -> dateIn(data, "day")?.let { "calendar/$it" } ?: "calendar"
+            "anniversary" -> dateIn(data, "date")?.let { "calendar/$it" } ?: "calendar"
+            // 約你、答應、婉拒：打開那個約會的那天
+            "event" -> textIn(data, "event_id")?.takeIf { UUID.matches(it) }?.let { "event/$it" } ?: "calendar"
+            // 收到安撫：直接回應那一則
+            "comfort" -> textIn(data, "comfort_id")?.toLongOrNull()?.let { "comfort/$it" } ?: "comfort"
+            // 對方心情不好（「要不要安撫一下？」）：直接打開安撫
+            "mood" -> if (Catalog.mood(textIn(data, "mood"))?.needsComfort == true) "comfort" else "home"
             "memo" -> "memos"
             "cycle_care" -> "cycle"
-            "mood", "comfort", "battery_low" -> "home"
+            "battery_low" -> "home"
             "sharing_changed", "pairing" -> "privacy"
             else -> "home"
         }
+
+        private val UUID = Regex("^[0-9a-fA-F-]{36}$")
+        private fun textIn(data: JsonObject?, key: String) = (data?.get(key) as? JsonPrimitive)?.contentOrNull
+        private fun dateIn(data: JsonObject?, key: String) = textIn(data, key)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
     }
 }
