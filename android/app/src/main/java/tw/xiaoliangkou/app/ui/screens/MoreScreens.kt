@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.StickyNote2
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WaterDrop
+import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -149,6 +150,7 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
                 MenuRow(Icons.Rounded.FavoriteBorder, c.partner, c.partnerSoft, "${s.partnerName} 的資料與備註", "對方的資料，和只有你看得到的備註 🔒") { open("partner") }
                 MenuRow(Icons.Rounded.StickyNote2, c.peach, c.peach.copy(alpha = 0.25f), "備忘錄", "文字、照片、語音，可以放在桌面") { open("memos") }
                 MenuRow(Icons.Rounded.AutoAwesome, c.lavender, c.fertileSoft, "星座運勢與御神籤", "今天的運勢、兩人速配、抽一支籤") { open("fortune") }
+                MenuRow(Icons.Rounded.WbSunny, c.butter, c.butter.copy(alpha = 0.3f), "天氣與外出建議", "兩邊的天氣、空氣品質，提醒 ${s.partnerName} 要注意什麼") { open("weather") }
             }
         }
         item {

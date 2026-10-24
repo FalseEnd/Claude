@@ -1,6 +1,6 @@
 # 小倆口：情侶 App
 
-可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.2.6**。
+可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.2.7**。
 
 > **已經在用 0.1 版？先更新資料庫 🛠️**
 >
@@ -28,6 +28,7 @@
 - **紀念日與約會**：在一起天數、生日、週年、520 與 1314；約會邀請、答應、提醒
 - **日曆生活紀錄**：除了約會，還能在日曆上用文字、照片、語音記錄那天的生活，兩個人一起寫
 - **備忘錄**：文字、照片、語音，可以只有自己看或和另一半共用，還能放在桌面小工具
+- **天氣與外出建議**：兩邊所在地的天氣、體感、濕度、能見度、降雨機率、紫外線、空氣品質，綜合成今天的外出建議；一鍵提醒對方要帶傘、防曬、穿暖或戴口罩
 - **星座運勢與御神籤**：今天、明天的星座運勢和兩人速配指數；搖一搖抽淺草觀音寺一百籤，再連到台灣好廟網看解籤
 - **經期**：預測下次經期、排卵日、易孕期、相對安全期，經期前提醒伴侶多關心
 - **歷史紀錄**：所有互動的時間軸
@@ -69,6 +70,7 @@
 | 日曆的生活紀錄 | 你們兩個；各自只能改、刪自己寫的。解除配對後雙方都看不到 |
 | 共用備忘錄 | 你們兩個都能看、能改；只有建立的人能刪除或改成私人。解除配對後只剩建立的人看得到 |
 | 私人備忘錄 | 只有自己，連什麼時候寫、什麼時候改，對方都不會知道 |
+| 天氣 | 對方那邊的天氣只有在對方分享位置、沒有暫停時才看得到（用的就是分享的位置，不另外存）。查天氣時只把四捨五入到約 1 公里的座標送到 Open-Meteo，不用帳號、不帶任何金鑰 |
 | GIPHY 貼圖 | 附的貼圖跟著心情、安撫，誰看得到也一樣（資料庫只存貼圖的 id）；GIPHY 的 key 你們兩個都看得到。搜尋的字會送到 GIPHY，貼圖的圖片在兩支手機上都直接從 GIPHY 的伺服器載入（示範模式的示範貼圖也是），所以 GIPHY 看得到手機的 IP 位址 |
 
 照片和語音存在 Supabase Storage 一個不公開的 `media` 空間，每個檔案都要登入才讀得到：
@@ -99,7 +101,7 @@ cd android
 
 Windows 用 `gradlew.bat assembleRelease`。正式上架前請換成自己的簽章金鑰（`android/app/build.gradle.kts` 的 `signingConfig`）。
 
-版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.2.6、`versionCode` 8），裝好後在 App「我的」最下面看得到。
+版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.2.7、`versionCode` 9），裝好後在 App「我的」最下面看得到。
 
 ## 測試
 
@@ -127,12 +129,17 @@ cd android && ./gradlew recordRoborazziDebug  # 不用模擬器，把每個畫�
 | `StickerScreensTest` | 心情和安撫附上 GIPHY 貼圖、首頁收到的安撫、歷史紀錄裡的貼圖、選貼圖的視窗（還沒設定 key、示範模式、找不到、key 不能用、用太多次、連不到）與查了幾次、帳號裡的 GIPHY key |
 | `GiphyTest`、`StickerImageTest`、`StickerNotificationTest` | 送到 GIPHY 的參數、回應與錯誤、查過的不再查；用 id 顯示貼圖、id 不對不載；通知先發文字、再換成有貼圖的同一則 |
 | `StickerRemoteTest`、`StickerDemoTest` | 貼圖和 GIPHY key 的資料層（假的 Supabase、示範模式）：舊的資料庫先擋下來、收到的安撫標成看過 |
+| `WeatherTest`、`WeatherScreensTest` | 外出建議的各種門檻、提醒對方的話、天氣代碼；Open-Meteo 的請求（座標只到小數點兩位、不帶金鑰）、回應、錯誤和 20 分鐘的快取；天氣頁、首頁卡片、對方沒分享位置、抓不到、提醒對方送出的安撫、字放大的排版 |
 
 App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日曆紀錄、備忘錄、照片的權限，0.2.2 的 GIPHY key、貼圖和已讀）：先 `npx supabase start`，專案裡不能已經有帳號（可以先 `npx supabase db reset`），再執行
 `XLK_TEST_SUPABASE_URL=http://127.0.0.1:54321 XLK_TEST_SUPABASE_KEY=<publishable key> ./gradlew testDebugUnitTest`。
 
 ## 更新紀錄
 
+- **0.2.7**：
+  - 天氣與外出建議：首頁多一張「今天的天氣」，點進去看兩邊的天氣、體感、濕度、能見度、降雨機率（12 小時內）、紫外線、空氣品質（AQI、PM2.5），以及綜合的外出建議（很適合出門／注意一下／要多注意／待在室內）和要注意的事（帶傘、防曬、多喝水、穿暖、戴口罩、騎車小心…）。
+  - 「💌 提醒 小雨」：把那邊最要緊的提醒當作安撫傳過去，例如「你那邊正在下雨、有點涼（12°），記得帶傘、帶件外套喔 ☔」。
+  - 對方那邊的天氣要對方有分享位置；「我的」也有「天氣與外出建議」。不用更新資料庫。
 - **0.2.6**：
   - 安撫從 15 種變成 29 種，多了一組「逗你開心」（冷笑話、扮鬼臉、送小貓、吃甜點、小禮物）；「安慰」多了聽你說、牽手、你最棒，「甜蜜」多了比心、蹭蹭、想約會，「關心」多了穿暖、到家沒、路上小心。App 的安撫、常駐通知的「💞 更多安撫」小視窗都選得到，每一種都有自己的通知文字和 GIPHY 搜尋。
   - 資料庫：再執行一次 [`upgrade-v2.sql`](supabase/upgrade-v2.sql)，兩支手機都更新到 0.2.6。還沒更新時只顯示原本的選項，「我的」會提醒可以再更新一次。
@@ -168,6 +175,7 @@ App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日�
 - 字型：[jf open 粉圓](https://github.com/justfont/open-huninn-font)（SIL Open Font License 1.1）
 - 地圖：© [OpenStreetMap](https://www.openstreetmap.org/copyright) 貢獻者
 - 貼圖：[GIPHY](https://giphy.com)。用 GIPHY API 搜尋，選貼圖的畫面放 GIPHY 官方的「Powered by GIPHY」標誌；App 和資料庫只存貼圖的 id，不存圖片
+- 天氣與空氣品質：[Open-Meteo.com](https://open-meteo.com/)（CC BY 4.0）。免費、不用 API key；天氣頁下方標示來源
 - 網頁原型圖示：[Lucide](https://lucide.dev)（ISC License）
 - 籤詩：元三大師觀音百籤（淺草寺的觀音百籤），古籍、屬於公有領域；App 只收錄籤號、吉凶和四句籤詩原文
 - 解籤：App 用瀏覽器打開[台灣好廟網](https://qiangua.temple01.com/qianshi.php?t=fs_akt100)的解籤頁，沒有複製網站的解說內容

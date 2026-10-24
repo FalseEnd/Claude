@@ -42,6 +42,7 @@ import tw.xiaoliangkou.app.data.Errors
 import tw.xiaoliangkou.app.data.Giphy
 import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.data.MediaCache
+import tw.xiaoliangkou.app.data.OpenMeteo
 import tw.xiaoliangkou.app.data.PlaceSearch
 import tw.xiaoliangkou.app.data.RealtimeClient
 import tw.xiaoliangkou.app.data.RemoteRepository
@@ -51,6 +52,7 @@ import tw.xiaoliangkou.app.data.SettingsStore
 import tw.xiaoliangkou.app.data.Supabase
 import tw.xiaoliangkou.app.data.SupabaseClient
 import tw.xiaoliangkou.app.data.VoicePlayer
+import tw.xiaoliangkou.app.data.WeatherSource
 import tw.xiaoliangkou.app.data.apiCall
 import tw.xiaoliangkou.app.data.giphyMediaCache
 import tw.xiaoliangkou.app.service.AutoBookkeeping
@@ -104,6 +106,8 @@ class AppContainer(private val app: Application) {
     val placeSearch = PlaceSearch(app, "${BuildConfig.APPLICATION_ID}/${BuildConfig.VERSION_NAME}")
     /** GIPHY：搜尋貼圖（查過的頁面記在記憶體裡）、通知裡的貼圖；測試時換成假的 */
     var giphy = Giphy()
+    /** 雙方所在地的天氣（Open-Meteo）；測試時換成假的 */
+    var weather: WeatherSource = OpenMeteo(app)
 
     /**
      * 顯示 GIPHY 貼圖的圖片載入器（用到才建立）：只放記憶體、不存檔。測試時換成假的。
