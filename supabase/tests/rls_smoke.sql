@@ -318,6 +318,29 @@ select test.ok(test.error_of(format($$update public.comforts set sticker = 'abc'
                like '42501:%', 'the receiver cannot change the sticker');
 select test.ok(test.mentions('xlkSmokeKey_0123456789-abc') = 0, 'the GIPHY key never shows up in notifications, history or realtime events');
 
+-- 0.2.3：心情 21 種、安撫 15 種；「需要抱抱」的新心情一樣會問要不要安撫（和 App 的 Catalog 一樣，見 CatalogSqlTest）
+select test.login(test.id('mia'));
+select test.ok((select count(*) from unnest(array['happy', 'sweet', 'excited', 'laugh', 'calm', 'relaxed', 'missyou', 'shy', 'sleepy',
+                                                  'hungry', 'bored', 'busy', 'tired', 'anxious', 'stressed', 'wronged', 'sad', 'angry',
+                                                  'jealous', 'lonely', 'sick']) k
+                where test.error_of(format('insert into public.moods (mood) values (%L)', k)) is null) = 21, 'all 21 moods can be saved');
+select test.ok(test.error_of($$insert into public.moods (mood) values ('meh')$$) like '23514:%', 'unknown moods are still rejected');
+select test.ok((select bool_and(c.d like '%''' || k || '''::text%')
+                from (select pg_get_constraintdef(oid) as d from pg_constraint
+                      where conname = 'comforts_kind_check' and conrelid = 'public.comforts'::regclass) c,
+                     unnest(array['hug', 'pat', 'here', 'cheer', 'support', 'treat', 'kiss', 'love', 'missyou', 'flower', 'morning', 'night',
+                                  'water', 'meal', 'rest', 'custom']) k), 'all 15 comforts (and custom) are allowed');
+select test.login(test.id('zhe'));
+select public.app_send_comfort('{"kind": "night"}');
+select test.ok(test.outbox_titled(test.id('yu'), '阿哲 跟你說晚安，好夢') = 1, 'new comforts have their own notification title');
+select test.ok(test.error_of($$select public.app_send_comfort('{"kind": "slap"}')$$) like '23514:%', 'unknown comforts are still rejected');
+select test.login(test.id('yu'));
+select public.app_post_mood('{"mood": "jealous", "note": "你跟同事聊得好開心"}');
+select test.ok(test.outbox_body(test.id('zhe'), '小雨 現在覺得吃醋') = '你跟同事聊得好開心。要不要安撫一下？',
+               'new moods that need a hug still ask for comfort');
+select public.app_post_mood('{"mood": "busy"}');
+select test.ok(test.outbox_body(test.id('zhe'), '小雨 現在覺得忙翻了') = '', 'other new moods just say how they feel');
+
 -- 打開歷史紀錄：收到的、還沒看過的安撫一次全部標成看過；自己送出去的、別人的都不會動
 insert into public.comforts (couple_id, receiver_id, kind) values (public.my_couple_id(), test.id('zhe'), 'hug');
 update public.comforts set read_at = '2026-01-01 08:00+00' where id = (select min(id) from public.comforts);

@@ -94,11 +94,10 @@ fun MoodScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.containe
         item {
             CuteCard {
                 Text("你現在覺得…", style = MaterialTheme.typography.titleLarge)
-                Catalog.moods.chunked(3).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        row.forEach { m -> MoodBubble(m.emoji, m.label, pick == m.key, Modifier.weight(1f)) { pick = m.key } }
-                    }
+                GroupedChoices(Catalog.moodGroups, { !it.extra || s.moreMoodsReady || it.key == pick }) { m, modifier ->
+                    MoodBubble(m.emoji, m.label, pick == m.key, modifier) { pick = m.key }
                 }
+                if (!s.moreMoodsReady) MoreChoicesHint(s, "心情")
                 // 沒有分享心情時對方看不到，貼圖也一樣
                 val hint = if (s.mySharing?.shareMood == true) STICKER_HINT else "選填（目前沒有分享心情，對方看不到）"
                 StickerChoice(s, vm, sticker, Catalog.mood(pick)?.let { it.label to it.giphyQuery }, giphy, hint) { sticker = it }
@@ -177,6 +176,29 @@ private fun StickerChoice(
     if (picking) GiphyPickerDialog(s, vm, suggestion, onPick = onChange, onDismiss = { picking = false }, searcher = giphy)
 }
 
+/** 一組一組的選項：每組一個小標題，三個一排（最後一排不滿三個也一樣寬）；[show] 是要不要顯示這一個 */
+@Composable
+private fun <T> GroupedChoices(groups: List<Catalog.Group<T>>, show: (T) -> Boolean, choice: @Composable (T, Modifier) -> Unit) {
+    groups.forEach { g ->
+        val items = g.items.filter(show)
+        if (items.isEmpty()) return@forEach
+        Text(g.title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        items.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { choice(it, Modifier.weight(1f)) }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/** 資料庫還沒更新到 0.2.3：只顯示原本的選項，說一下怎麼拿到更多 */
+@Composable
+private fun MoreChoicesHint(s: AppState, what: String) = TidyText(
+    if (s.schemaOutdated) "執行 upgrade-v2.sql 就有更多${what}可以選" else "再執行一次 upgrade-v2.sql 就有更多${what}可以選",
+    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+)
+
 @Composable
 private fun MoodBubble(emoji: String, label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val bg by animateColorAsState(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), label = "moodBg")
@@ -202,9 +224,10 @@ fun ComfortSheet(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.contai
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("安撫 ${s.partnerName} 🤗", style = MaterialTheme.typography.titleLarge)
         Text("${s.partnerName} 的手機會立刻跳出通知", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Catalog.comforts.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { c -> MoodBubble(c.emoji, c.label, pick == c.key, Modifier.weight(1f)) { pick = c.key } } }
+        GroupedChoices(Catalog.comfortGroups, { !it.extra || s.moreMoodsReady }) { c, modifier ->
+            MoodBubble(c.emoji, c.label, pick == c.key, modifier) { pick = c.key }
         }
+        if (!s.moreMoodsReady) MoreChoicesHint(s, "安撫")
         StickerChoice(s, vm, sticker, Catalog.comfort(pick)?.let { it.label to it.giphyQuery }, giphy) { sticker = it }
         CuteField(message, { message = it.take(200) }, "悄悄話（選填）", placeholder = "辛苦了，晚上帶你去吃好吃的", singleLine = false)
         CuteButton("送出${Catalog.comfort(pick)?.label}", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Send, enabled = !vm.busy) {

@@ -169,7 +169,7 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
                     MenuRow(
                         Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號",
                         if (s.schemaOutdated) "資料庫需要更新，點這裡看怎麼做 🛠️"
-                        else if (s.stickersOutdated) "可以再更新一次資料庫（${upgradeGains(s).joinToString("、") { it.first }}）📱"
+                        else if (upgradeGains(s).isNotEmpty()) "可以再更新一次資料庫（${upgradeGains(s).joinToString("、") { it.first }}）📱"
                         else "連線、邀請另一半、GIPHY 貼圖、改密碼、登出",
                     ) { open("account") }
                 } else {
@@ -417,7 +417,7 @@ fun AccountScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.conta
     val scope = rememberCoroutineScope()
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenHeader("Supabase 與帳號", onBack = back) }
-        if (s.schemaOutdated || s.deviceInfoOutdated || s.stickersOutdated) item { SchemaUpgradeCard(prefs?.supabaseUrl, vm, if (s.schemaOutdated) emptyList() else upgradeGains(s)) }
+        if (s.schemaOutdated || upgradeGains(s).isNotEmpty()) item { SchemaUpgradeCard(prefs?.supabaseUrl, vm, if (s.schemaOutdated) emptyList() else upgradeGains(s)) }
         item {
             CuteCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -488,9 +488,10 @@ fun AccountScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.conta
 
 /**
  * 新功能都能用了，再執行一次 upgrade-v2.sql 還會多出來的：（短的名稱, 一行說明）。
- * 跑過舊版 upgrade-v2.sql 的資料庫：schema 2 沒有手機名稱與電信，schema 3 以前沒有 GIPHY 貼圖
+ * 跑過舊版 upgrade-v2.sql 的資料庫：schema 2 沒有手機名稱與電信，schema 3 以前沒有 GIPHY 貼圖，schema 4 以前沒有更多心情和安撫
  */
 internal fun upgradeGains(s: AppState): List<Pair<String, String>> = listOfNotNull(
+    ("更多心情和安撫" to "😊 心情多到 21 種、安撫多到 15 種").takeIf { s.moodsOutdated },
     ("GIPHY 貼圖" to "🧸 心情和安撫可以附上 GIPHY 貼圖").takeIf { s.stickersOutdated },
     ("手機名稱、電信" to "📱 看得到對方的手機名稱和電信").takeIf { s.deviceInfoOutdated },
 )
@@ -551,9 +552,9 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, gains: List
             vm.act { r ->
                 r.refreshAll()
                 val st = r.state.value
-                // 現在的 upgrade-v2.sql 一次補齊：還缺貼圖就是還沒跑成功
+                // 現在的 upgrade-v2.sql 一次補齊：還缺最新的（更多心情和安撫）就是還沒跑成功
                 vm.toast(
-                    if (st.schemaOutdated || (minor && st.stickersOutdated)) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
+                    if (st.schemaOutdated || (minor && st.moodsOutdated)) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
                     else if (minor) "資料庫更新好了，${gains.joinToString("、") { it.first }}都有了 🎉"
                     else "資料庫更新好了，新功能都可以用了 🎉",
                 )

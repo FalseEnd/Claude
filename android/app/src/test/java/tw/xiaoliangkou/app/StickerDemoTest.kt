@@ -45,7 +45,7 @@ class StickerDemoTest {
 
     @Test fun demoHasAStickerOnTheUnreadComfort() = runTest {
         val s = DemoRepository(backgroundScope).also { it.running = false }.state.value
-        assertEquals(RemoteRepository.STICKER_SCHEMA, s.dbSchema)
+        assertEquals(RemoteRepository.MOODS_SCHEMA, s.dbSchema)
         assertFalse(s.stickersOutdated)
         val unread = s.comforts.filter { it.receiverId == s.myId && it.readAt == null }
         assertEquals(listOf(DemoRepository.STICKER), unread.map { it.sticker })

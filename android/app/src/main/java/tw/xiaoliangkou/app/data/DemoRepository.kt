@@ -213,7 +213,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         ).sortedByDescending { it.time }
 
         return AppState(
-            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.STICKER_SCHEMA,
+            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.MOODS_SCHEMA,
             myDevice = DeviceStatus(
                 ME, 82, true, "wifi", "約 120 Mbps", false, 3_120, iso(), "samsung SM-S921B", iso(),
                 deviceName = "阿哲的 Galaxy S24", carrier = "台灣大哥大",

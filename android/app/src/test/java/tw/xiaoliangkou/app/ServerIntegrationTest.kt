@@ -108,7 +108,7 @@ class ServerIntegrationTest {
     /** 個人資料、只有自己看得到的備註、日曆紀錄、備忘錄、照片與語音 */
     private suspend fun v2Features(zhe: Client, yu: Client): V2Files {
         val health = apiCall { anon().api.health() }
-        assertEquals(RemoteRepository.STICKER_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
+        assertEquals(RemoteRepository.MOODS_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
         zhe.repo.refreshAll()
         assertFalse(zhe.repo.state.value.schemaOutdated)
         assertFalse(zhe.repo.state.value.deviceInfoOutdated)
@@ -340,6 +340,15 @@ class ServerIntegrationTest {
             assertTrue(b.title, b.title.contains("抱抱"))
             assertEquals("晚上請你吃好料", b.body)
 
+            // 0.2.3 多的心情和安撫：存得進去，通知用新的文字，「需要抱抱」的一樣問要不要安撫
+            assertTrue(yu.repo.state.value.moreMoodsReady)
+            yu.repo.postMood("lonely", "你出差好久")
+            eventually("新的心情同步") { zhe.repo.state.value.moods.any { it.mood == "lonely" } }
+            eventually("新的心情通知") { zhe.notes.any { it.title == "小雨 現在覺得寂寞" && it.body == "你出差好久。要不要安撫一下？" } }
+            val night = async { yu.repo.banners.first { it.kind == "comfort" && it.title.contains("晚安") } }
+            zhe.repo.sendComfort("night", null)
+            assertEquals("阿哲 跟你說晚安，好夢", withTimeout(6000) { night.await() }.title)
+
             // GIPHY 的 API key：一對情侶一把，誰設定都可以，兩個人都讀得到；交往紀念日不能被動到
             val giphyKey = "xlkTestKey_$run"
             assertNull(zhe.repo.state.value.giphyKey)
@@ -388,8 +397,8 @@ class ServerIntegrationTest {
             withTimeout(6000) { hugBack.await() }
             assertNull(zhe.notes.last { it.kind == "comfort" }.data.sticker())
             // 打開歷史紀錄：收到的全部標成已讀（「晚上請你吃好料」那則也是），自己送出去的不算。
-            // schema 4 一次標完（app_read_comfort 的 {"all": true}）
-            assertEquals(RemoteRepository.STICKER_SCHEMA, yu.repo.state.value.dbSchema)
+            // schema 4 以後一次標完（app_read_comfort 的 {"all": true}）
+            assertEquals(RemoteRepository.MOODS_SCHEMA, yu.repo.state.value.dbSchema)
             assertTrue(yu.repo.state.value.comforts.any { it.receiverId == yu.userId && it.readAt == null })
             yu.repo.markComfortsRead()
             assertTrue(yu.repo.state.value.comforts.none { it.receiverId == yu.userId && it.readAt == null })

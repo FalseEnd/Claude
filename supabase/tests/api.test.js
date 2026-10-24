@@ -219,7 +219,7 @@ test('健康檢查：還沒登入也能確認網址和金鑰', { skip }, async (
   const r = await ok(null, 'app_health');
   assert.equal(r.ok, true);
   assert.match(r.time, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?\+00:00$/);
-  assert.equal(r.schema, 4, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql（4 = 也有 GIPHY 貼圖）');
+  assert.equal(r.schema, 5, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql（5 = 也有更多心情和安撫）');
   // 金鑰錯誤的 401 由雲端的 API gateway 檢查；本機的 Supabase CLI 不檢查 apikey，這裡測不到
 });
 
@@ -395,6 +395,16 @@ test('心情、安撫、離線補送', { skip }, async () => {
   assert.ok((await ok(B, 'app_comforts', { limit: 50 })).some((x) => x.receiverId === B.id && !x.readAt));
   assert.deepEqual(await ok(B, 'app_read_comfort', { all: true }), { ok: true });
   assert.ok((await ok(B, 'app_comforts', { limit: 50 })).filter((x) => x.receiverId === B.id).every((x) => x.readAt));
+});
+
+test('0.2.3 的心情和安撫：通知用新的文字，「需要抱抱」的心情一樣問要不要安撫', { skip }, async () => {
+  await ok(B, 'app_post_mood', { mood: 'lonely', note: '你出差好久' });
+  const m = await A.sock.notified('mood');
+  assert.equal(m.title, '小雨 現在覺得寂寞');
+  assert.equal(m.body, '你出差好久。要不要安撫一下？');
+  await ok(A, 'app_send_comfort', { kind: 'meal' });
+  assert.equal((await B.sock.notified('comfort')).title, '阿哲 問你吃飯了沒');
+  assert.equal((await rpc(B, 'app_post_mood', { mood: 'meh' })).data.code, '23514', '不認得的心情還是不能存');
 });
 
 test('GIPHY 貼圖：心情和安撫附上貼圖 id，通知也帶著；API key 兩個人都讀得到，但不會出現在通知或歷史紀錄', { skip }, async () => {

@@ -20,6 +20,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.PaymentParser
 import java.time.Instant
 import java.time.LocalDate
@@ -200,12 +201,12 @@ class RemoteRepository(
      */
     fun recheckSchema() {
         val st = _state.value
-        val behind = st.schemaOutdated || st.deviceInfoOutdated || st.stickersOutdated
+        val behind = st.schemaOutdated || st.deviceInfoOutdated || st.stickersOutdated || st.moodsOutdated
         if (!behind || refreshing.get() > 0 || !rechecking.compareAndSet(false, true)) return
         scope.launch {
             try {
                 checkSchema()
-                // 剛跑完 upgrade-v2.sql：新功能的資料重新載入（只差手機名稱、電信、貼圖的話不用，對方下次回報就有）
+                // 剛跑完 upgrade-v2.sql：新功能的資料重新載入（只差手機名稱、電信、貼圖、新的心情的話不用，對方下次回報就有）
                 if (st.schemaOutdated && !_state.value.schemaOutdated) refreshAll()
             } catch (e: CancellationException) {
                 throw e
@@ -273,13 +274,15 @@ class RemoteRepository(
     // 送出去了就是送出去了：重新整理失敗（網路不穩）不能說失敗，不然使用者再按一次，對方就收到兩次
     override suspend fun postMood(mood: String, note: String?, sticker: String?) {
         val s = checkSticker(sticker)
-        val row = apiCall { api.postMood(buildJsonObject { put("mood", mood); put("note", note ?: ""); if (s != null) put("sticker", s) }) }
+        val extra = checkMoreMoods(Catalog.mood(mood)?.extra == true)
+        val row = moreMoods(extra) { apiCall { api.postMood(buildJsonObject { put("mood", mood); put("note", note ?: ""); if (s != null) put("sticker", s) }) } }
         reloadQuietly(::loadMoods)
         stickerSaved(s, row.sticker, MOOD_STICKER_NOT_SAVED)
     }
     override suspend fun sendComfort(kind: String, message: String?, sticker: String?) {
         val s = checkSticker(sticker)
-        val row = apiCall { api.postComfort(buildJsonObject { put("kind", kind); put("message", message ?: ""); if (s != null) put("sticker", s) }) }
+        val extra = checkMoreMoods(Catalog.comfort(kind)?.extra == true)
+        val row = moreMoods(extra) { apiCall { api.postComfort(buildJsonObject { put("kind", kind); put("message", message ?: ""); if (s != null) put("sticker", s) }) } }
         reloadQuietly(::loadComforts)
         stickerSaved(s, row.sticker, COMFORT_STICKER_NOT_SAVED)
     }
@@ -303,6 +306,23 @@ class RemoteRepository(
 
     /** 記下資料庫還沒有貼圖（之後回到 App 會再檢查一次） */
     private fun stickersBehind() = _state.update { it.copy(dbSchema = (it.dbSchema ?: STICKER_SCHEMA).coerceAtMost(STICKER_SCHEMA - 1)) }
+
+    /** 0.2.3 才多的心情、安撫（[extra]）：資料庫還存不了就先擋下來 */
+    private fun checkMoreMoods(extra: Boolean): Boolean {
+        val st = _state.value
+        if (extra && st.schemaOutdated) throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
+        if (extra && st.moodsOutdated) throw AppException(MOODS_OUTDATED, MOODS_OUTDATED_CODE)
+        return extra
+    }
+
+    /** 還不知道資料庫的版本就送了新的種類，被舊的資料庫的 check 擋下來：記下資料庫還是舊的，說要更新 */
+    private suspend fun <T> moreMoods(extra: Boolean, send: suspend () -> T): T = try {
+        send()
+    } catch (e: AppException) {
+        if (!extra || e.code != "invalid_input") throw e
+        _state.update { it.copy(dbSchema = (it.dbSchema ?: MOODS_SCHEMA).coerceAtMost(MOODS_SCHEMA - 1)) }
+        throw AppException(MOODS_OUTDATED, MOODS_OUTDATED_CODE, e.status)
+    }
 
     override suspend fun readComfort(id: Long) = markRead(listOf(id))
 
@@ -615,6 +635,8 @@ class RemoteRepository(
         const val DEVICE_SCHEMA = 3
         /** 有 GIPHY 貼圖的資料庫版本：沒有的話心情、安撫照樣能送，只是不能附貼圖 */
         const val STICKER_SCHEMA = 4
+        /** 有 0.2.3 多的心情和安撫的資料庫版本：沒有的話只能選原本的 */
+        const val MOODS_SCHEMA = 5
 
         const val STICKERS_OUTDATED_CODE = "stickers_outdated"
         /** 舊的資料庫（schema 3 以前）存不了貼圖 */
@@ -623,6 +645,9 @@ class RemoteRepository(
         const val COMFORT_STICKER_NOT_SAVED = "安撫送出去了，但資料庫還沒更新，貼圖沒有存到：請再執行一次 upgrade-v2.sql"
         const val BAD_STICKER = "這張貼圖不能用，換一張試試"
         const val BAD_GIPHY_KEY = "這看起來不是 GIPHY 的 API key：請到 GIPHY Developers 複製整串 key 🔑"
+        const val MOODS_OUTDATED_CODE = "moods_outdated"
+        /** 舊的資料庫（schema 4 以前）存不了新的心情和安撫 */
+        const val MOODS_OUTDATED = "資料庫還沒有新的心情和安撫：請到 Supabase 的 SQL Editor 再執行一次 upgrade-v2.sql（說明在「我的 › Supabase 與帳號」）"
 
         /** 舊的資料庫：暱稱、生日存好了，身高、星座這些還存不進去 */
         const val PROFILE_INFO_OUTDATED = "暱稱和生日存好了；其他資料要等資料庫更新才存得進去（說明在「我的 › Supabase 與帳號」）"

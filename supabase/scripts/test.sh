@@ -3,7 +3,8 @@
 #   1. 檢查 supabase/setup.sql、upgrade-v2.sql 和 migrations 一致
 #   2. 舊版使用者：只套用 v1 的 migrations，再執行 upgrade-v2.sql 兩次（只跑一次就好，但多跑也不能壞）；
 #      先放一個自己建的公開 media 空間，更新後要變成不公開。
-#      跑過舊的 upgrade-v2.sql 的資料庫（0.2.0 只有 v2、0.2.1 多了手機名稱與電信），再執行一次新的 upgrade-v2.sql；
+#      跑過舊的 upgrade-v2.sql 的資料庫（0.2.0 只有 v2、0.2.1 多了手機名稱與電信、0.2.2 多了 GIPHY 貼圖），
+#      再執行一次新的 upgrade-v2.sql；
 #      以前收到的安撫只在第一次執行時標成看過（supabase/tests/comfort_backlog.sql）
 #   3. 新專案：空的資料庫直接執行 setup.sql
 #   4. supabase db reset：重建資料庫並套用 migrations
@@ -45,8 +46,8 @@ quiet() { local out; out="$("$@" 2>&1)" || { echo "$out" >&2; return 1; }; }
 run_sql() { quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -f "$1"; }
 backlog() { quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -v step="$1" -f supabase/tests/comfort_backlog.sql; }
 smoke() { psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -f supabase/tests/rls_smoke.sql 2>&1 | sed 's/^psql:[^ ]* NOTICE:  //'; }
-schema_is_4() {
-  [ "$(psql "$DATABASE_URL" -X -tAc "select public.app_health()->>'schema'")" = 4 ] || { echo "app_health 沒有回傳 schema 4" >&2; exit 1; }
+schema_is_5() {
+  [ "$(psql "$DATABASE_URL" -X -tAc "select public.app_health()->>'schema'")" = 5 ] || { echo "app_health 沒有回傳 schema 5" >&2; exit 1; }
 }
 
 echo "== 舊版資料庫執行 upgrade-v2.sql（兩次）"
@@ -54,13 +55,13 @@ quiet "${sb[@]}" db reset --version 20261015000004
 quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -c "insert into storage.buckets (id, name, public) values ('media', 'media', true)"
 run_sql supabase/upgrade-v2.sql
 run_sql supabase/upgrade-v2.sql
-schema_is_4
+schema_is_5
 quiet smoke
 
 echo "== 跑過舊的 upgrade-v2.sql 的資料庫再執行新的 upgrade-v2.sql（加上手機名稱、電信與 GIPHY 貼圖）"
 quiet "${sb[@]}" db reset --version 20261016000005
 run_sql supabase/upgrade-v2.sql
-schema_is_4
+schema_is_5
 quiet smoke
 
 echo "== 以前收到的安撫只在第一次執行新的 upgrade-v2.sql 時標成看過"
@@ -74,7 +75,13 @@ backlog again
 echo "== 0.2.1 的資料庫再執行新的 upgrade-v2.sql（加上 GIPHY 貼圖）"
 quiet "${sb[@]}" db reset --version 20261017000006
 run_sql supabase/upgrade-v2.sql
-schema_is_4
+schema_is_5
+quiet smoke
+
+echo "== 0.2.2 的資料庫再執行新的 upgrade-v2.sql（加上更多心情和安撫）"
+quiet "${sb[@]}" db reset --version 20261020000007
+run_sql supabase/upgrade-v2.sql
+schema_is_5
 quiet smoke
 
 echo "== 新專案執行 setup.sql"
@@ -84,7 +91,7 @@ mkdir -p "$empty/supabase/migrations"
 cp supabase/config.toml "$empty/supabase/"
 quiet "${sb[@]}" db reset --workdir "$empty"
 run_sql supabase/setup.sql
-schema_is_4
+schema_is_5
 quiet smoke
 
 echo "== 套用 migrations"
