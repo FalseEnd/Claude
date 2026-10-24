@@ -13,6 +13,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import kotlinx.serialization.json.JsonObject
 import tw.xiaoliangkou.app.MainActivity
 import tw.xiaoliangkou.app.R
@@ -78,6 +79,15 @@ class Notifier(private val context: Context) {
         return PendingIntent.getActivity(context, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
+    /**
+     * 通知右邊的粉紅愛心（沒有貼圖、頭像的通知用）。狀態列的小圖示一直都是愛心 [R.drawable.ic_stat_heart]，
+     * 但有些手機（例如 OPPO 的 ColorOS）通知裡顯示的是 App 的圖示，放一顆大的愛心才看得到
+     */
+    private val heart: Bitmap? by lazy {
+        val px = (64 * context.resources.displayMetrics.density).toInt()
+        runCatching { ContextCompat.getDrawable(context, R.drawable.notif_heart_large)?.toBitmap(px, px) }.getOrNull()
+    }
+
     /** Android 13 起要使用者允許才能發通知 */
     fun canPost() = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
@@ -114,7 +124,7 @@ class Notifier(private val context: Context) {
             // 長的悄悄話、心情的話：大圖下面只放得下一兩行，所以照樣展開成全文，貼圖只放在右邊
             else -> b.setStyle(NotificationCompat.BigTextStyle().bigText(body))
         }
-        if (picture != null) b.setLargeIcon(picture).setOnlyAlertOnce(true)
+        if (picture != null) b.setLargeIcon(picture).setOnlyAlertOnce(true) else heart?.let(b::setLargeIcon)
         runCatching { NotificationManagerCompat.from(context).notify(androidId(id), b.build()) }
     }
 
@@ -129,6 +139,7 @@ class Notifier(private val context: Context) {
             .setStyle(NotificationCompat.BigTextStyle().bigText(m.lines.joinToString("\n")))
             .setAutoCancel(true)
             .setContentIntent(openApp("weather", MORNING_ID))
+        heart?.let(b::setLargeIcon)
         if (remind != null) b.addAction(0, "💌 提醒 $partnerName", remind)
         runCatching { NotificationManagerCompat.from(context).notify(MORNING_ID, b.build()) }
     }

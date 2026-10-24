@@ -86,6 +86,7 @@ class MorningWeatherTest {
         assertEquals(StatusActionReceiver.COMFORT, remind.action)
         assertEquals("safe", remind.getStringExtra(StatusActionReceiver.EXTRA_KIND))
         assertEquals(Weather.reminder(Weather.advice(FakeWeather.RAINY_COOL)), remind.getStringExtra(StatusActionReceiver.EXTRA_MESSAGE))
+        assertTrue("右邊有一顆愛心", n.getLargeIcon() != null)
         // 點通知打開天氣頁
         assertEquals("weather", shadowOf(n.contentIntent).savedIntent.getStringExtra(Notifier.EXTRA_ROUTE))
     }
@@ -103,6 +104,15 @@ class MorningWeatherTest {
             Thread.sleep(20)
         }
         assertTrue(c.repo.value!!.state.value.comforts.any { it.senderId == me && it.kind == "safe" && it.message == message })
+    }
+
+    /** 一般的通知（抱抱、心情、約會…）也有愛心：狀態列的小圖示和右邊的大圖示 */
+    @Test fun everyNotificationHasAHeart() {
+        shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        c.notifier.show(42, "小雨 給了你一個大大的抱抱", "點開回應一下吧", "comfort")
+        val n = shadowOf(app.getSystemService(NotificationManager::class.java)).allNotifications.single { it.channelId == Notifier.CH_LOVE }
+        assertEquals(tw.xiaoliangkou.app.R.drawable.ic_stat_heart, n.smallIcon.resId)
+        assertTrue(n.getLargeIcon() != null)
     }
 
     @Test fun nothingWithoutPermissionOrWeather() {
