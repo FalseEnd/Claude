@@ -124,6 +124,7 @@ import tw.xiaoliangkou.app.ui.screens.PermissionsScreen
 import tw.xiaoliangkou.app.ui.screens.PlaceSheet
 import tw.xiaoliangkou.app.ui.screens.PrivacyScreen
 import tw.xiaoliangkou.app.ui.screens.RegisterScreen
+import tw.xiaoliangkou.app.ui.screens.SecurityScreen
 import tw.xiaoliangkou.app.ui.screens.SplashScreen
 import tw.xiaoliangkou.app.ui.screens.SupabaseSetupScreen
 import tw.xiaoliangkou.app.ui.screens.WeatherScreen
@@ -346,6 +347,7 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
             composable("memos") { MemosScreen(s, vm, back, showSheet) }
             composable("fortune") { FortuneScreen(s, vm, back) }
             composable("weather") { WeatherScreen(s, vm, back, open) }
+            composable("security") { SecurityScreen(vm, back) }
             composable("account") { AccountScreen(s, vm, back = back) }
             composable("permissions") { PermissionsScreen(vm, back, null) }
             composable("demo") { DemoConsole(s, vm, back) }

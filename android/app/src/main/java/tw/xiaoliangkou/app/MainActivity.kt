@@ -2,6 +2,7 @@ package tw.xiaoliangkou.app
 
 import android.content.Intent
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,9 +11,12 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.ui.AppViewModel
+import tw.xiaoliangkou.app.ui.LockGate
 import tw.xiaoliangkou.app.ui.XlkRoot
 import tw.xiaoliangkou.app.ui.theme.XlkTheme
 
@@ -25,11 +29,20 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         deepLink = intent?.getStringExtra(Notifier.EXTRA_ROUTE)
         if (savedInstanceState == null) openInvite(intent)
+        val c = vm.container
         setContent {
             XlkTheme {
-                XlkRoot(vm, deepLink) { deepLink = null }
+                LockGate(c.lock, c.biometrics, onForgot = { lifecycleScope.launch { c.logout() } }, onBack = { moveTaskToBack(true) }) {
+                    XlkRoot(vm, deepLink) { deepLink = null }
+                }
             }
         }
+    }
+
+    /** 開了 App 鎖：最近使用的 App 畫面不顯示內容（Android 13 以上） */
+    override fun onResume() {
+        super.onResume()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(!vm.container.lock.enabled)
     }
 
     /** 深色模式切換時畫面不會重建（見 AndroidManifest 的 configChanges）：狀態列、導覽列的圖示顏色和視窗底色要自己跟著換 */

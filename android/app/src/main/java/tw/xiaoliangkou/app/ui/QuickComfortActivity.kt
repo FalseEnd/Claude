@@ -61,7 +61,8 @@ class QuickComfortActivity : ComponentActivity() {
         setContent {
             val repo by c.repo.collectAsState()
             val s by remember(repo) { repo?.state ?: flowOf(AppState()) }.collectAsState(AppState())
-            XlkTheme { QuickComfort(s, send = { kind -> send(kind) }, close = { finish() }) }
+            // 開了 App 鎖：先解鎖才看得到、送得出去
+            XlkTheme { LockGate(c.lock, c.biometrics, onForgot = null, onBack = { finish() }) { QuickComfort(s, send = { kind -> send(kind) }, close = { finish() }) } }
         }
     }
 

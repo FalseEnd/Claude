@@ -117,6 +117,11 @@
             android:name=".service.StatusActionReceiver"
             android:exported="false" />
 
+        <!-- 每天早上的天氣通知 -->
+        <receiver
+            android:name=".service.MorningWeatherReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".service.BootReceiver"
             android:exported="true">

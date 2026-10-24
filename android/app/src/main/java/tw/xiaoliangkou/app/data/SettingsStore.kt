@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -33,6 +34,9 @@ class SettingsStore(private val context: Context) {
         val statusItems: Set<String> = StatusText.DEFAULTS,
         /** 最近用過的 GIPHY 貼圖 id，最近的在前（最多 [RECENT_STICKERS] 個，登出就清掉） */
         val recentStickers: List<String> = emptyList(),
+        /** 每天早上的天氣通知，和幾點送（從半夜算起的分鐘，預設 7:30） */
+        val morningWeather: Boolean = true,
+        val morningMinutes: Int = DEFAULT_MORNING,
     ) {
         val configured get() = supabaseUrl.isNotEmpty() && supabaseKey.isNotEmpty()
     }
@@ -59,6 +63,8 @@ class SettingsStore(private val context: Context) {
         val stepSession = stringPreferencesKey("step_session")
         // 有順序的清單：用逗號分開（GIPHY 的 id 只有英數字）
         val recentStickers = stringPreferencesKey("recent_stickers")
+        val morningWeather = booleanPreferencesKey("morning_weather")
+        val morningMinutes = intPreferencesKey("morning_minutes")
         // 舊版留下的設定，登出時順便清掉
         val legacy = listOf(stringPreferencesKey("server_url"), stringPreferencesKey("token"))
     }
@@ -82,6 +88,8 @@ class SettingsStore(private val context: Context) {
             statusNotification = p[K.statusNotification] ?: true,
             statusItems = p[K.statusItems] ?: StatusText.DEFAULTS,
             recentStickers = stickers(p[K.recentStickers]),
+            morningWeather = p[K.morningWeather] ?: true,
+            morningMinutes = p[K.morningMinutes]?.takeIf { it in 0 until 24 * 60 } ?: DEFAULT_MORNING,
         )
     }
 
@@ -127,6 +135,10 @@ class SettingsStore(private val context: Context) {
     suspend fun setAutoBookkeeping(v: Boolean) = context.dataStore.edit { it[K.autoBookkeeping] = v }
     suspend fun setStatusNotification(v: Boolean) = context.dataStore.edit { it[K.statusNotification] = v }
     suspend fun setStatusItems(items: Set<String>) = context.dataStore.edit { it[K.statusItems] = items }
+    suspend fun setMorningWeather(on: Boolean, minutes: Int) = context.dataStore.edit {
+        it[K.morningWeather] = on
+        it[K.morningMinutes] = minutes.coerceIn(0, 24 * 60 - 1)
+    }
 
     /** 選了一張貼圖：放到「最近用過」的最前面 */
     suspend fun addRecentSticker(id: String) = context.dataStore.edit {
@@ -173,5 +185,7 @@ class SettingsStore(private val context: Context) {
 
     companion object {
         const val RECENT_STICKERS = 24
+        /** 早上的天氣通知預設 7:30 */
+        const val DEFAULT_MORNING = 7 * 60 + 30
     }
 }

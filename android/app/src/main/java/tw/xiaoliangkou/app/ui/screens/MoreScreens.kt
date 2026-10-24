@@ -1,5 +1,6 @@
 package tw.xiaoliangkou.app.ui.screens
 
+import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.LinkOff
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Refresh
@@ -80,7 +82,9 @@ import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.Giphy
 import tw.xiaoliangkou.app.data.GiphySearcher
 import tw.xiaoliangkou.app.data.InviteLink
+import tw.xiaoliangkou.app.data.SettingsStore
 import tw.xiaoliangkou.app.data.Supabase
+import tw.xiaoliangkou.app.service.MorningWeather
 import tw.xiaoliangkou.app.service.ServiceNotice
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Fmt
@@ -164,6 +168,7 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
         item {
             CuteCard {
                 MenuRow(Icons.Rounded.Shield, c.mint, MaterialTheme.colorScheme.secondaryContainer, "分享與隱私", if (s.mySharing?.paused == true) "暫停分享中" else "決定 ${s.partnerName} 能看到什麼") { open("privacy") }
+                MenuRow(Icons.Rounded.Lock, c.lavender, c.fertileSoft, "App 安全性", if (vm.container.lock.enabled) "已上鎖 🔒 · 指紋、臉部或密碼" else "用指紋、臉部或密碼鎖住小倆口") { open("security") }
                 MenuRow(Icons.Rounded.Notifications, c.peach, c.peach.copy(alpha = 0.25f), "通知設定", "通知列顯示 ${s.partnerName} 的狀態、想收到哪些通知") { open("notif") }
                 MenuRow(Icons.Rounded.Widgets, c.butter, c.butter.copy(alpha = 0.25f), "桌面小工具", "在桌面看在一起的天數、${s.partnerName} 的狀態、備忘錄") { open("widgets") }
                 if (!s.demo) {
@@ -282,6 +287,7 @@ fun NotificationScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenHeader("通知設定", onBack = back) }
         item { StatusNoticeCard(s, vm, prefs?.statusNotification != false, prefs?.statusItems ?: StatusText.DEFAULTS) { block -> scope.launch { block() } } }
+        item { MorningWeatherCard(s, vm, prefs?.morningWeather != false, prefs?.morningMinutes ?: SettingsStore.DEFAULT_MORNING) }
         item {
             CuteCard {
                 Text("要收到哪些通知", style = MaterialTheme.typography.titleMedium)
@@ -293,6 +299,37 @@ fun NotificationScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
             }
         }
         item { Note("「對方新增會偵測你的標點」與「分享設定變更」的通知不能關閉，讓兩個人都知道自己分享了什麼。也可以在系統設定裡分別調整每種通知的聲音。", "🔔") }
+    }
+}
+
+/** 每天早上的天氣通知：開關、幾點送、現在試試看 */
+@Composable
+internal fun MorningWeatherCard(s: AppState, vm: AppViewModel, on: Boolean, minutes: Int) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var trying by remember { mutableStateOf(false) }
+    val time = "%02d:%02d".format(minutes / 60, minutes % 60)
+    CuteCard {
+        ToggleRow("每天早上的天氣提醒", on, "$time 送出兩邊今天的天氣和要注意的事，可以直接提醒 ${s.partnerName}", "🌤️") { v ->
+            scope.launch { vm.container.setMorningWeather(v, minutes) }
+        }
+        if (!on) return@CuteCard
+        ButtonRow {
+            SoftButton("⏰ 幾點：$time", small = true) {
+                TimePickerDialog(context, { _, h, m -> scope.launch { vm.container.setMorningWeather(true, h * 60 + m) } }, minutes / 60, minutes % 60, true).show()
+            }
+            SoftButton(if (trying) "抓天氣中…" else "現在試試看", small = true, enabled = !trying) {
+                trying = true
+                scope.launch {
+                    try { vm.toast(MorningWeather.post(context.applicationContext, vm.container)) } finally { trying = false }
+                }
+            }
+        }
+        Text(
+            if (s.demo) "示範模式只能按「現在試試看」，登入 Supabase 後每天早上才會自動送出"
+            else "${s.partnerName} 那邊要對方有分享位置才看得到。手機在省電模式時，可能會晚幾分鐘送到",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

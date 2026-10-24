@@ -36,6 +36,7 @@ import kotlinx.serialization.json.put
 import org.osmdroid.config.Configuration
 import tw.xiaoliangkou.app.core.PaymentParser
 import tw.xiaoliangkou.app.data.AppException
+import tw.xiaoliangkou.app.data.AppLock
 import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.data.Errors
@@ -56,8 +57,11 @@ import tw.xiaoliangkou.app.data.WeatherSource
 import tw.xiaoliangkou.app.data.apiCall
 import tw.xiaoliangkou.app.data.giphyMediaCache
 import tw.xiaoliangkou.app.service.AutoBookkeeping
+import tw.xiaoliangkou.app.service.MorningWeather
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.ShareService
+import tw.xiaoliangkou.app.ui.BiometricAuth
+import tw.xiaoliangkou.app.ui.SystemBiometrics
 import tw.xiaoliangkou.app.ui.components.stickerImageLoader
 import tw.xiaoliangkou.app.widget.MemoWidget
 import tw.xiaoliangkou.app.widget.MemoWidgetSnapshot
@@ -106,6 +110,9 @@ class AppContainer(private val app: Application) {
     val placeSearch = PlaceSearch(app, "${BuildConfig.APPLICATION_ID}/${BuildConfig.VERSION_NAME}")
     /** GIPHY：搜尋貼圖（查過的頁面記在記憶體裡）、通知裡的貼圖；測試時換成假的 */
     var giphy = Giphy()
+    /** App 鎖（密碼、指紋或臉部）；辨識在測試時換成假的 */
+    val lock = AppLock(app)
+    var biometrics: BiometricAuth = SystemBiometrics
     /** 雙方所在地的天氣（Open-Meteo）；測試時換成假的 */
     var weather: WeatherSource = OpenMeteo(app)
 
@@ -186,6 +193,21 @@ class AppContainer(private val app: Application) {
                     }
                 }
         }
+        // App 鎖：離開 App 超過設定的時間再回來就鎖上（相片挑選器、權限視窗也算離開，所以預設等 1 分鐘）
+        ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
+            when (e) {
+                Lifecycle.Event.ON_STOP -> lock.onBackground()
+                Lifecycle.Event.ON_START -> lock.onForeground()
+                else -> Unit
+            }
+        })
+        // 早上的天氣通知：登入後依設定排好（開機、更新 App 後 BootReceiver 叫起 App 時也會重排）
+        scope.launch {
+            _prefs.filterNotNull()
+                .map { (it.morningWeather && it.mode == SettingsStore.Mode.REMOTE) to it.morningMinutes }
+                .distinctUntilChanged()
+                .collect { (on, minutes) -> MorningWeather.schedule(app, on, minutes) }
+        }
         // 回到 App：補抓還沒抓到的縮圖；系統字型大小改了也重新排版
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_START) scope.launch(Dispatchers.IO) { MemoWidget.refresh(app, media) }
@@ -204,6 +226,8 @@ class AppContainer(private val app: Application) {
     }
 
     suspend fun reloadPrefs() { _prefs.value = settings.load() }
+
+    suspend fun setMorningWeather(on: Boolean, minutes: Int) { settings.setMorningWeather(on, minutes); reloadPrefs() }
 
     /** 「測試連線」：呼叫 app_health，成功才存起來 */
     suspend fun testConnection(rawUrl: String, rawKey: String) {
@@ -348,6 +372,8 @@ class AppContainer(private val app: Application) {
         ShareService.stop(app)
         stopCurrent()
         settings.clear()
+        // 忘記 App 鎖的密碼就是靠登出再登入：登出時一起關掉
+        lock.disable()
         reloadPrefs()
         media.clear()
         // 告訴 Supabase 這支手機登出了：token 過期的話先換新（最多等 5 秒），沒網路也沒關係

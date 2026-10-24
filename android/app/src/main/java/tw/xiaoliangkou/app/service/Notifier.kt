@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.serialization.json.JsonObject
 import tw.xiaoliangkou.app.MainActivity
 import tw.xiaoliangkou.app.R
+import tw.xiaoliangkou.app.core.Weather
 import tw.xiaoliangkou.app.data.Avatars
 import tw.xiaoliangkou.app.data.RemoteRepository
 import tw.xiaoliangkou.app.ui.QuickComfortActivity
@@ -29,7 +30,10 @@ class Notifier(private val context: Context) {
         const val CH_SERVICE = "service"
         const val CH_STATUS = "partner_status"
         const val CH_SHARE = "share"
+        const val CH_WEATHER = "weather"
         const val SERVICE_ID = 1
+        /** 早上的天氣通知（每天換掉前一天的） */
+        const val MORNING_ID = 2
         const val EXTRA_ROUTE = "route"
         /** 常駐通知「更多安撫」的 PendingIntent（別的通知用 outbox 的 id，不會撞到）*/
         private const val MORE_COMFORTS = Int.MAX_VALUE - 1
@@ -49,6 +53,7 @@ class Notifier(private val context: Context) {
             NotificationChannel(CH_SHARE, "日曆紀錄與備忘錄", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "對方記錄了那天的生活、新增共同備忘錄" },
             NotificationChannel(CH_SERVICE, "背景連線", NotificationManager.IMPORTANCE_MIN).apply { description = "保持即時連線、分享位置時常駐"; setShowBadge(false) },
             NotificationChannel(CH_STATUS, "對方狀態", NotificationManager.IMPORTANCE_LOW).apply { description = "常駐在通知列，顯示對方的電量、位置、心情"; setShowBadge(false) },
+            NotificationChannel(CH_WEATHER, "每天早上的天氣", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "兩邊今天的天氣和要注意的事" },
         ))
     }
 
@@ -111,6 +116,21 @@ class Notifier(private val context: Context) {
         }
         if (picture != null) b.setLargeIcon(picture).setOnlyAlertOnce(true)
         runCatching { NotificationManagerCompat.from(context).notify(androidId(id), b.build()) }
+    }
+
+    /** 早上的天氣：第一行是自己這邊，展開看得到兩邊；[remind] 是「提醒對方」的按鈕，點通知打開天氣頁 */
+    fun showMorning(m: Weather.Morning, remind: PendingIntent?, partnerName: String) {
+        if (!canPost()) return
+        val b = NotificationCompat.Builder(context, CH_WEATHER)
+            .setSmallIcon(R.drawable.ic_stat_heart)
+            .setColor(PINK)
+            .setContentTitle(m.title)
+            .setContentText(m.lines.first())
+            .setStyle(NotificationCompat.BigTextStyle().bigText(m.lines.joinToString("\n")))
+            .setAutoCancel(true)
+            .setContentIntent(openApp("weather", MORNING_ID))
+        if (remind != null) b.addAction(0, "💌 提醒 $partnerName", remind)
+        runCatching { NotificationManagerCompat.from(context).notify(MORNING_ID, b.build()) }
     }
 
     /** 這則還在通知列上（使用者還沒滑掉、還沒點開） */

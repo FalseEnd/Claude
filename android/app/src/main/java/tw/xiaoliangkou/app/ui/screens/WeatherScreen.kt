@@ -279,12 +279,15 @@ private fun SpotWeather(w: WeatherNow, area: String?) {
     }
 }
 
+/** 提醒對方時送的安撫：資料庫還存不了新的安撫種類時改送抱抱，提醒的話照樣送到 */
+internal fun reminderKindFor(s: AppState, a: Weather.Advice): String =
+    Weather.reminderKind(a).takeIf { k -> Catalog.comfort(k)?.let { s.canPick(it.since) } == true } ?: "hug"
+
 /** 把最要緊的提醒當作安撫傳給對方（悄悄話寫著要注意什麼） */
 @Composable
 private fun RemindPartner(s: AppState, vm: AppViewModel, a: Weather.Advice) {
     val message = Weather.reminder(a)
-    // 資料庫還存不了新的安撫種類時改送抱抱，提醒的話照樣送到
-    val kind = Weather.reminderKind(a).takeIf { k -> Catalog.comfort(k)?.let { s.canPick(it.since) } == true } ?: "hug"
+    val kind = reminderKindFor(s, a)
     var sent by remember(message) { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     Column(

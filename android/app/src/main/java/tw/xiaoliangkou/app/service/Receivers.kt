@@ -53,6 +53,15 @@ class StatusActionReceiver : BroadcastReceiver() {
         /** 送一種安撫（[EXTRA_KIND]） */
         const val COMFORT = "tw.xiaoliangkou.app.action.COMFORT"
         const val EXTRA_KIND = "kind"
+        /** 安撫附的悄悄話（早上天氣通知的「提醒對方」） */
+        const val EXTRA_MESSAGE = "message"
+
+        /** 早上天氣通知的「提醒對方」：送 [kind] 的安撫，悄悄話是要注意的事 */
+        fun weatherReminder(context: Context, kind: String, message: String): PendingIntent = PendingIntent.getBroadcast(
+            context, "weather".hashCode(),
+            Intent(context, StatusActionReceiver::class.java).setAction(COMFORT).putExtra(EXTRA_KIND, kind).putExtra(EXTRA_MESSAGE, message),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
 
         fun comfort(context: Context, kind: String): PendingIntent = PendingIntent.getBroadcast(
             context, (COMFORT + kind).hashCode(),
@@ -72,10 +81,11 @@ class StatusActionReceiver : BroadcastReceiver() {
         if (action != LOCATE && action != HUG && action != COMFORT) return
         // 只送得出原本就有的種類（這個 App 自己的按鈕才會送來，還是檢查一下）
         val kind = if (action == COMFORT) intent.getStringExtra(EXTRA_KIND)?.takeIf { Catalog.comfort(it) != null } ?: return else "hug"
+        val message = if (action == COMFORT) intent.getStringExtra(EXTRA_MESSAGE)?.trim()?.take(200)?.ifEmpty { null } else null
         val pending = goAsync()
         val c = context.applicationContext.container
         c.scope.launch {
-            val msg = quickAction(c, if (action == LOCATE) null else kind)
+            val msg = quickAction(c, if (action == LOCATE) null else kind, message)
             Toast.makeText(context.applicationContext, msg, Toast.LENGTH_SHORT).show()
             pending.finish()
         }
@@ -83,10 +93,10 @@ class StatusActionReceiver : BroadcastReceiver() {
 }
 
 /**
- * 常駐通知的按鈕、「更多安撫」的小視窗：[kind] 是送哪一種安撫，null 是「現在在哪？」。回傳要跳出來的提示。
+ * 常駐通知的按鈕、「更多安撫」的小視窗：[kind] 是送哪一種安撫，null 是「現在在哪？」；[message] 是附的悄悄話。回傳要跳出來的提示。
  * App 可能才剛被叫起來：等設定和資料載入（最多幾秒）
  */
-internal suspend fun quickAction(c: AppContainer, kind: String?): String = try {
+internal suspend fun quickAction(c: AppContainer, kind: String?, message: String? = null): String = try {
     val repo = withTimeoutOrNull(6_000) {
         c.prefs.first { it != null }
         c.repo.value?.also { r -> r.state.first { it.loaded } }
@@ -97,9 +107,10 @@ internal suspend fun quickAction(c: AppContainer, kind: String?): String = try {
         !st.paired -> "還沒配對喔"
         kind == null -> if (repo.locatePartner()) "已請 ${st.partnerName} 的手機回報位置 📍" else "${st.partnerName} 的手機目前不在線上"
         else -> {
-            repo.sendComfort(kind, null)
+            repo.sendComfort(kind, message)
             val comfort = Catalog.comfort(kind)
-            if (kind == "hug") "已經抱抱 ${st.partnerName} 🤗" else "已送出${comfort?.label}給 ${st.partnerName} ${comfort?.emoji}"
+            if (message != null) "已經提醒 ${st.partnerName} 了 💌"
+            else if (kind == "hug") "已經抱抱 ${st.partnerName} 🤗" else "已送出${comfort?.label}給 ${st.partnerName} ${comfort?.emoji}"
         }
     }
 } catch (e: AppException) {

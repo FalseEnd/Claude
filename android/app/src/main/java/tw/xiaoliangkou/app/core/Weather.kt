@@ -175,4 +175,26 @@ object Weather {
 
     /** 提醒對方時送哪一種安撫（最要緊那一條的）；天氣好就比個心 */
     fun reminderKind(a: Advice): String = a.tips.firstOrNull()?.kind ?: "heart"
+
+    /** 早上的天氣通知：標題和每一邊一行；兩邊都沒有天氣是 null */
+    data class Morning(val title: String, val lines: List<String>)
+
+    /**
+     * 「早安！今天晴天 27°～34°」＋「你這邊 33° 晴天：擦防曬、戴帽子或撐陽傘、多喝水，小心中暑」
+     * 「小雨 那邊 14° 下雨：記得帶傘、戴口罩，別在戶外運動」
+     */
+    fun morning(mine: WeatherNow?, partner: WeatherNow?, partnerName: String): Morning? {
+        if (mine == null && partner == null) return null
+        fun line(who: String, w: WeatherNow): String {
+            val a = advice(w)
+            val range = if (w.high != null && w.low != null) "（${deg(w.low)}～${deg(w.high)}）" else ""
+            val todo = a.tips.take(2).joinToString("、") { it.todo }.ifEmpty { a.outing.text + " " + a.outing.emoji }
+            return "$who ${deg(w.temp)} ${describe(w.code, w.isDay).second}$range：$todo"
+        }
+        val title = mine?.let { w ->
+            val (emoji, text) = describe(w.code, w.isDay)
+            "早安 $emoji 今天$text" + if (w.high != null && w.low != null) " ${deg(w.low)}～${deg(w.high)}" else " ${deg(w.temp)}"
+        } ?: "早安！看看 $partnerName 那邊的天氣"
+        return Morning(title, listOfNotNull(mine?.let { line("你這邊", it) }, partner?.let { line("$partnerName 那邊", it) }))
+    }
 }
