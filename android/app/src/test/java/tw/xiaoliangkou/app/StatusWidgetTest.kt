@@ -36,6 +36,7 @@ import tw.xiaoliangkou.app.data.Sharing
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.ServiceNotice
 import tw.xiaoliangkou.app.service.StatusActionReceiver
+import tw.xiaoliangkou.app.ui.QuickComfortActivity
 import tw.xiaoliangkou.app.ui.StatusText
 import tw.xiaoliangkou.app.widget.PartnerWidget
 import tw.xiaoliangkou.app.widget.TogetherWidget
@@ -109,10 +110,9 @@ class StatusWidgetTest {
         assertTrue(n.extras.getCharSequence(Notification.EXTRA_TITLE).toString().startsWith("小雨 在"))
         assertNotNull(n.getLargeIcon())
         assertEquals(listOf("📍 現在在哪？", "🤗 抱抱", "💞 更多安撫"), n.actions.map { it.title.toString() })
-        // 「更多安撫」打開 App 的安撫
+        // 「更多安撫」打開浮在目前畫面上的小視窗（不是整個 App）
         val more = Shadows.shadowOf(n.actions[2].actionIntent).savedIntent
-        assertEquals(MainActivity::class.java.name, more.component?.className)
-        assertEquals("comfort", more.getStringExtra(Notifier.EXTRA_ROUTE))
+        assertEquals(QuickComfortActivity::class.java.name, more.component?.className)
         // 對方沒分享位置：沒有「現在在哪？」，多一個親親（最多三個按鈕）
         val noLocation = notifier.serviceNotification(ServiceNotice.of(s.copy(partnerSharing = s.partnerSharing!!.copy(shareLocation = false)), true, StatusText.DEFAULTS))
         assertEquals(listOf("🤗 抱抱", "😘 親親", "💞 更多安撫"), noLocation.actions.map { it.title.toString() })

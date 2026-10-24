@@ -40,6 +40,7 @@ import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DemoRepository
 import tw.xiaoliangkou.app.service.StatusActionReceiver
 import tw.xiaoliangkou.app.ui.AppViewModel
+import tw.xiaoliangkou.app.ui.QuickComfort
 import tw.xiaoliangkou.app.ui.screens.ComfortSheet
 import tw.xiaoliangkou.app.ui.screens.MoodScreen
 import tw.xiaoliangkou.app.ui.theme.XlkTheme
@@ -188,7 +189,32 @@ class MoreMoodsScreensTest {
         assertEquals(before, vm.container.repo.value!!.state.value.comforts.size)
     }
 
+    /** 常駐通知的「更多安撫」小視窗：原本的「現在在哪？」「抱抱」都在，15 種安撫都選得到，點一下就送 */
+    @Test fun quickComfortWindowHasEveryOption() {
+        val sent = mutableListOf<String?>()
+        show { QuickComfort(s, send = { sent += it }, close = {}) }
+        assertTrue(has("📍 小雨 現在在哪？"))
+        Catalog.comforts.forEach { assertTrue(it.label, has(it.label)) }
+        capture("37e_quick_comfort")
+        compose.onNodeWithText("晚安").performClick()
+        compose.onNodeWithText("📍 小雨 現在在哪？").performClick()
+        assertEquals(listOf("night", null), sent)
+    }
+
+    /** 對方沒分享位置：沒有「現在在哪？」；資料庫還沒更新：只有原本的安撫 */
+    @Test fun quickComfortWindowFollowsSharingAndDatabase() {
+        show { QuickComfort(s.copy(dbSchema = 4, partnerSharing = s.partnerSharing!!.copy(shareLocation = false)), send = {}, close = {}) }
+        assertFalse(has("📍 小雨 現在在哪？"))
+        Catalog.comforts.forEach { assertEquals(it.label, !it.extra, has(it.label)) }
+    }
+
     // ================================================================ 字放大（360 dp、1.3 倍）
+
+    @Config(qualifiers = "zh-rTW-w360dp-h900dp-xhdpi", fontScale = 1.3f)
+    @Test fun quickComfortWithLargeText() {
+        show { QuickComfort(s, send = {}, close = {}) }
+        capture("60d_quick_comfort", large = true)
+    }
 
     @Config(qualifiers = "zh-rTW-w360dp-h2400dp-xhdpi", fontScale = 1.3f)
     @Test fun moodsWithLargeText() {

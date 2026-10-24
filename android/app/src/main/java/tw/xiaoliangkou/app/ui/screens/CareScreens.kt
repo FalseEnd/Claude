@@ -181,7 +181,7 @@ private fun StickerChoice(
 
 /** 一組一組的選項：每組一個小標題，三個一排（最後一排不滿三個也一樣寬）；[show] 是要不要顯示這一個 */
 @Composable
-private fun <T> GroupedChoices(groups: List<Catalog.Group<T>>, show: (T) -> Boolean, choice: @Composable (T, Modifier) -> Unit) {
+internal fun <T> GroupedChoices(groups: List<Catalog.Group<T>>, show: (T) -> Boolean, choice: @Composable (T, Modifier) -> Unit) {
     groups.forEach { g ->
         val items = g.items.filter(show)
         if (items.isEmpty()) return@forEach
@@ -203,7 +203,7 @@ private fun MoreChoicesHint(s: AppState, what: String) = TidyText(
 )
 
 @Composable
-private fun MoodBubble(emoji: String, label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+internal fun MoodBubble(emoji: String, label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val bg by animateColorAsState(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), label = "moodBg")
     val scale by animateFloatAsState(if (selected) 1.06f else 1f, spring(dampingRatio = Spring.DampingRatioHighBouncy), label = "moodScale")
     Column(

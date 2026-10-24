@@ -18,6 +18,7 @@ import tw.xiaoliangkou.app.MainActivity
 import tw.xiaoliangkou.app.R
 import tw.xiaoliangkou.app.data.Avatars
 import tw.xiaoliangkou.app.data.RemoteRepository
+import tw.xiaoliangkou.app.ui.QuickComfortActivity
 
 /** 系統通知：依類型分到不同頻道，使用者可以在系統設定分別調整 */
 class Notifier(private val context: Context) {
@@ -30,7 +31,7 @@ class Notifier(private val context: Context) {
         const val CH_SHARE = "share"
         const val SERVICE_ID = 1
         const val EXTRA_ROUTE = "route"
-        /** 常駐通知「更多安撫」的 PendingIntent（別的通知用 outbox 的 id，不會撞到） */
+        /** 常駐通知「更多安撫」的 PendingIntent（別的通知用 outbox 的 id，不會撞到）*/
         private const val MORE_COMFORTS = Int.MAX_VALUE - 1
         private const val PINK = 0xFFFF7AA2.toInt()
         private const val PARTNER = 0xFFFF7FA8.toInt()
@@ -57,6 +58,12 @@ class Notifier(private val context: Context) {
         "diary", "memo" -> CH_SHARE
         else -> CH_REMIND
     }
+
+    private fun quickComforts(): PendingIntent = PendingIntent.getActivity(
+        context, MORE_COMFORTS,
+        Intent(context, QuickComfortActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
 
     private fun openApp(route: String?, requestCode: Int): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -145,10 +152,11 @@ class Notifier(private val context: Context) {
         if (n.whenMs != null) b.setWhen(n.whenMs).setShowWhen(true) else b.setShowWhen(false)
         if (n.locate) b.addAction(0, "📍 現在在哪？", StatusActionReceiver.intent(context, StatusActionReceiver.LOCATE))
         if (n.hug) {
-            // 通知最多三個按鈕：抱抱一定有，沒有「現在在哪？」時多一個親親，最後一個打開 App 選其他的安撫
+            // 通知最多三個按鈕：抱抱一定有，沒有「現在在哪？」時多一個親親；
+            // 「更多安撫」打開浮在目前畫面上的小視窗，「現在在哪？」、抱抱和其他安撫全部都選得到
             b.addAction(0, "🤗 抱抱", StatusActionReceiver.intent(context, StatusActionReceiver.HUG))
             if (!n.locate) b.addAction(0, "😘 親親", StatusActionReceiver.comfort(context, "kiss"))
-            b.addAction(0, "💞 更多安撫", openApp("comfort", MORE_COMFORTS))
+            b.addAction(0, "💞 更多安撫", quickComforts())
         }
         return b.build()
     }

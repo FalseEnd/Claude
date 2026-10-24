@@ -33,6 +33,14 @@
 
         <!-- 轉橫向、分割畫面、切換深色模式、調整字型大小時不要重建畫面：寫到一半的紀錄、備忘錄和剛上傳的照片、語音才不會不見
              （畫面全是 Compose，會自己跟著重新排版） -->
+        <!-- 常駐通知的「更多安撫」：浮在目前畫面上的小視窗，不會出現在最近使用的 App 裡 -->
+        <activity
+            android:name=".ui.QuickComfortActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.XiaoLiangKou.Floating" />
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|fontScale|uiMode"

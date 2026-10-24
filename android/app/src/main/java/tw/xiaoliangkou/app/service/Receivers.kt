@@ -11,6 +11,7 @@ import android.widget.Toast
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import tw.xiaoliangkou.app.AppContainer
 import tw.xiaoliangkou.app.container
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.data.AppException
@@ -74,30 +75,35 @@ class StatusActionReceiver : BroadcastReceiver() {
         val pending = goAsync()
         val c = context.applicationContext.container
         c.scope.launch {
-            val msg = try {
-                // App 可能才剛被這個按鈕叫起來：等設定和資料載入（最多幾秒）
-                val repo = withTimeoutOrNull(6_000) {
-                    c.prefs.first { it != null }
-                    c.repo.value?.also { r -> r.state.first { it.loaded } }
-                }
-                val st = repo?.state?.value
-                when {
-                    repo == null || st == null -> "請先打開小倆口登入"
-                    !st.paired -> "還沒配對喔"
-                    action == LOCATE -> if (repo.locatePartner()) "已請 ${st.partnerName} 的手機回報位置 📍" else "${st.partnerName} 的手機目前不在線上"
-                    else -> {
-                        repo.sendComfort(kind, null)
-                        val c = Catalog.comfort(kind)
-                        if (kind == "hug") "已經抱抱 ${st.partnerName} 🤗" else "已送出${c?.label}給 ${st.partnerName} ${c?.emoji}"
-                    }
-                }
-            } catch (e: AppException) {
-                e.message ?: "沒有送出，請稍後再試"
-            } catch (e: Exception) {
-                "沒有送出，請確認網路連線"
-            }
+            val msg = quickAction(c, if (action == LOCATE) null else kind)
             Toast.makeText(context.applicationContext, msg, Toast.LENGTH_SHORT).show()
             pending.finish()
         }
     }
+}
+
+/**
+ * 常駐通知的按鈕、「更多安撫」的小視窗：[kind] 是送哪一種安撫，null 是「現在在哪？」。回傳要跳出來的提示。
+ * App 可能才剛被叫起來：等設定和資料載入（最多幾秒）
+ */
+internal suspend fun quickAction(c: AppContainer, kind: String?): String = try {
+    val repo = withTimeoutOrNull(6_000) {
+        c.prefs.first { it != null }
+        c.repo.value?.also { r -> r.state.first { it.loaded } }
+    }
+    val st = repo?.state?.value
+    when {
+        repo == null || st == null -> "請先打開小倆口登入"
+        !st.paired -> "還沒配對喔"
+        kind == null -> if (repo.locatePartner()) "已請 ${st.partnerName} 的手機回報位置 📍" else "${st.partnerName} 的手機目前不在線上"
+        else -> {
+            repo.sendComfort(kind, null)
+            val comfort = Catalog.comfort(kind)
+            if (kind == "hug") "已經抱抱 ${st.partnerName} 🤗" else "已送出${comfort?.label}給 ${st.partnerName} ${comfort?.emoji}"
+        }
+    }
+} catch (e: AppException) {
+    e.message ?: "沒有送出，請稍後再試"
+} catch (e: Exception) {
+    "沒有送出，請確認網路連線"
 }
