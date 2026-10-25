@@ -1,6 +1,6 @@
 # 小倆口：情侶 App
 
-可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.2.8**。
+可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.2.9**。
 
 > **已經在用 0.1 版？先更新資料庫 🛠️**
 >
@@ -103,7 +103,7 @@ cd android
 
 Windows 用 `gradlew.bat assembleRelease`。正式上架前請換成自己的簽章金鑰（`android/app/build.gradle.kts` 的 `signingConfig`）。
 
-版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.2.8、`versionCode` 10），裝好後在 App「我的」最下面看得到。
+版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.2.9、`versionCode` 11），裝好後在 App「我的」最下面看得到。
 
 ## 測試
 
@@ -131,7 +131,7 @@ cd android && ./gradlew recordRoborazziDebug  # 不用模擬器，把每個畫�
 | `StickerScreensTest` | 心情和安撫附上 GIPHY 貼圖、首頁收到的安撫、歷史紀錄裡的貼圖、選貼圖的視窗（還沒設定 key、示範模式、找不到、key 不能用、用太多次、連不到）與查了幾次、帳號裡的 GIPHY key |
 | `GiphyTest`、`StickerImageTest`、`StickerNotificationTest` | 送到 GIPHY 的參數、回應與錯誤、查過的不再查；用 id 顯示貼圖、id 不對不載；通知先發文字、再換成有貼圖的同一則 |
 | `StickerRemoteTest`、`StickerDemoTest` | 貼圖和 GIPHY key 的資料層（假的 Supabase、示範模式）：舊的資料庫先擋下來、收到的安撫標成看過 |
-| `MorningWeatherTest`、`AppLockTest`、`LockScreensTest` | 早上天氣通知的時間、內容、提醒按鈕和鬧鐘；App 鎖的雜湊、錯太多次要等、離開多久再鎖；鎖定畫面（密碼、圖形、指紋或臉部、忘記密碼）、App 安全性的設定、字放大的排版 |
+| `MorningWeatherTest`、`AppLockTest`、`LockScreensTest`、`BiometricPermissionTest` | 早上天氣通知的時間、內容、提醒按鈕和鬧鐘；App 鎖的雜湊、錯太多次要等、離開多久再鎖；鎖定畫面（密碼、圖形、指紋或臉部、忘記密碼）、App 安全性的設定、字放大的排版 |
 | `WeatherTest`、`WeatherScreensTest` | 外出建議的各種門檻、提醒對方的話、天氣代碼；Open-Meteo 的請求（座標只到小數點兩位、不帶金鑰）、回應、錯誤和 20 分鐘的快取；天氣頁、首頁卡片、對方沒分享位置、抓不到、提醒對方送出的安撫、字放大的排版 |
 
 App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日曆紀錄、備忘錄、照片的權限，0.2.2 的 GIPHY key、貼圖和已讀）：先 `npx supabase start`，專案裡不能已經有帳號（可以先 `npx supabase db reset`），再執行
@@ -139,6 +139,7 @@ App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日�
 
 ## 更新紀錄
 
+- **0.2.9**：修正打開「App 安全性」（和開了指紋解鎖後的鎖定畫面）會閃退：少宣告了系統指紋、臉部辨識要的權限。
 - **0.2.8**：
   - 每天早上的天氣提醒：預設 07:30 推播兩邊今天的天氣和要注意的事，通知上有「💌 提醒 小雨」可以直接把注意事項傳給對方，點通知打開天氣頁。在「通知設定」可以關掉、改時間，或按「現在試試看」。
   - App 安全性（我的 › App 安全性）：進入 App 要用數字密碼（4～8 位）或圖形（3×3 連 4 個點以上）解鎖，也可以用指紋或臉部辨識；可以選離開 App 多久要再解鎖（馬上、1、5、30 分鐘）。錯 5 次要等 30 秒，再錯等待加倍。忘記密碼或圖形可以登出再登入。常駐通知的「更多安撫」小視窗也要先解鎖。

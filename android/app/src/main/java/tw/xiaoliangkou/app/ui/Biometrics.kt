@@ -24,11 +24,16 @@ object SystemBiometrics : BiometricAuth {
     override fun problem(context: Context): String? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return "Android 10 以上才能用指紋或臉部解鎖"
         val bm = context.getSystemService(BiometricManager::class.java) ?: return "這支手機不支援指紋或臉部辨識"
-        val r = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
-        } else {
-            @Suppress("DEPRECATION")
-            bm.canAuthenticate()
+        // 有些手機的系統在這裡會丟例外：當作不能用，不要讓 App 當掉
+        val r = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+            } else {
+                @Suppress("DEPRECATION")
+                bm.canAuthenticate()
+            }
+        } catch (e: Exception) {
+            return "這支手機暫時不能用指紋或臉部辨識"
         }
         return when (r) {
             BiometricManager.BIOMETRIC_SUCCESS -> null
