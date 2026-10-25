@@ -93,7 +93,7 @@ import tw.xiaoliangkou.app.ui.StatusText
 import tw.xiaoliangkou.app.ui.components.Avatar
 import tw.xiaoliangkou.app.ui.components.ButtonRow
 import tw.xiaoliangkou.app.ui.components.ChoiceChip
-import tw.xiaoliangkou.app.ui.components.CoupleMascots
+import tw.xiaoliangkou.app.ui.components.CoupleCats
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.CuteCard
 import tw.xiaoliangkou.app.ui.components.CuteField
@@ -123,7 +123,7 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
         item { ScreenHeader("我的") }
         item {
             CuteCard(color = c.partnerSoft) {
-                CoupleMascots(height = 90.dp)
+                CoupleCats(height = 90.dp)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     // 點頭像換照片或表情
                     Box(Modifier.bouncyClick { sheet(SheetSpec.Avatar) }) {

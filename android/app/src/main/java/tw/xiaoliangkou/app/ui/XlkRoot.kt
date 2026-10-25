@@ -256,7 +256,7 @@ private fun Connecting(vm: AppViewModel) {
     LaunchedEffect(Unit) { delay(4000); slow = true }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)) {
-        tw.xiaoliangkou.app.ui.components.CoupleMascots(height = 130.dp)
+        tw.xiaoliangkou.app.ui.components.CoupleCats(height = 130.dp)
         Text("正在連到你們的 Supabase…", style = MaterialTheme.typography.titleMedium)
         LoadingDots()
         if (slow) {

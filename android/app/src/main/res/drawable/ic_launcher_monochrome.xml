@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 主題圖示（單色）：兩隻小貓的頭剪影，眼睛和鼻子挖空，中間上面一顆愛心 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFFFF" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2" android:strokeLineJoin="round" android:pathData="M25.3,60.5L26.9,46L35.3,53.6z" />
+    <path android:fillColor="#FFFFFFFF" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2" android:strokeLineJoin="round" android:pathData="M51.7,60.5L50.1,46L41.7,53.6z" />
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M23.5,65a15,12.8 0 1,0 30,0a15,12.8 0 1,0 -30,0zM31,65.6a1.9,2.5 0 1,0 3.8,0a1.9,2.5 0 1,0 -3.8,0zM42.2,65.6a1.9,2.5 0 1,0 3.8,0a1.9,2.5 0 1,0 -3.8,0zM37.3,68L39.7,68L38.5,69.4z" />
+    <path android:fillColor="#FFFFFFFF" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2" android:strokeLineJoin="round" android:pathData="M56.3,60.5L57.9,46L66.3,53.6z" />
+    <path android:fillColor="#FFFFFFFF" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2" android:strokeLineJoin="round" android:pathData="M82.7,60.5L81.1,46L72.7,53.6z" />
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M54.5,65a15,12.8 0 1,0 30,0a15,12.8 0 1,0 -30,0zM62,65.6a1.9,2.5 0 1,0 3.8,0a1.9,2.5 0 1,0 -3.8,0zM73.2,65.6a1.9,2.5 0 1,0 3.8,0a1.9,2.5 0 1,0 -3.8,0zM68.3,68L70.7,68L69.5,69.4z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M54,39.72C48.5,36.04 50.5,30.8 54,33.92C57.5,30.8 59.5,36.04 54,39.72z" />
+</vector>

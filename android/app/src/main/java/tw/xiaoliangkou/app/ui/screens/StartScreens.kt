@@ -83,7 +83,7 @@ import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.data.Supabase
 import tw.xiaoliangkou.app.service.ShareService
 import tw.xiaoliangkou.app.ui.AppViewModel
-import tw.xiaoliangkou.app.ui.components.CoupleMascots
+import tw.xiaoliangkou.app.ui.components.CoupleCats
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.CuteCard
 import tw.xiaoliangkou.app.ui.components.CuteField
@@ -104,7 +104,7 @@ import java.time.LocalDate
 @Composable
 fun SplashScreen() {
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        CoupleMascots(height = 140.dp)
+        CoupleCats(height = 140.dp)
         Text("小倆口", style = MaterialTheme.typography.displayMedium)
         Box(Modifier.padding(top = 16.dp)) { LoadingDots() }
     }
@@ -120,7 +120,7 @@ fun WelcomeScreen(vm: AppViewModel, onOther: () -> Unit = {}, onStart: () -> Uni
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Box(Modifier.weight(1f))
-        CoupleMascots(height = 170.dp)
+        CoupleCats(height = 170.dp)
         HeartBeat { Text("小倆口", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.primary) }
         Text("用一條紅線，牽起兩個人的日常", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(Modifier.weight(1f))
@@ -305,7 +305,7 @@ private fun AuthScaffold(
         item { ScreenHeader(title, onBack = back) }
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                CoupleMascots(height = 110.dp)
+                CoupleCats(height = 110.dp)
                 TidyText(greeting, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
                 TidyText(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }
@@ -369,7 +369,7 @@ fun PairingScreen(s: AppState, vm: AppViewModel, open: ((String) -> Unit)? = nul
     LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                CoupleMascots(height = 120.dp, rightColor = MaterialTheme.colorScheme.outline)
+                CoupleCats(height = 120.dp, rightColor = MaterialTheme.colorScheme.outline)
                 TidyText("嗨 ${s.me?.displayName ?: ""}，來配對另一半吧", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
                 TidyText("一個人產生配對碼，另一個人輸入", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }

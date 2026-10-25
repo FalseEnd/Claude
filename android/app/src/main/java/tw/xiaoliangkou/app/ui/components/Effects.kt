@@ -99,56 +99,7 @@ fun heartPath(cx: Float, cy: Float, size: Float): Path = Path().apply {
 }
 
 /**
- * 「小倆口」吉祥物：兩顆麻糬，中間一條紅線牽著跳動的愛心。
- * 會上下晃、會眨眼；[partnerSad] 時右邊那顆會掉眼淚。
- */
-@Composable
-fun CoupleMascots(
-    modifier: Modifier = Modifier,
-    leftColor: Color = Cute.colors.me,
-    rightColor: Color = Cute.colors.partner,
-    partnerSad: Boolean = false,
-    height: Dp = 120.dp,
-) {
-    val t = rememberInfiniteTransition(label = "mascot")
-    val bob by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1800, easing = LinearEasing)), label = "bob")
-    val blink by t.animateFloat(
-        1f, 1f,
-        infiniteRepeatable(keyframes { durationMillis = 3600; 1f at 0; 1f at 3300; 0.1f at 3400; 1f at 3500 }),
-        label = "blink",
-    )
-    val beat by t.animateFloat(
-        1f, 1f,
-        infiniteRepeatable(keyframes { durationMillis = 1400; 1f at 0; 1.22f at 120; 1f at 260; 1.14f at 380; 1f at 560 }),
-        label = "beat",
-    )
-    val thread = Cute.colors.thread
-    val ink = Color(0xFF4A2B39)
-    val cheek = Color(0xFFFF9EB8)
-    Canvas(modifier.fillMaxWidth().height(height)) {
-        val w = size.width
-        val h = size.height
-        val r = minOf(h * 0.36f, w * 0.16f)
-        val y = h * 0.62f
-        val leftX = w * 0.26f
-        val rightX = w * 0.74f
-        val bobL = sin(bob * 2 * PI).toFloat() * r * 0.08f
-        val bobR = sin(bob * 2 * PI + PI / 2).toFloat() * r * 0.08f
-        // 紅線（跟著兩顆麻糬一起晃）
-        val p = Path().apply {
-            moveTo(leftX + r * 0.85f, y - r * 0.15f + bobL)
-            cubicTo(w * 0.42f, y - r * 1.1f, w * 0.58f, y + r * 0.2f, rightX - r * 0.85f, y - r * 0.15f + bobR)
-        }
-        drawPath(p, thread, style = Stroke(width = r * 0.08f, cap = StrokeCap.Round))
-        val hc = Offset(w * 0.5f, y - r * 0.55f + (bobL + bobR) / 2)
-        drawPath(heartPath(hc.x, hc.y, r * 0.55f * beat), thread)
-        mochi(Offset(leftX, y + bobL), r, leftColor, ink, cheek, blink, sad = false)
-        mochi(Offset(rightX, y + bobR), r, rightColor, ink, cheek, blink, sad = partnerSad)
-    }
-}
-
-/**
- * 首頁上面的兩隻小貓：圓滾滾的大頭、尖耳朵、ω 嘴、鬍鬚和額頭的虎斑，坐著互相靠近，中間一樣用紅線牽著跳動的愛心。
+ * 「小倆口」吉祥物：兩隻小貓（藍色是我、粉紅色是對方），圓滾滾的大頭、尖耳朵、ω 嘴、鬍鬚和額頭的虎斑，坐著互相靠近，中間用紅線牽著跳動的愛心。
  * 會上下晃、眨眼、甩尾巴、偶爾抖一下耳朵；[partnerSad] 時右邊那隻會掉眼淚。
  */
 @Composable
@@ -308,43 +259,6 @@ private fun DrawScope.kitty(c: Offset, r: Float, body: Color, ink: Color, cheek:
             }
             drawPath(tear, Color(0xFF8EC9FF))
         }
-    }
-}
-
-private fun DrawScope.mochi(c: Offset, r: Float, body: Color, ink: Color, cheek: Color, blink: Float, sad: Boolean) {
-    // 身體：下面稍微扁一點的麻糬
-    val path = Path().apply {
-        moveTo(c.x - r, c.y + r * 0.55f)
-        cubicTo(c.x - r * 1.08f, c.y - r * 0.9f, c.x + r * 1.08f, c.y - r * 0.9f, c.x + r, c.y + r * 0.55f)
-        quadraticTo(c.x, c.y + r * 0.85f, c.x - r, c.y + r * 0.55f)
-        close()
-    }
-    drawPath(path, body)
-    drawOval(Color.White.copy(alpha = 0.35f), Offset(c.x - r * 0.55f, c.y - r * 0.55f), Size(r * 0.45f, r * 0.25f))
-    val eyeY = c.y - r * 0.05f
-    val eyeH = r * 0.2f * blink
-    listOf(-1f, 1f).forEach { side ->
-        drawOval(ink, Offset(c.x + side * r * 0.32f - r * 0.07f, eyeY - eyeH / 2), Size(r * 0.14f, eyeH.coerceAtLeast(r * 0.02f)))
-        drawOval(cheek, Offset(c.x + side * r * 0.55f - r * 0.12f, c.y + r * 0.14f), Size(r * 0.24f, r * 0.13f))
-    }
-    val mouth = Path().apply {
-        if (sad) {
-            moveTo(c.x - r * 0.1f, c.y + r * 0.26f)
-            quadraticTo(c.x, c.y + r * 0.16f, c.x + r * 0.1f, c.y + r * 0.26f)
-        } else {
-            moveTo(c.x - r * 0.1f, c.y + r * 0.16f)
-            quadraticTo(c.x, c.y + r * 0.28f, c.x + r * 0.1f, c.y + r * 0.16f)
-        }
-    }
-    drawPath(mouth, ink, style = Stroke(width = r * 0.05f, cap = StrokeCap.Round))
-    if (sad) {
-        val tear = Path().apply {
-            val tx = c.x + r * 0.36f
-            val ty = eyeY + r * 0.16f
-            moveTo(tx, ty)
-            cubicTo(tx - r * 0.1f, ty + r * 0.16f, tx + r * 0.1f, ty + r * 0.16f, tx, ty)
-        }
-        drawPath(tear, Color(0xFF8EC9FF))
     }
 }
 

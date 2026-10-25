@@ -109,7 +109,7 @@ import tw.xiaoliangkou.app.ui.Fmt
 import tw.xiaoliangkou.app.ui.SheetSpec
 import tw.xiaoliangkou.app.ui.components.Avatar
 import tw.xiaoliangkou.app.ui.components.ChoiceChip
-import tw.xiaoliangkou.app.ui.components.CoupleMascots
+import tw.xiaoliangkou.app.ui.components.CoupleCats
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.CuteCard
 import tw.xiaoliangkou.app.ui.components.EmojiBubble
@@ -684,7 +684,7 @@ private fun UnpairedHint(back: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         ScreenHeader("另一半的資料", onBack = back)
         CuteCard(color = Cute.colors.partnerSoft) {
-            CoupleMascots(height = 100.dp, partnerSad = true)
+            CoupleCats(height = 100.dp, partnerSad = true)
             Text("還沒有配對喔", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Text(
                 "配對之後，就能看到另一半填的生日、喜好和尺寸，也能寫只有你看得到的小備註 🔒",

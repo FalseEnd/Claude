@@ -1,6 +1,6 @@
 # 小倆口：情侶 App
 
-可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.2.10**。
+可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.2.11**。
 
 > **已經在用 0.1 版？先更新資料庫 🛠️**
 >
@@ -103,7 +103,7 @@ cd android
 
 Windows 用 `gradlew.bat assembleRelease`。正式上架前請換成自己的簽章金鑰（`android/app/build.gradle.kts` 的 `signingConfig`）。
 
-版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.2.10、`versionCode` 12），裝好後在 App「我的」最下面看得到。
+版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.2.11、`versionCode` 13），裝好後在 App「我的」最下面看得到。
 
 ## 測試
 
@@ -131,7 +131,7 @@ cd android && ./gradlew recordRoborazziDebug  # 不用模擬器，把每個畫�
 | `StickerScreensTest` | 心情和安撫附上 GIPHY 貼圖、首頁收到的安撫、歷史紀錄裡的貼圖、選貼圖的視窗（還沒設定 key、示範模式、找不到、key 不能用、用太多次、連不到）與查了幾次、帳號裡的 GIPHY key |
 | `GiphyTest`、`StickerImageTest`、`StickerNotificationTest` | 送到 GIPHY 的參數、回應與錯誤、查過的不再查；用 id 顯示貼圖、id 不對不載；通知先發文字、再換成有貼圖的同一則 |
 | `StickerRemoteTest`、`StickerDemoTest` | 貼圖和 GIPHY key 的資料層（假的 Supabase、示範模式）：舊的資料庫先擋下來、收到的安撫標成看過 |
-| `CatsScreensTest` | 首頁的兩隻小貓（一般、對方難過、深色模式、窄的手機） |
+| `CatsScreensTest` | 兩隻小貓（一般、對方難過、深色模式、窄的手機）和 App 圖示（圓形、圓角方形、單色主題圖示） |
 | `MorningWeatherTest`、`AppLockTest`、`LockScreensTest`、`BiometricPermissionTest` | 早上天氣通知的時間、內容、提醒按鈕和鬧鐘；App 鎖的雜湊、錯太多次要等、離開多久再鎖；鎖定畫面（密碼、圖形、指紋或臉部、忘記密碼）、App 安全性的設定、字放大的排版 |
 | `WeatherTest`、`WeatherScreensTest` | 外出建議的各種門檻、提醒對方的話、天氣代碼；Open-Meteo 的請求（座標只到小數點兩位、不帶金鑰）、回應、錯誤和 20 分鐘的快取；天氣頁、首頁卡片、對方沒分享位置、抓不到、提醒對方送出的安撫、字放大的排版 |
 
@@ -140,6 +140,7 @@ App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日�
 
 ## 更新紀錄
 
+- **0.2.11**：歡迎頁、配對頁、等待連線、「我的」和對方的資料頁也都換成兩隻小貓；App 圖示換成藍色和粉紅色兩隻小貓的頭，上面一顆愛心（Android 13 以上的主題圖示是兩隻小貓的剪影）。
 - **0.2.10**：首頁上面的兩個人換成兩隻小貓（藍色是你、粉紅色是對方）：大眼睛、粉紅鼻子、ω 嘴和鬍鬚，會眨眼、甩尾巴、抖耳朵，中間一樣用紅線牽著跳動的愛心；對方心情不好時粉紅貓會掉眼淚。
 - **0.2.9**：修正打開「App 安全性」（和開了指紋解鎖後的鎖定畫面）會閃退：少宣告了系統指紋、臉部辨識要的權限。
 - **0.2.8**：
