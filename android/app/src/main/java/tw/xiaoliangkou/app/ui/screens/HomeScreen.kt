@@ -83,7 +83,7 @@ import tw.xiaoliangkou.app.ui.components.Avatar
 import tw.xiaoliangkou.app.ui.components.BatteryPill
 import tw.xiaoliangkou.app.ui.components.ButtonRow
 import tw.xiaoliangkou.app.ui.components.CountUpText
-import tw.xiaoliangkou.app.ui.components.CoupleMascots
+import tw.xiaoliangkou.app.ui.components.CoupleCats
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.CuteCard
 import tw.xiaoliangkou.app.ui.components.EmojiBubble
@@ -181,7 +181,7 @@ private fun Hero(s: AppState) {
             .padding(top = 12.dp, bottom = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        CoupleMascots(partnerSad = Derived.partnerNeedsComfort(s), height = 120.dp)
+        CoupleCats(partnerSad = Derived.partnerNeedsComfort(s), height = 120.dp)
         Row(Modifier.fillMaxWidth().padding(horizontal = 28.dp)) {
             Text(s.me?.displayName ?: "我", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             Text(s.partnerName, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)

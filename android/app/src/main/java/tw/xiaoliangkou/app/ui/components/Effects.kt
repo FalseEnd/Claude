@@ -49,11 +49,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -142,6 +144,170 @@ fun CoupleMascots(
         drawPath(heartPath(hc.x, hc.y, r * 0.55f * beat), thread)
         mochi(Offset(leftX, y + bobL), r, leftColor, ink, cheek, blink, sad = false)
         mochi(Offset(rightX, y + bobR), r, rightColor, ink, cheek, blink, sad = partnerSad)
+    }
+}
+
+/**
+ * 首頁上面的兩隻小貓：圓滾滾的大頭、尖耳朵、ω 嘴、鬍鬚和額頭的虎斑，坐著互相靠近，中間一樣用紅線牽著跳動的愛心。
+ * 會上下晃、眨眼、甩尾巴、偶爾抖一下耳朵；[partnerSad] 時右邊那隻會掉眼淚。
+ */
+@Composable
+fun CoupleCats(
+    modifier: Modifier = Modifier,
+    leftColor: Color = Cute.colors.me,
+    rightColor: Color = Cute.colors.partner,
+    partnerSad: Boolean = false,
+    height: Dp = 120.dp,
+) {
+    val t = rememberInfiniteTransition(label = "cats")
+    val bob by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1800, easing = LinearEasing)), label = "bob")
+    val blink by t.animateFloat(
+        1f, 1f,
+        infiniteRepeatable(keyframes { durationMillis = 3600; 1f at 0; 1f at 3300; 0.1f at 3400; 1f at 3500 }),
+        label = "blink",
+    )
+    val beat by t.animateFloat(
+        1f, 1f,
+        infiniteRepeatable(keyframes { durationMillis = 1400; 1f at 0; 1.22f at 120; 1f at 260; 1.14f at 380; 1f at 560 }),
+        label = "beat",
+    )
+    val tail by t.animateFloat(0f, 1f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "tail")
+    val ear by t.animateFloat(
+        0f, 0f,
+        infiniteRepeatable(keyframes { durationMillis = 5200; 0f at 0; 0f at 4600; 1f at 4700; 0f at 4800; 1f at 4900; 0f at 5000 }),
+        label = "ear",
+    )
+    val thread = Cute.colors.thread
+    val ink = Color(0xFF4A2B39)
+    val cheek = Color(0xFFFF9EB8)
+    Canvas(modifier.fillMaxWidth().height(height)) {
+        val w = size.width
+        val h = size.height
+        val r = minOf(h * 0.3f, w * 0.13f)
+        // 頭的中心：耳朵尖剛好在最上面一點點，腳掌在下面
+        val y = r * 1.3f + h * 0.04f
+        val leftX = w * 0.27f
+        val rightX = w * 0.73f
+        val bobL = sin(bob * 2 * PI).toFloat() * r * 0.06f
+        val bobR = sin(bob * 2 * PI + PI / 2).toFloat() * r * 0.06f
+        val swish = sin(tail * 2 * PI).toFloat()
+        // 紅線從兩隻的前腳牽過去
+        val p = Path().apply {
+            moveTo(leftX + r * 0.45f, y + r * 1.25f + bobL)
+            cubicTo(w * 0.42f, y + r * 0.2f, w * 0.58f, y + r * 1.5f, rightX - r * 0.45f, y + r * 1.25f + bobR)
+        }
+        drawPath(p, thread, style = Stroke(width = r * 0.08f, cap = StrokeCap.Round))
+        val hc = Offset(w * 0.5f, y + r * 0.45f + (bobL + bobR) / 2)
+        drawPath(heartPath(hc.x, hc.y, r * 0.6f * beat), thread)
+        kitty(Offset(leftX, y + bobL), r, leftColor, ink, cheek, blink, sad = false, facing = 1f, swish = swish, ear = 0f)
+        kitty(Offset(rightX, y + bobR), r, rightColor, ink, cheek, blink, sad = partnerSad, facing = -1f, swish = -swish, ear = ear)
+    }
+}
+
+/** 一隻坐著的小貓：[c] 是頭的中心，[facing] 1 是面向右邊（尾巴在左邊），-1 相反 */
+private fun DrawScope.kitty(c: Offset, r: Float, body: Color, ink: Color, cheek: Color, blink: Float, sad: Boolean, facing: Float, swish: Float, ear: Float) {
+    val stripe = lerp(body, ink, 0.22f)
+    val light = lerp(body, Color.White, 0.6f)
+    // 整隻微微歪向另一隻
+    rotate(facing * 5f, Offset(c.x, c.y + r * 1.3f)) {
+        // 尾巴（在身體後面）：往外再往上捲，會左右甩
+        val tx = -facing
+        val tailPath = Path().apply {
+            moveTo(c.x + tx * r * 0.5f, c.y + r * 1.3f)
+            cubicTo(
+                c.x + tx * r * 1.25f, c.y + r * 1.5f,
+                c.x + tx * (r * 1.5f + swish * r * 0.1f), c.y + r * 1.05f,
+                c.x + tx * (r * 1.25f + swish * r * 0.25f), c.y + r * 0.66f,
+            )
+        }
+        drawPath(tailPath, body, style = Stroke(width = r * 0.28f, cap = StrokeCap.Round))
+        // 身體、前腳
+        drawOval(body, Offset(c.x - r * 0.78f, c.y + r * 0.42f), Size(r * 1.56f, r * 1.05f))
+        drawOval(light, Offset(c.x - r * 0.38f, c.y + r * 0.62f), Size(r * 0.76f, r * 0.7f))
+        listOf(-1f, 1f).forEach { side ->
+            val px = c.x + side * r * 0.3f
+            drawOval(light, Offset(px - r * 0.22f, c.y + r * 1.24f), Size(r * 0.44f, r * 0.27f))
+            drawLine(stripe, Offset(px - r * 0.05f, c.y + r * 1.3f), Offset(px - r * 0.05f, c.y + r * 1.42f), r * 0.03f, StrokeCap.Round)
+            drawLine(stripe, Offset(px + r * 0.06f, c.y + r * 1.3f), Offset(px + r * 0.06f, c.y + r * 1.42f), r * 0.03f, StrokeCap.Round)
+        }
+        // 耳朵（偶爾抖一下）
+        listOf(-1f, 1f).forEach { side ->
+            val twitch = if (side == -facing) ear * r * 0.12f else 0f
+            val outer = Path().apply {
+                moveTo(c.x + side * r * 0.9f, c.y - r * 0.3f)
+                lineTo(c.x + side * (r * 0.78f + twitch), c.y - r * 1.25f + twitch)
+                lineTo(c.x + side * r * 0.2f, c.y - r * 0.8f)
+                close()
+            }
+            drawPath(outer, body)
+            drawPath(outer, body, style = Stroke(width = r * 0.14f, join = StrokeJoin.Round))
+            val inner = Path().apply {
+                moveTo(c.x + side * r * 0.78f, c.y - r * 0.5f)
+                lineTo(c.x + side * (r * 0.74f + twitch), c.y - r * 1.05f + twitch)
+                lineTo(c.x + side * r * 0.38f, c.y - r * 0.78f)
+                close()
+            }
+            drawPath(inner, cheek)
+        }
+        // 大頭
+        drawOval(body, Offset(c.x - r * 1.05f, c.y - r * 0.86f), Size(r * 2.1f, r * 1.72f))
+        drawOval(Color.White.copy(alpha = 0.35f), Offset(c.x - r * 0.72f, c.y - r * 0.7f), Size(r * 0.42f, r * 0.22f))
+        // 額頭的虎斑
+        listOf(-0.22f, 0f, 0.22f).forEach { dx ->
+            drawLine(stripe, Offset(c.x + dx * r, c.y - r * 0.82f), Offset(c.x + dx * r * 0.8f, c.y - r * (if (dx == 0f) 0.56f else 0.62f)), r * 0.08f, StrokeCap.Round)
+        }
+        // 嘴巴旁邊白白的一塊
+        drawOval(light, Offset(c.x - r * 0.42f, c.y + r * 0.08f), Size(r * 0.84f, r * 0.5f))
+        // 眼睛：大大的、有亮點，會眨
+        val eyeY = c.y - r * 0.02f
+        val eyeH = r * 0.32f * blink
+        listOf(-1f, 1f).forEach { side ->
+            val ex = c.x + side * r * 0.43f
+            drawOval(ink, Offset(ex - r * 0.13f, eyeY - eyeH / 2), Size(r * 0.26f, eyeH.coerceAtLeast(r * 0.03f)))
+            if (blink > 0.5f) {
+                drawCircle(Color.White, r * 0.06f, Offset(ex + r * 0.04f, eyeY - eyeH * 0.22f))
+                drawCircle(Color.White.copy(alpha = 0.7f), r * 0.03f, Offset(ex - r * 0.05f, eyeY + eyeH * 0.2f))
+            }
+            drawOval(cheek, Offset(c.x + side * r * 0.7f - r * 0.15f, c.y + r * 0.2f), Size(r * 0.3f, r * 0.16f))
+            // 鬍鬚
+            listOf(0f, 1f).forEach { k ->
+                drawLine(
+                    ink.copy(alpha = 0.5f),
+                    Offset(c.x + side * r * 0.5f, c.y + r * (0.3f + k * 0.08f)),
+                    Offset(c.x + side * r * 1.18f, c.y + r * (0.2f + k * 0.18f)),
+                    r * 0.03f, StrokeCap.Round,
+                )
+            }
+        }
+        // 粉紅鼻子和 ω 嘴（難過時變成 ︿）
+        val nose = Path().apply {
+            moveTo(c.x - r * 0.08f, c.y + r * 0.15f)
+            lineTo(c.x + r * 0.08f, c.y + r * 0.15f)
+            lineTo(c.x, c.y + r * 0.24f)
+            close()
+        }
+        drawPath(nose, Color(0xFFFF7FA0))
+        drawPath(nose, Color(0xFFFF7FA0), style = Stroke(width = r * 0.04f, join = StrokeJoin.Round))
+        val mouth = Path().apply {
+            if (sad) {
+                moveTo(c.x - r * 0.13f, c.y + r * 0.4f)
+                quadraticTo(c.x, c.y + r * 0.27f, c.x + r * 0.13f, c.y + r * 0.4f)
+            } else {
+                moveTo(c.x - r * 0.16f, c.y + r * 0.28f)
+                quadraticTo(c.x - r * 0.08f, c.y + r * 0.4f, c.x, c.y + r * 0.26f)
+                quadraticTo(c.x + r * 0.08f, c.y + r * 0.4f, c.x + r * 0.16f, c.y + r * 0.28f)
+            }
+        }
+        drawPath(mouth, ink, style = Stroke(width = r * 0.045f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        if (sad) {
+            val tear = Path().apply {
+                val tx2 = c.x + r * 0.46f
+                val ty = eyeY + r * 0.18f
+                moveTo(tx2, ty)
+                cubicTo(tx2 - r * 0.11f, ty + r * 0.18f, tx2 + r * 0.11f, ty + r * 0.18f, tx2, ty)
+            }
+            drawPath(tear, Color(0xFF8EC9FF))
+        }
     }
 }
 
