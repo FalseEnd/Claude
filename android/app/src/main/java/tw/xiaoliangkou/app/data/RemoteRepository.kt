@@ -624,18 +624,6 @@ class RemoteRepository(
         return (row["id"] as? JsonPrimitive)?.contentOrNull
     }
 
-    override suspend fun addInvoiceExpense(number: String, merchant: String, category: String, amount: Double, at: java.time.Instant): Boolean {
-        val row = apiCall {
-            api.createExpense(buildJsonObject {
-                put("amount", amount); put("merchant", merchant.take(60)); put("category", category)
-                put("source", "einvoice"); put("occurredAt", at.toString()); put("dedupeKey", "einv:$number")
-            })
-        }
-        return row["id"] != null
-    }
-
-    override suspend fun reloadExpenses() = loadExpenses()
-
     override fun setMyDevice(d: DeviceStatus) = _state.update { it.copy(myDevice = d) }
 
     override fun setMyLocation(lat: Double, lng: Double) = _state.update { it.copy(myLocation = LatLng(lat, lng)) }

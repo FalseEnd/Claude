@@ -1,6 +1,6 @@
 # 小倆口：情侶 App
 
-可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.2.14**。
+可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.2.15**。
 
 > **已經在用 0.1 版？先更新資料庫 🛠️**
 >
@@ -103,7 +103,7 @@ cd android
 
 Windows 用 `gradlew.bat assembleRelease`。正式上架前請換成自己的簽章金鑰（`android/app/build.gradle.kts` 的 `signingConfig`）。
 
-版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.2.14、`versionCode` 16），裝好後在 App「我的」最下面看得到。
+版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.2.15、`versionCode` 17），裝好後在 App「我的」最下面看得到。
 
 ## 測試
 
@@ -131,7 +131,6 @@ cd android && ./gradlew recordRoborazziDebug  # 不用模擬器，把每個畫�
 | `StickerScreensTest` | 心情和安撫附上 GIPHY 貼圖、首頁收到的安撫、歷史紀錄裡的貼圖、選貼圖的視窗（還沒設定 key、示範模式、找不到、key 不能用、用太多次、連不到）與查了幾次、帳號裡的 GIPHY key |
 | `GiphyTest`、`StickerImageTest`、`StickerNotificationTest` | 送到 GIPHY 的參數、回應與錯誤、查過的不再查；用 id 顯示貼圖、id 不對不載；通知先發文字、再換成有貼圖的同一則 |
 | `StickerRemoteTest`、`StickerDemoTest` | 貼圖和 GIPHY key 的資料層（假的 Supabase、示範模式）：舊的資料庫先擋下來、收到的安撫標成看過 |
-| `EInvoiceTest`、`EInvoiceSyncTest`、`EInvoiceScreensTest` | 雲端發票：財政部 API 的回應和錯誤碼、一個月一個月查、翻頁、送出的參數；消費明細 CSV（M／D 格式、其他格式、Big5）；賣方名稱換成店名；同步的日期範圍、不重複記、補上付款通知的店名、用學過的商家、失敗的說明；設定畫面 |
 | `PaymentKeywordsTest`、`MerchantMemoryTest`、`ExpenseLearningTest` | 自動記帳更多的通知寫法、店名整理、各類別的店家、最長的關鍵字優先、用店名裡的字猜；記住改過的商家（比對方式、不學找不到店名的、最多 300 家）、編輯開銷時學起來 |
 | `GeofenceTest` | 進出標點：很明確的馬上算、不明確的 2 分鐘後確認、待在家裡一整天定位亂飄也不會有任何進出、邊界的雜訊、亂跳和太舊的定位、剛抵達後的離開要確認 |
 | `CatsScreensTest` | 兩隻小貓（一般、對方難過、深色模式、窄的手機）和 App 圖示（圓形、圓角方形、單色主題圖示） |
@@ -143,6 +142,7 @@ App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日�
 
 ## 更新紀錄
 
+- **0.2.15**：拿掉 0.2.14 的發票載具記帳（帳本的「發票載具」按鈕、背景同步）。裝新版時會刪掉手機上存的手機條碼、驗證碼和 AppID；之前用載具記下的開銷還在帳本裡，不要的可以點開刪掉。錢包 App 認名字（悠遊付、全支付、Google 錢包…）照樣保留。
 - **0.2.14**：
   - 發票載具自動記帳（帳本 › 發票載具）：填手機條碼、驗證碼和自己向財政部申請的 AppID，每 6 小時自動查新的雲端發票記一筆；付款通知已經記過的不重複記，沒有店名的補上發票上的店名。還沒有 AppID 的話，可以匯入電子發票平台的消費明細 CSV。
   - 錢包 App 認名字：悠遊付、全支付、Google 錢包、Samsung Wallet、icash Pay、台灣Pay… 換了套件名稱也認得；它們的通知不用有「付款」兩個字。
@@ -198,7 +198,6 @@ App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日�
 - 字型：[jf open 粉圓](https://github.com/justfont/open-huninn-font)（SIL Open Font License 1.1）
 - 地圖：© [OpenStreetMap](https://www.openstreetmap.org/copyright) 貢獻者
 - 貼圖：[GIPHY](https://giphy.com)。用 GIPHY API 搜尋，選貼圖的畫面放 GIPHY 官方的「Powered by GIPHY」標誌；App 和資料庫只存貼圖的 id，不存圖片
-- 雲端發票：財政部電子發票整合服務平台的電子發票應用 API（使用者自己申請 AppID）
 - 天氣與空氣品質：[Open-Meteo.com](https://open-meteo.com/)（CC BY 4.0）。免費、不用 API key；天氣頁下方標示來源
 - 網頁原型圖示：[Lucide](https://lucide.dev)（ISC License）
 - 籤詩：元三大師觀音百籤（淺草寺的觀音百籤），古籍、屬於公有領域；App 只收錄籤號、吉凶和四句籤詩原文

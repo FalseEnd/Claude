@@ -246,7 +246,4 @@ interface CoupleRepository {
     suspend fun reportPlaceEvent(placeId: String, arrive: Boolean) {}
     /** 回傳新記帳的 id；同一筆已經記過就是 null */
     suspend fun addAutoExpense(parsed: PaymentParser.Parsed, dedupeKey: String): String? = null
-    /** 載具裡的一張發票記一筆（來源：發票載具）；同一張發票記過就回傳 false。記完要呼叫 [reloadExpenses] */
-    suspend fun addInvoiceExpense(number: String, merchant: String, category: String, amount: Double, at: java.time.Instant): Boolean = false
-    suspend fun reloadExpenses() {}
 }
