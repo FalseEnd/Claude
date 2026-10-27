@@ -51,7 +51,7 @@ object Dates {
     fun isMilestone(day: Int) = day > 0 && (day % 100 == 0 || day == 520 || day == 1314)
 }
 
-/** 地理圍欄：進入用半徑，離開要超出半徑 + 緩衝，避免 GPS 飄移反覆觸發 */
+/** 地理圍欄用的距離和資料（判斷進出見 [GeofenceTracker]） */
 object Geo {
     data class Fence(val id: String, val lat: Double, val lng: Double, val radius: Double)
     data class Transition(val placeId: String, val arrive: Boolean)
@@ -66,19 +66,101 @@ object Geo {
         return 2 * r * asin(sqrt(h))
     }
 
-    fun step(fences: List<Fence>, previouslyInside: Set<String>, lat: Double, lng: Double): Result {
-        val inside = mutableSetOf<String>()
-        val transitions = mutableListOf<Transition>()
+    /** ([lat], [lng]) 在哪些標點的半徑裡（示範模式開始時、改了標點時用） */
+    fun containing(fences: List<Fence>, lat: Double, lng: Double): Set<String> =
+        fences.filter { distance(it.lat, it.lng, lat, lng) <= it.radius }.map { it.id }.toSet()
+}
+
+/**
+ * 在被偵測的那支手機上判斷進出標點。手機的定位會飄（室內、省電定位常常差 50～150 公尺），
+ * 只看一次定位的話，明明待在標點裡也會一直「離開、抵達」，所以：
+ * 1. 看精確度：離開要整個誤差圈都在「半徑＋緩衝」外面；抵達要中心在半徑內，而且誤差不能比標點大太多
+ * 2. 要確認：不是很明確的進出，要隔至少 [CONFIRM_MS] 的兩次定位都一樣才算（中間有一次不一樣就重來）
+ * 3. 剛進出過的標點，[COOLDOWN_MS] 內反方向一定要確認過才算
+ * 4. 一下子跳很遠（比 [MAX_SPEED] 還快）、比上一次舊、精確度差於 [MAX_ACCURACY] 的定位都不用
+ */
+class GeofenceTracker(initialInside: Set<String> = emptySet()) {
+    /** 一次定位：[accuracy] 是誤差半徑（公尺），[at] 是定位的時間（毫秒） */
+    data class Fix(val lat: Double, val lng: Double, val accuracy: Double, val at: Long)
+
+    private data class Pending(val arrive: Boolean, val since: Long)
+
+    private val inside = initialInside.toMutableSet()
+    private val pending = mutableMapOf<String, Pending>()
+    private val lastChange = mutableMapOf<String, Long>()
+    private var last: Fix? = null
+
+    val insideNow: Set<String> get() = inside.toSet()
+
+    /** 有還沒確認的進出：過 [CONFIRM_MS] 再抓一次精確的位置來確認 */
+    val waiting: Boolean get() = pending.isNotEmpty()
+
+    fun update(fences: List<Geo.Fence>, fix: Fix): Geo.Result {
+        // 刪掉的、改成偵測對方的標點就忘了
+        val ids = fences.map { it.id }.toSet()
+        inside.retainAll(ids)
+        pending.keys.retainAll(ids)
+        if (fix.accuracy > MAX_ACCURACY || !believable(fix)) return Geo.Result(insideNow, emptyList())
+        last = fix
+        val transitions = mutableListOf<Geo.Transition>()
         for (f in fences) {
-            val d = distance(f.lat, f.lng, lat, lng)
-            val buffer = max(25.0, f.radius * 0.2)
-            val was = f.id in previouslyInside
-            val now = if (was) d <= f.radius + buffer else d <= f.radius
-            if (now) inside += f.id
-            if (now && !was) transitions += Transition(f.id, true)
-            if (!now && was) transitions += Transition(f.id, false)
+            val d = Geo.distance(f.lat, f.lng, fix.lat, fix.lng)
+            val was = f.id in inside
+            val buffer = max(MIN_BUFFER, f.radius * 0.5)
+            val (evidence, clear) = if (was) {
+                val out = d - fix.accuracy > f.radius + buffer
+                out to (out && d - fix.accuracy > f.radius + buffer + FAR)
+            } else {
+                val inn = d <= f.radius && fix.accuracy <= max(f.radius, MIN_ARRIVE_ACCURACY)
+                inn to (inn && d + fix.accuracy <= f.radius)
+            }
+            if (!evidence) {
+                pending.remove(f.id)
+                continue
+            }
+            val arrive = !was
+            val p = pending[f.id]?.takeIf { it.arrive == arrive }
+            val confirmed = p != null && fix.at - p.since >= CONFIRM_MS
+            val cooling = lastChange[f.id]?.let { fix.at - it < COOLDOWN_MS } == true
+            if (confirmed || (clear && !cooling)) {
+                if (arrive) inside += f.id else inside -= f.id
+                pending.remove(f.id)
+                lastChange[f.id] = fix.at
+                transitions += Geo.Transition(f.id, arrive)
+            } else if (p == null) {
+                pending[f.id] = Pending(arrive, fix.at)
+            }
         }
-        return Result(inside, transitions)
+        return Geo.Result(insideNow, transitions)
+    }
+
+    /** 比上一次舊、或一下子跳太遠（扣掉兩次的誤差還比 [MAX_SPEED] 快）的定位不用 */
+    private fun believable(fix: Fix): Boolean {
+        val p = last ?: return true
+        if (fix.at < p.at) return false
+        val seconds = (fix.at - p.at) / 1000.0
+        if (seconds > JUMP_WINDOW_S) return true
+        val jump = Geo.distance(p.lat, p.lng, fix.lat, fix.lng) - fix.accuracy - p.accuracy
+        return jump <= 0 || jump / max(seconds, 1.0) <= MAX_SPEED
+    }
+
+    companion object {
+        /** 精確度差於這個（公尺）的定位不拿來判斷 */
+        const val MAX_ACCURACY = 150.0
+        /** 離開時半徑外面的緩衝：半徑的一半，至少這麼多（公尺） */
+        const val MIN_BUFFER = 50.0
+        /** 標點很小時，抵達還能接受的精確度（公尺） */
+        const val MIN_ARRIVE_ACCURACY = 100.0
+        /** 離開「很明確」：整個誤差圈都在緩衝外面再遠這麼多（公尺），不用等確認 */
+        const val FAR = 300.0
+        /** 不明確的進出要隔多久再確認一次 */
+        const val CONFIRM_MS = 2 * 60_000L
+        /** 剛進出過的標點，這段時間內反方向一定要確認過 */
+        const val COOLDOWN_MS = 10 * 60_000L
+        /** 比這個還快（公尺／秒，約時速 250 公里）的跳動當作定位飄掉 */
+        const val MAX_SPEED = 70.0
+        /** 只檢查 5 分鐘內的兩次定位有沒有亂跳 */
+        const val JUMP_WINDOW_S = 300.0
     }
 }
 

@@ -85,18 +85,7 @@ class CoreTest {
         assertEquals(Cycle.Phase.OVULATION, at("2026-08-11").phase)
     }
 
-    @Test fun geofenceHysteresis() {
-        val home = Geo.Fence("home", 25.0330, 121.5654, 100.0)
-        // 往東移動：經度每 0.001 度約 100 公尺
-        fun east(m: Double) = 121.5654 + m / 100_800.0
-        var r = Geo.step(listOf(home), emptySet(), 25.0330, east(300.0))
-        assertTrue(r.transitions.isEmpty())
-        r = Geo.step(listOf(home), r.inside, 25.0330, east(90.0))
-        assertEquals(listOf(Geo.Transition("home", true)), r.transitions)
-        r = Geo.step(listOf(home), r.inside, 25.0330, east(115.0))
-        assertTrue("緩衝區內不算離開", r.transitions.isEmpty())
-        r = Geo.step(listOf(home), r.inside, 25.0330, east(135.0))
-        assertEquals(listOf(Geo.Transition("home", false)), r.transitions)
+    @Test fun distance() {
         val d = Geo.distance(25.0340, 121.5645, 25.0478, 121.5170)
         assertTrue(d in 4900.0..5200.0)
     }

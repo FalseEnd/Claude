@@ -32,6 +32,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Geo
+import tw.xiaoliangkou.app.core.GeofenceTracker
 import tw.xiaoliangkou.app.core.Guess
 import tw.xiaoliangkou.app.core.PaymentParser
 import java.io.ByteArrayOutputStream
@@ -105,14 +106,16 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
     private var battery = 34.0
     private var steps = 4286.0
     private var lowSent = false
-    private var inside = setOf<String>()
+    /** 小雨在哪些標點裡（和真的手機一樣用 GeofenceTracker 判斷，時間用示範的時間） */
+    private var fenceTracker = GeofenceTracker()
+    private var simMs = 0L
     var speed = 1
     var running = true
     private var loop: Job? = null
 
     init {
         _state.value = seed()
-        inside = Geo.step(fences(), emptySet(), lat, lng).inside
+        fenceTracker = GeofenceTracker(Geo.containing(fences(), lat, lng))
         loop = scope.launch {
             while (isActive) {
                 delay(1000)
@@ -328,8 +331,8 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         }
         if (battery > 30) lowSent = false
         publishStatus()
-        val r = Geo.step(fences(), inside, lat, lng)
-        inside = r.inside
+        simMs += (dt * 1000).toLong()
+        val r = fenceTracker.update(fences(), GeofenceTracker.Fix(lat, lng, 5.0, simMs))
         if (_state.value.partnerSharing?.locationLive == true) {
             for (t in r.transitions) {
                 val place = _state.value.places.firstOrNull { it.id == t.placeId } ?: continue
@@ -527,7 +530,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
                 )
             })
         }
-        inside = Geo.step(fences(), inside, lat, lng).inside
+        fenceTracker = GeofenceTracker(Geo.containing(fences(), lat, lng))
     }
 
     override suspend fun deletePlace(id: String) = _state.update { it.copy(places = it.places.filterNot { p -> p.id == id }) }

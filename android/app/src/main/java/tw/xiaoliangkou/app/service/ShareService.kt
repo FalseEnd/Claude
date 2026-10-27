@@ -45,6 +45,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import tw.xiaoliangkou.app.container
 import tw.xiaoliangkou.app.core.Geo
+import tw.xiaoliangkou.app.core.GeofenceTracker
 import tw.xiaoliangkou.app.core.StepCounter
 import tw.xiaoliangkou.app.data.RealtimeClient
 import tw.xiaoliangkou.app.data.RemoteRepository
@@ -90,6 +91,10 @@ class ShareService : LifecycleService() {
     private val serviceId = UUID.randomUUID().toString().take(8)
     /** 同時來兩個位置（馬上抓的一次和定期更新）時，一個一個處理，抵達通知才不會發兩次 */
     private val locationLock = Mutex()
+    /** 判斷進出標點（第一次用到時從設定讀回上次在哪些標點裡面） */
+    private var fences: GeofenceTracker? = null
+    /** 等著再抓一次精確的位置，確認是不是真的進出了 */
+    private var confirmJob: Job? = null
     private var deviceJob: Job? = null
     /** 目前常駐通知的內容；服務被重新啟動時沿用，不要又變回「連線中」 */
     private var notice: ServiceNotice? = null
@@ -334,7 +339,7 @@ class ShareService : LifecycleService() {
         reportDevice()
     }
 
-    private suspend fun handleLocation(loc: Location, force: Boolean) = locationLock.withLock {
+    private suspend fun handleLocation(loc: Location, force: Boolean): Unit = locationLock.withLock {
         val repo = container.repo.value as? RemoteRepository ?: return@withLock
         repo.setMyLocation(loc.latitude, loc.longitude)
         val st = repo.state.value
@@ -350,14 +355,22 @@ class ShareService : LifecycleService() {
                 lastSentAt = now
             }
         }
-        // 精確度太差（> 150 公尺）或太舊（> 2 分鐘）的位置不拿來判斷進出，避免誤報
-        if (loc.accuracy > 150f || now - at > 2 * 60_000L) return@withLock
-        val fences = st.places.filter { it.watchUser == null || it.watchUser == st.myId }
+        // 太舊（> 2 分鐘）的位置不拿來判斷進出；精確度、飄移、確認交給 GeofenceTracker
+        if (!loc.hasAccuracy() || now - at > 2 * 60_000L) return@withLock
+        val watched = st.places.filter { it.watchUser == null || it.watchUser == st.myId }
             .map { Geo.Fence(it.id, it.lat, it.lng, it.radiusM.toDouble()) }
-        val previous = container.settings.insidePlaces()
-        val result = Geo.step(fences, previous.intersect(fences.map { it.id }.toSet()), loc.latitude, loc.longitude)
-        container.settings.setInsidePlaces(result.inside)
+        val tracker = fences ?: GeofenceTracker(container.settings.insidePlaces()).also { fences = it }
+        val before = tracker.insideNow
+        val result = tracker.update(watched, GeofenceTracker.Fix(loc.latitude, loc.longitude, loc.accuracy.toDouble(), at))
+        if (result.inside != before) container.settings.setInsidePlaces(result.inside)
         for (t in result.transitions) runCatching { repo.reportPlaceEvent(t.placeId, t.arrive) }
+        // 好像進出了但還不確定：等一下再用 GPS 抓一次精確的位置（定期的更新在不動時可能不會來）
+        if (tracker.waiting && confirmJob?.isActive != true) {
+            confirmJob = lifecycleScope.launch {
+                delay(GeofenceTracker.CONFIRM_MS + 5_000L)
+                Locator.current(this@ShareService)?.let { handleLocation(it, force = false) }
+            }
+        }
     }
 
     override fun onDestroy() {
