@@ -174,6 +174,13 @@ class ShareService : LifecycleService() {
                 }
             }
         }
+        // 發票載具：每 30 分鐘看一下，離上次同步超過 6 小時就查一次新的雲端發票
+        lifecycleScope.launch {
+            while (true) {
+                delay(30 * 60_000L)
+                if (container.repo.value is RemoteRepository && container.einvoice.due()) runCatching { container.einvoice.sync() }
+            }
+        }
         // 即時連線連不上（但 API 可以用）時，每 3 分鐘用 RPC 補抓一次通知，抱抱、抵達提醒才不會一直收不到
         lifecycleScope.launch {
             while (true) {

@@ -54,6 +54,28 @@ class PaymentKeywordsTest {
         assertFalse(PaymentParser.isPlaceholder("路易莎"))
     }
 
+    private fun notice(pkg: String, label: String?, title: String?, text: String) =
+        PaymentParser.parseNotification(PaymentParser.Notice(pkg, title, listOf(text), label))
+
+    /** 錢包 App 認名字（套件名稱各家不一樣）：悠遊付、全支付、Google 錢包、Samsung Wallet… */
+    @Test fun walletAppsAreRecognizedByName() {
+        val easy = (notice("com.easycard.someapp", "悠遊付", "悠遊付", "付款成功 NT$65 商店名稱 全家便利商店 松仁店") as PaymentParser.Result.Payment).parsed
+        assertEquals("easywallet", easy.source)
+        assertEquals("全家便利商店 松仁店", easy.merchant)
+        val px = (notice("tw.com.px.someapp", "全支付", "付款成功", "您已完成付款 NT$120") as PaymentParser.Result.Payment).parsed
+        assertEquals("pxpay", px.source)
+        assertEquals("標題是「付款成功」不是店名", "全支付消費", px.merchant)
+        // Google 錢包換了套件名稱也認得：標題是店名，內文沒有「付款」兩個字
+        val g = (notice("com.google.android.apps.newwallet", "Google 錢包", "Starbucks", "NT$120.00 · Visa •• 1234") as PaymentParser.Result.Payment).parsed
+        assertEquals("Starbucks", g.merchant)
+        assertEquals("drink", g.category)
+        val sam = (notice("com.samsung.android.newpay", "Samsung Wallet", "Samsung Wallet", "NT$85 已在 路易莎 付款") as PaymentParser.Result.Payment).parsed
+        assertEquals("路易莎", sam.merchant)
+        // 銀行 App 沒有「付款」這類字：不算
+        assertTrue(notice("com.cathaybk.app", "國泰世華 CUBE", "CUBE", "NT$100 回饋入帳") is PaymentParser.Result.Skipped)
+        assertTrue(PaymentParser.looksPaymentRelated(PaymentParser.Notice("com.x", "悠遊付", listOf("你有一則新訊息"), "悠遊付")))
+    }
+
     @Test fun longestKeywordWins() {
         assertEquals("food", PaymentParser.categorize("Uber Eats"))
         assertEquals("transport", PaymentParser.categorize("Uber"))

@@ -535,6 +535,15 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
 
     override suspend fun deletePlace(id: String) = _state.update { it.copy(places = it.places.filterNot { p -> p.id == id }) }
 
+    /** 示範模式也能試匯入載具的消費明細：記到我的帳本（同一張發票只記一次） */
+    private val invoicesAdded = mutableSetOf<String>()
+    override suspend fun addInvoiceExpense(number: String, merchant: String, category: String, amount: Double, at: Instant): Boolean {
+        if (!invoicesAdded.add(number)) return false
+        val e = Expense(UUID.randomUUID().toString(), ME, amount, merchant, category, "einvoice", iso(at))
+        _state.update { it.copy(myExpenses = (listOf(e) + it.myExpenses).sortedByDescending { x -> x.time }) }
+        return true
+    }
+
     override suspend fun saveExpense(id: String?, body: JsonObject) {
         fun s(k: String) = body[k]?.jsonPrimitive?.contentOrNull
         val amount = body["amount"]?.jsonPrimitive?.doubleOrNull

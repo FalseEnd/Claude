@@ -89,7 +89,7 @@ class AutoBookkeeping(
     private suspend fun handleOne(pkg: String, title: String?, text: String, postedAt: Long) {
         val hash = sha("$pkg|$title|$text").take(24)
         if (_entries.value.any { it.hash == hash }) return // 同一則訊息（LINE 會把舊訊息再通知一次）
-        val notice = PaymentParser.Notice(pkg, title, listOf(text))
+        val notice = PaymentParser.Notice(pkg, title, listOf(text), appName(pkg))
         fun entry(outcome: String, detail: String, p: PaymentParser.Parsed? = null, id: String? = null) = Entry(
             postedAt, appName(pkg), title.orEmpty(), text.take(600), outcome, detail,
             p?.amount, p?.merchant, p?.knownMerchant == true, id, hash,

@@ -20,8 +20,8 @@ object PaymentParser {
         val knownMerchant: Boolean = true,
     )
 
-    /** 一則系統通知：哪個 App、標題，以及內文（展開後的全文、每一行、聊天訊息） */
-    data class Notice(val packageName: String, val title: String?, val lines: List<String>)
+    /** 一則系統通知：哪個 App（[appLabel] 是 App 的名字）、標題，以及內文（展開後的全文、每一行、聊天訊息） */
+    data class Notice(val packageName: String, val title: String?, val lines: List<String>, val appLabel: String? = null)
 
     sealed interface Result {
         data class Payment(val parsed: Parsed) : Result
@@ -34,8 +34,22 @@ object PaymentParser {
     private val walletApps = mapOf(
         "com.google.android.apps.walletnfcrel" to "applepay",
         "com.samsung.android.spay" to "applepay",
+        "com.samsung.android.samsungpay.gear" to "applepay",
         "com.jkos.app" to "jkopay",
     )
+
+    /**
+     * 名字看起來是錢包、行動支付的 App（套件名稱各家常改，也不一定查得到）：悠遊付、全支付、Google 錢包、Samsung Wallet…
+     * 這些 App 的通知本身就是交易。LINE、銀行 App 不算（它們也會發廣告、聊天）
+     */
+    private val walletLabel = Regex("""錢包|wallet|悠遊付|全支付|街口|icash\s*pay|拍錢包|歐付寶|全盈|台灣\s*pay|臺灣\s*pay|samsung\s*pay|google\s*pay""", RegexOption.IGNORE_CASE)
+
+    /** 這則通知的 App 是錢包嗎：是的話回傳付款方式（找不到名字對應的就算行動支付） */
+    private fun walletOf(n: Notice): String? {
+        walletApps[n.packageName]?.let { return it }
+        val label = n.appLabel?.takeIf { n.packageName != LINE_APP && walletLabel.containsMatchIn(it) } ?: return null
+        return sources.firstOrNull { it.second.containsMatchIn(label) }?.first ?: "applepay"
+    }
 
     /**
      * 商家關鍵字（小寫比對）。同一個名字對到好幾個時用最長的那個：「uber eats」是餐飲、「uber」是交通，
@@ -337,11 +351,13 @@ object PaymentParser {
             if (!lineOfficial.containsMatchIn(who)) return Result.Skipped("LINE 的聊天訊息")
         }
         notSpending.find(all)?.let { return Result.Skipped("有「${it.value}」，不是一筆花費") }
-        val wallet = walletApps[n.packageName]
+        val wallet = walletOf(n)
         if (wallet == null && !paymentWords.containsMatchIn(all)) return Result.Skipped("不是付款通知")
         // 銀行、LINE錢包的官方帳號也會發「刷卡滿 3,000 享回饋」這種廣告；寫了「付款完成」之類的就一定是真的付款
         if (wallet == null && !doneWords.containsMatchIn(all)) promo.find(all)?.let { return Result.Skipped("有「${it.value}」，像是廣告") }
-        val p = parse(all, body.ifEmpty { all }, wallet ?: if (n.packageName == LINE_APP) "linepay" else null, title.takeIf { wallet != null })
+        // 錢包 App 的標題常常就是店名（Google 錢包）；標題是錢包自己的名字（「悠遊付」「付款成功」）就不算
+        val storeTitle = title.takeIf { wallet != null && !walletLabel.containsMatchIn(it) && !paymentWords.containsMatchIn(it) && it != n.appLabel }
+        val p = parse(all, body.ifEmpty { all }, wallet ?: if (n.packageName == LINE_APP) "linepay" else null, storeTitle)
             ?: return Result.Skipped("找不到金額")
         return Result.Payment(p)
     }
@@ -353,8 +369,7 @@ object PaymentParser {
         return when (n.packageName) {
             LINE_APP -> lineOfficial.containsMatchIn(title.ifEmpty { n.lines.firstOrNull().orEmpty() }) ||
                 (title.equals("LINE", ignoreCase = true) && lineOfficial.containsMatchIn(n.lines.firstOrNull().orEmpty()))
-            in walletApps -> true
-            else -> paymentWords.containsMatchIn(all) && currencyAmount.containsMatchIn(all)
+            else -> walletOf(n) != null || (paymentWords.containsMatchIn(all) && currencyAmount.containsMatchIn(all))
         }
     }
 

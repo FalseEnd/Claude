@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -100,6 +101,7 @@ fun MoneyScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit) {
             ButtonRow(spacing = 10.dp) {
                 CuteButton("記一筆", icon = Icons.Rounded.Add) { sheet(SheetSpec.ExpenseEdit(null)) }
                 SoftButton("測試自動記帳", icon = Icons.Rounded.NotificationsActive) { sheet(SheetSpec.ParseTest) }
+                SoftButton("發票載具", icon = Icons.Rounded.ReceiptLong) { sheet(SheetSpec.EInvoice) }
             }
         }
         val groups = visible.filter { mine || !it.waitingForGuess }.sortedByDescending { it.time }.groupBy { Fmt.localDate(it.time) }

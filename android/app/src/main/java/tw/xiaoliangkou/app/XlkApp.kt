@@ -39,9 +39,12 @@ import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.AppLock
 import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.data.DemoRepository
+import tw.xiaoliangkou.app.data.EInvoiceApi
+import tw.xiaoliangkou.app.data.EInvoiceStore
 import tw.xiaoliangkou.app.data.Errors
 import tw.xiaoliangkou.app.data.Giphy
 import tw.xiaoliangkou.app.data.InviteLink
+import tw.xiaoliangkou.app.data.InvoiceSource
 import tw.xiaoliangkou.app.data.MediaCache
 import tw.xiaoliangkou.app.data.MerchantMemory
 import tw.xiaoliangkou.app.data.OpenMeteo
@@ -58,6 +61,7 @@ import tw.xiaoliangkou.app.data.WeatherSource
 import tw.xiaoliangkou.app.data.apiCall
 import tw.xiaoliangkou.app.data.giphyMediaCache
 import tw.xiaoliangkou.app.service.AutoBookkeeping
+import tw.xiaoliangkou.app.service.EInvoiceSync
 import tw.xiaoliangkou.app.service.MorningWeather
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.ShareService
@@ -102,6 +106,11 @@ class AppContainer(private val app: Application) {
     /** 自動記帳（付款通知）與最近處理過的付款通知 */
     /** 記住改過的商家名字和類別（自動記帳、自己記帳都會用） */
     val merchants = MerchantMemory(app)
+    private val einvoiceStore = EInvoiceStore(app)
+    /** 查載具雲端發票的地方（財政部的 API）；測試時換成假的 */
+    var invoiceSource: InvoiceSource = EInvoiceApi(uuid = { einvoiceStore.uuid })
+    /** 發票載具自動記帳 */
+    val einvoice = EInvoiceSync(einvoiceStore, { invoiceSource }, merchants, { _repo.value })
     val autoBookkeeping = AutoBookkeeping(app, ledger = { (_repo.value as? RemoteRepository)?.let(::RemoteLedger) }, enabled = { _prefs.value?.autoBookkeeping != false }, memory = merchants)
 
     private class RemoteLedger(private val r: RemoteRepository) : AutoBookkeeping.Ledger {
@@ -378,6 +387,7 @@ class AppContainer(private val app: Application) {
         // 忘記 App 鎖的密碼就是靠登出再登入：登出時一起關掉
         lock.disable()
         merchants.clear()
+        einvoiceStore.clear()
         reloadPrefs()
         media.clear()
         // 告訴 Supabase 這支手機登出了：token 過期的話先換新（最多等 5 秒），沒網路也沒關係
