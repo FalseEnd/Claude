@@ -32,6 +32,7 @@ import java.net.SocketException
 import java.time.LocalDate
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 /** 連 Supabase 時的新功能：RPC 的參數、Storage 的網址與標頭、資料庫還沒更新時的提醒（用假的 Supabase） */
 class RemoteV2Test {
@@ -325,11 +326,13 @@ class RemoteV2Test {
         rpc("app_health") { """{"ok":true,"schema":2}""" }
         val today = LocalDate.now()
         fun media(vararg p: String) = p.joinToString(",", "[", "]") { """{"path":"$it","kind":"photo"}""" }
-        rpc("app_day_entries") { """[{"id":"d1","userId":"u-1","day":"$today","media":${media("c/c-1/a.jpg", "c/c-1/b.jpg", "c/c-1/memo.jpg")},"createdAt":"2026-10-15T02:16:21+00:00"}]""" }
+        // 假的資料庫記著最後存的那則：存完 App 在背景重新載入時，拿到的是存好的，不是一開始的（不然結果看時機）
+        val saved = AtomicReference("""{"id":"d1","userId":"u-1","day":"$today","media":${media("c/c-1/a.jpg", "c/c-1/b.jpg", "c/c-1/memo.jpg")},"createdAt":"2026-10-15T02:16:21+00:00"}""")
+        rpc("app_day_entries") { "[${saved.get()}]" }
         rpc("app_memos") { "[${memo("m1", "u-1", true, media("c/c-1/memo.jpg"))}]" }
         rpc("app_save_day_entry") { req ->
             val b = req.json
-            """{"id":"d1","userId":"u-1","day":${b["day"]},"body":${b["body"]},"media":${b["media"]},"createdAt":"2026-10-15T02:16:21+00:00"}"""
+            """{"id":"d1","userId":"u-1","day":${b["day"]},"body":${b["body"]},"media":${b["media"]},"createdAt":"2026-10-15T02:16:21+00:00"}""".also { saved.set(it) }
         }
         rpc("app_delete_day_entry") { """{"ok":true}""" }
         json("DELETE /storage/v1/object/media") { "[]" }
