@@ -97,9 +97,14 @@ class RemoteV2Test {
         rpc("app_me") { me }
         val r = RemoteRepository(client().api, RealtimeClient(scope), scope) {}
         r.refreshAll()
-        // 建立時 init 也會自己跑一次 refreshAll：等它跑完，不然它晚到的結果會蓋掉測試接著存的資料
+        // 建立時 init 也會自己跑一次 refreshAll：等它跑完，不然它晚到的結果會蓋掉測試接著存的資料。
+        // 整套測試一起跑時機器很忙，要連續 3 次（750 毫秒）都沒有新的請求才算跑完
         var n = -1
-        while (n != seen.size) { n = seen.size; delay(250) }
+        var quiet = 0
+        while (quiet < 3) {
+            delay(250)
+            if (seen.size == n) quiet++ else { n = seen.size; quiet = 0 }
+        }
         return r
     }
 
