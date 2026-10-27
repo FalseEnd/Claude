@@ -144,7 +144,8 @@ object Catalog {
 
     val sources = mapOf(
         "linepay" to "LINE Pay", "jkopay" to "街口支付", "applepay" to "行動支付", "card" to "信用卡通知",
-        "easywallet" to "悠遊付", "notification" to "付款通知", "shortcut" to "捷徑", "einvoice" to "發票載具",
+        "easywallet" to "悠遊付", "pxpay" to "全支付", "pluspay" to "全盈+PAY", "icashpay" to "icash Pay", "taiwanpay" to "台灣Pay",
+        "pipay" to "Pi 拍錢包", "opay" to "歐付寶", "notification" to "付款通知", "shortcut" to "捷徑", "einvoice" to "發票載具",
         "ocr" to "拍收據", "manual" to "手動記帳", "other" to "付款通知",
     )
 

@@ -285,17 +285,22 @@ fun ExpenseEditSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Un
     val e = id?.let { x -> s.myExpenses.firstOrNull { it.id == x } }
     var merchant by remember { mutableStateOf(e?.merchant ?: "") }
     var amount by remember { mutableStateOf(e?.amount?.toLong()?.toString() ?: "") }
-    var category by remember { mutableStateOf(e?.category) }
+    // 記成「其他」的（自動記帳看不出來）先不算選好，跟著店名猜；改店名時猜的類別也跟著變
+    var category by remember { mutableStateOf(e?.category?.takeIf { it != "other" }) }
+    var picked by remember { mutableStateOf(false) }
     var visibility by remember { mutableStateOf(e?.visibility ?: "shared") }
     var reveal by remember { mutableStateOf(e?.revealOn ?: LocalDate.now().plusDays(30).toString()) }
     var guessable by remember { mutableStateOf(e?.guessable ?: false) }
+    val memory = vm.container.merchants
+    // 還沒選類別：學過這家店就用學過的，不然看名字猜
+    val suggested = remember(merchant) { memory.recall(merchant.trim())?.category ?: PaymentParser.categorizeMerchant(merchant) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(if (e == null) "記一筆 ✍️" else "編輯開銷", style = MaterialTheme.typography.titleLarge)
         CuteField(merchant, { merchant = it.take(60) }, "商家或項目", placeholder = "例如：鼎泰豐")
         CuteField(amount, { amount = it.filter(Char::isDigit).take(8) }, "金額（NT$）", keyboard = KeyboardType.Number)
         Text("類別", style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Catalog.categories.forEach { c -> ChoiceChip(c.label, (category ?: PaymentParser.categorize(merchant)) == c.key, c.emoji) { category = c.key } }
+            Catalog.categories.forEach { c -> ChoiceChip(c.label, (category ?: suggested) == c.key, c.emoji) { category = c.key; picked = true } }
         }
         Text("${s.partnerName} 看得到嗎", style = MaterialTheme.typography.labelLarge)
         Segmented(listOf("shared" to "看得到", "private" to "不給看", "surprise" to "禮物模式 🎁"), visibility) { visibility = it; if (it != "shared") guessable = false }
@@ -304,9 +309,14 @@ fun ExpenseEditSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Un
         }
         ToggleRow("開放 ${s.partnerName} 猜金額", guessable, "猜之前對方看不到金額", "💰", enabled = visibility == "shared") { guessable = it }
         CuteButton("儲存", Modifier.fillMaxWidth(), enabled = merchant.isNotBlank() && (amount.toLongOrNull() ?: 0) > 0 && !vm.busy) {
+            val name = merchant.trim()
+            val cat = category ?: suggested
+            // 學起來：改了店名或自己選了類別，下次同一家店（自動記帳、自己記帳）就照這樣記
+            if (e != null && (e.merchant != name || (picked && e.category != cat))) memory.remember(e.merchant, name, cat)
+            if (picked) memory.remember(name, name, cat)
             val body = buildJsonObject {
-                put("merchant", merchant.trim()); put("amount", amount.toDouble())
-                put("category", category ?: PaymentParser.categorize(merchant)); put("visibility", visibility)
+                put("merchant", name); put("amount", amount.toDouble())
+                put("category", cat); put("visibility", visibility)
                 if (visibility == "surprise") put("revealOn", reveal)
                 put("guessable", guessable && visibility == "shared")
                 if (e == null) put("source", "manual")
@@ -333,7 +343,7 @@ fun ParseTestSheet(vm: AppViewModel, close: () -> Unit) {
     var title by remember { mutableStateOf(samples[0].second) }
     var text by remember { mutableStateOf(samples[0].third) }
     val result = remember(title, text) { PaymentParser.parseNotification(PaymentParser.Notice("", title, listOf(text))) }
-    val parsed = (result as? PaymentParser.Result.Payment)?.parsed
+    val parsed = (result as? PaymentParser.Result.Payment)?.parsed?.let(vm.container.merchants::apply)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("測試自動記帳 🤖", style = MaterialTheme.typography.titleLarge)
         Text("開啟通知存取權後，App 會在背景自動處理付款通知。這裡可以貼一則通知看看會怎麼被記下來。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

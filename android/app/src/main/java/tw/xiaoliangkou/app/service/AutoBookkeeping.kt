@@ -14,6 +14,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.PaymentParser
+import tw.xiaoliangkou.app.data.MerchantMemory
 import tw.xiaoliangkou.app.ui.Fmt
 import java.io.File
 import java.security.MessageDigest
@@ -26,7 +27,13 @@ import java.security.MessageDigest
  * - 同一筆消費常常有好幾則通知（LINE錢包、銀行 App、銀行的 LINE 帳號）：10 分鐘內同樣金額只記一筆；
  *   先記的那則沒有店名、後來的有，就幫忙補上店名
  */
-class AutoBookkeeping(private val context: Context, private val ledger: () -> Ledger?, private val enabled: () -> Boolean) {
+class AutoBookkeeping(
+    private val context: Context,
+    private val ledger: () -> Ledger?,
+    private val enabled: () -> Boolean,
+    /** 使用者改過的商家：通知裡的店名學過的話，換成學過的名字和類別 */
+    private val memory: MerchantMemory? = null,
+) {
     /** 記帳的地方：登入 Supabase 時就是你們的帳本；還沒登入、示範模式是 null */
     interface Ledger {
         /** 回傳新記帳的 id；同一筆已經記過就是 null */
@@ -93,7 +100,7 @@ class AutoBookkeeping(private val context: Context, private val ledger: () -> Le
                 if (PaymentParser.looksPaymentRelated(notice)) log(entry("沒記", r.reason))
                 return
             }
-            is PaymentParser.Result.Payment -> r.parsed
+            is PaymentParser.Result.Payment -> memory?.apply(r.parsed) ?: r.parsed
         }
         val label = "${p.merchant} ${Fmt.money(p.amount)}（${Catalog.category(p.category).label}）"
         if (!enabled()) return log(entry("沒記", "自動記帳已關閉：$label", p))

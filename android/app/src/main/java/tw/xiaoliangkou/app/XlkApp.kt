@@ -43,6 +43,7 @@ import tw.xiaoliangkou.app.data.Errors
 import tw.xiaoliangkou.app.data.Giphy
 import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.data.MediaCache
+import tw.xiaoliangkou.app.data.MerchantMemory
 import tw.xiaoliangkou.app.data.OpenMeteo
 import tw.xiaoliangkou.app.data.PlaceSearch
 import tw.xiaoliangkou.app.data.RealtimeClient
@@ -99,7 +100,9 @@ class AppContainer(private val app: Application) {
     val notifier = Notifier(app).also { it.createChannels() }
     val realtime = RealtimeClient(scope)
     /** 自動記帳（付款通知）與最近處理過的付款通知 */
-    val autoBookkeeping = AutoBookkeeping(app, ledger = { (_repo.value as? RemoteRepository)?.let(::RemoteLedger) }, enabled = { _prefs.value?.autoBookkeeping != false })
+    /** 記住改過的商家名字和類別（自動記帳、自己記帳都會用） */
+    val merchants = MerchantMemory(app)
+    val autoBookkeeping = AutoBookkeeping(app, ledger = { (_repo.value as? RemoteRepository)?.let(::RemoteLedger) }, enabled = { _prefs.value?.autoBookkeeping != false }, memory = merchants)
 
     private class RemoteLedger(private val r: RemoteRepository) : AutoBookkeeping.Ledger {
         override suspend fun add(p: PaymentParser.Parsed, dedupeKey: String) = r.addAutoExpense(p, dedupeKey)
@@ -374,6 +377,7 @@ class AppContainer(private val app: Application) {
         settings.clear()
         // 忘記 App 鎖的密碼就是靠登出再登入：登出時一起關掉
         lock.disable()
+        merchants.clear()
         reloadPrefs()
         media.clear()
         // 告訴 Supabase 這支手機登出了：token 過期的話先換新（最多等 5 秒），沒網路也沒關係
