@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Looper
 import androidx.core.app.RemoteInput
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
@@ -21,7 +22,9 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tw.xiaoliangkou.app.core.PhoneHeat
 import tw.xiaoliangkou.app.core.PhoneHeat.Level
+import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.AppState
+import tw.xiaoliangkou.app.data.CoupleRepository
 import tw.xiaoliangkou.app.service.DeviceProbe
 import tw.xiaoliangkou.app.service.Notifier
 import tw.xiaoliangkou.app.service.StatusActionReceiver
@@ -157,18 +160,21 @@ class ReplyAndHeatTest {
         idleUntil { shadowOf(notification(22)).contentText.toString() == "已經抱抱 小雨 🤗" }
     }
 
-    @Test fun replyWithoutLoginKeepsTheButtons() {
+    /** 沒送出去（例如傳太快被擋下來）：寫原因，按鈕留著可以再試 */
+    @Test fun failedReplyKeepsTheButtons() {
         shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        demo()
+        val demoRepo = c.repo.value!!
+        @Suppress("UNCHECKED_CAST")
+        val field = c.javaClass.getDeclaredField("_repo").apply { isAccessible = true }.get(c) as MutableStateFlow<CoupleRepository?>
+        field.value = object : CoupleRepository by demoRepo {
+            override suspend fun sendComfort(kind: String, message: String?, sticker: String?) = throw AppException("傳太快了，休息一下再傳", "rate_limited")
+        }
         c.notifier.show(23, "小雨 給了你一個大大的抱抱", "點開回應一下吧", "comfort", buildJsonObject { put("comfort_id", 5) })
         press(23, 0, "好")
-        // 沒有登入：等一下（最多 6 秒）就說要先登入，按鈕留著可以再試
-        val end = System.currentTimeMillis() + 15_000
-        while (System.currentTimeMillis() < end && !shadowOf(notification(23)).contentText.toString().contains("登入")) {
-            shadowOf(Looper.getMainLooper()).idle()
-            Thread.sleep(20)
-        }
+        idleUntil { shadowOf(notification(23)).contentText.toString().startsWith("沒有送出") }
         val n = notification(23)
-        assertEquals("請先打開小倆口登入", shadowOf(n).contentText.toString())
+        assertEquals("沒有送出：傳太快了，休息一下再傳", shadowOf(n).contentText.toString())
         assertEquals(listOf("💬 回覆", "🤗 回抱"), n.actions.map { it.title.toString() })
     }
 }

@@ -6,9 +6,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -16,7 +19,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.junit.After
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -73,14 +75,14 @@ class HeatScreensTest {
         assertTrue(has("很燙 🔥 · 提醒對方：先停下來，拿掉保護殼、別放在太陽下"))
         compose.onRoot().captureRoboImage("build/screens/110_phone_hot.png")
         // 自己的手機
-        compose.onNodeWithText("我").performClick()
+        compose.onNode(hasText("我") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)).performClick()
         compose.waitForIdle()
         assertTrue(has("31.5°C"))
     }
 
     @Test fun oldAppOrOldDatabase() {
         show { HomeScreen(partner(null, null).copy(dbSchema = RemoteRepository.PET_SCHEMA), vm, {}, {}) }
-        assertFalse("沒有回報就不顯示", has("手機溫度"))
+        assertTrue("沒有回報就不顯示", compose.onAllNodesWithText("手機溫度").fetchSemanticsNodes().isEmpty())
         assertTrue(has("資料庫再更新一次就能看到手機溫度"))
     }
 

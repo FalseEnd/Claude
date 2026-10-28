@@ -39,8 +39,9 @@ object PhoneHeat {
             tempC <= COLD_C -> Level.COLD
             else -> Level.NORMAL
         }
-        // 系統說在降速就聽系統的；不然看電池溫度（冰的時候系統不會說什麼）
-        return if (byThermal.ordinal > byTemp.ordinal) byThermal else byTemp
+        // 比較熱的那個算數（系統說在降速就聽系統的）；系統說正常、電池又很冰，就是有點冰
+        val heat = if (byThermal.ordinal > byTemp.ordinal) byThermal else byTemp
+        return if (heat == Level.NORMAL && byTemp == Level.COLD) Level.COLD else heat
     }
 
     /** 「36.5°C」 */

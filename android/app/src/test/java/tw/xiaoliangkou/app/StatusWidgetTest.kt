@@ -64,7 +64,8 @@ class StatusWidgetTest {
     // ------------------------------------------------------------ 對方狀態的文字
     @Test fun statusListsWhatThePartnerShares() {
         val st = StatusText.of(s)
-        assertEquals(listOf("place", "battery", "mood", "phone", "network", "steps"), st.items.map { it.key })
+        assertEquals(listOf("place", "battery", "mood", "phone", "network", "steps", "temp"), st.items.map { it.key })
+        assertEquals("🌡️ 34.2°C", st.item("temp").toString())
         assertTrue(st.item("place")!!.text.startsWith("在 小雨公司 · 相距 "))
         assertEquals("🔋 34%", st.item("battery").toString())
         assertEquals("😩 好累：開了一整天的會", st.item("mood").toString())
