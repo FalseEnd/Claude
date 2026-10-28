@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.LinkOff
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Pets
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Science
@@ -78,6 +79,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Dates
+import tw.xiaoliangkou.app.core.Pet
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.Giphy
 import tw.xiaoliangkou.app.data.GiphySearcher
@@ -153,6 +155,7 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
                 MenuRow(Icons.Rounded.Badge, c.me, c.meSoft, "我的資料", "暱稱、生日、身高、血型…${s.partnerName} 也看得到") { open("profile") }
                 MenuRow(Icons.Rounded.FavoriteBorder, c.partner, c.partnerSoft, "${s.partnerName} 的資料與備註", "對方的資料，和只有你看得到的備註 🔒") { open("partner") }
                 MenuRow(Icons.Rounded.StickyNote2, c.peach, c.peach.copy(alpha = 0.25f), "備忘錄", "文字、照片、語音，可以放在桌面") { open("memos") }
+                MenuRow(Icons.Rounded.Pets, c.peach, c.butter.copy(alpha = 0.3f), "我們的貓咪", s.pet?.pet?.let { "${it.name}（${Pet.stageOf(it.xp).label}）等你來餵 🐟" } ?: "兩個人一起養一隻小貓") { open("pet") }
                 MenuRow(Icons.Rounded.AutoAwesome, c.lavender, c.fertileSoft, "星座運勢與御神籤", "今天的運勢、兩人速配、抽一支籤") { open("fortune") }
                 MenuRow(Icons.Rounded.WbSunny, c.butter, c.butter.copy(alpha = 0.3f), "天氣與外出建議", "兩邊的天氣、空氣品質，提醒 ${s.partnerName} 要注意什麼") { open("weather") }
             }
@@ -281,6 +284,7 @@ fun NotificationScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
         Triple("battery_low", "對方電量低", "🔋"), Triple("guess", "猜花費", "💰"), Triple("event", "約會邀請與提醒", "📅"),
         Triple("anniversary", "紀念日與里程碑", "🎂"), Triple("cycle_care", "經期關懷提醒", "🌸"),
         Triple("diary", "對方記錄那天的生活", "📔"), Triple("memo", "新的共同備忘錄", "📝"),
+        Triple("pet", "一起養的小貓", "🐱"),
     )
     val prefs by vm.prefs.collectAsState()
     val scope = rememberCoroutineScope()
@@ -293,7 +297,7 @@ fun NotificationScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                 Text("要收到哪些通知", style = MaterialTheme.typography.titleMedium)
                 kinds.forEach { (k, l, e) ->
                     // 舊的資料庫不認得這兩種通知：先提醒；按了的話 setNotifPref 會說要更新資料庫（更新好就能直接設定，不用等重新檢查）
-                    val hint = if (s.schemaOutdated && k in V2_NOTIF_KINDS) "資料庫更新後才能設定" else null
+                    val hint = if ((s.schemaOutdated && k in V2_NOTIF_KINDS) || (k == "pet" && !s.petReady)) "資料庫更新後才能設定" else null
                     ToggleRow(l, s.notifPrefs[k] != false, hint, e) { v -> vm.act { it.setNotifPref(k, v) } }
                 }
             }
@@ -527,9 +531,11 @@ fun AccountScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.conta
 
 /**
  * 新功能都能用了，再執行一次 upgrade-v2.sql 還會多出來的：（短的名稱, 一行說明）。
- * 跑過舊版 upgrade-v2.sql 的資料庫：schema 2 沒有手機名稱與電信，schema 3 以前沒有 GIPHY 貼圖，schema 4 以前沒有更多心情和安撫，schema 5 以前沒有 0.2.6 再多的安撫
+ * 跑過舊版 upgrade-v2.sql 的資料庫：schema 2 沒有手機名稱與電信，schema 3 以前沒有 GIPHY 貼圖，schema 4 以前沒有更多心情和安撫，
+ * schema 5 以前沒有 0.2.6 再多的安撫，schema 6 以前沒有一起養的小貓
  */
 internal fun upgradeGains(s: AppState): List<Pair<String, String>> = listOfNotNull(
+    ("養小貓" to "🐱 兩個人一起養一隻小貓，每天餵牠、陪牠玩，看牠長大").takeIf { s.petOutdated },
     when {
         !s.moodsOutdated -> null
         s.canPick(5) -> "更多安撫" to "💞 安撫多到 ${Catalog.comforts.size} 種"
@@ -595,9 +601,9 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, gains: List
             vm.act { r ->
                 r.refreshAll()
                 val st = r.state.value
-                // 現在的 upgrade-v2.sql 一次補齊：還缺最新的（更多心情和安撫）就是還沒跑成功
+                // 現在的 upgrade-v2.sql 一次補齊：還缺最新的（一起養的小貓、更多心情和安撫）就是還沒跑成功
                 vm.toast(
-                    if (st.schemaOutdated || (minor && st.moodsOutdated)) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
+                    if (st.schemaOutdated || (minor && (st.moodsOutdated || st.petOutdated))) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
                     else if (minor) "資料庫更新好了，${gains.joinToString("、") { it.first }}都有了 🎉"
                     else "資料庫更新好了，新功能都可以用了 🎉",
                 )
@@ -641,6 +647,16 @@ fun DemoConsole(s: AppState, vm: AppViewModel, back: () -> Unit) {
                         "spend" to "💳 刷卡消費", "invite" to "💌 約你出去", "pause" to "🙈 暫停／恢復分享", "guess" to "💰 猜你的花費",
                         "diary" to "📔 記錄今天的生活", "memo" to "📝 新增共同備忘錄",
                     ).forEach { (k, l) -> SoftButton(l, small = true) { demo?.demoAction(k); vm.toast("${s.partnerName}：$l") } }
+                }
+            }
+        }
+        item {
+            CuteCard {
+                Text("小貓", style = MaterialTheme.typography.titleMedium)
+                ButtonRow(maxPerRow = 2) {
+                    listOf("petFeed" to "🍚 ${s.partnerName} 餵貓", "petHungry" to "⏩ 過一天沒人餵", "petReset" to "🐣 重新領養").forEach { (k, l) ->
+                        SoftButton(l, small = true) { demo?.demoAction(k); vm.toast(l) }
+                    }
                 }
             }
         }

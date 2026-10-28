@@ -4,7 +4,7 @@
 
 小倆口是給已經在一起的兩個人用的 **Android App**，資料存在**你們自己的免費 Supabase 專案**裡。它不取代 LINE，而是補上聊天軟體做不到的部分：**不用開口就知道對方的狀態**（在哪、電量、心情、花了什麼），以及**把在一起的日子記下來**（紀念日、約會、日曆上的生活紀錄、備忘錄、經期、歷史紀錄）。
 
-本文件對應 App 0.2.15（versionCode 17）。
+本文件對應 App 0.3.0（versionCode 18）。
 
 | 文件 | 內容 |
 |---|---|
@@ -275,6 +275,26 @@ App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「�
 - 什麼時候鎖：App 剛啟動、離開 App 超過設定的時間（馬上、1、5、30 分鐘，預設 1 分鐘：選照片、權限視窗也會讓 App 進背景）。鎖著時不畫 App 的內容（對話框、底部面板也不會露出來），解鎖後回到原本的頁面。打開 App 鎖時最近使用的 App 畫面不顯示內容（Android 13 以上）。常駐通知的「更多安撫」小視窗也要先解鎖；通知本身、桌面小工具不受影響。
 - 忘記密碼或圖形：鎖定畫面的「忘記密碼？」→ 登出（登出時 App 鎖一起關掉），再用 Email 和密碼登入。
 
+### 4.13.3 一起養的小貓
+
+一對情侶一隻小貓（`pets`，以 couple_id 為主鍵），兩個人都能照顧；照顧紀錄在 `pet_events`。規則寫在 `core/Pet.kt` 和資料庫（`supabase/migrations/20261028000010_pet.sql`）兩邊，數字一模一樣：`PetTest` 和 `rls_smoke.sql` 的「一起養的小貓」跑同一組情境、算出同樣的數字。
+
+- **狀態**：飽足、開心、乾淨，0～100。每小時飽足 -3（從吃飽到餓扁大約一天半，所以每天都要有人來）、開心 -2（飽足掉到 20 以下後再多 -1）、乾淨 -1.2。資料庫只存上次更新的值和時間（`updated_at`），讀的時候（`pet_at`）和 App 畫面上（`Pet.decay`，每分鐘重算）才算到現在，不用排程一直更新。
+- **照顧**（`app_pet_action({action, item})`）：
+  - 餵食：乾乾（飽足 +30、開心 +2、成長 8）、罐罐（+45、+8、12）、小魚乾（+10、+15、6，一天最多 3 次）。飽足 95 以上吃不下（`pet_full`）；70 以上餵了沒有成長值。
+  - 陪玩：逗貓棒（開心 +20、飽足 -6、乾淨 -4、成長 10）、雷射筆（+25、-8、-2、10）、毛線球（+15、-4、-6、8）。飽足不到 15 不想玩（`pet_hungry`）；開心 85 以上玩了沒有成長值。
+  - 摸摸：開心 +4，一天前 15 次各有 2 成長值。
+  - 洗澡：乾淨變 100、開心 -10；90 以上不用洗（`pet_clean`），60 以下洗才有 15 成長值。梳毛：乾淨 +25、開心 +6；98 以上不用（`pet_clean`），85 以下有 6 成長值。
+  - 每天的任務（台北時間，`app_config.timezone`）：有人餵、有人陪玩、摸摸 3 次，第一次全部做完 +20（`bonus_on` 記這天給過了）。每天都有人餵就累積連續照顧（`streak`、`last_fed_on`），斷一天重新算，每滿 7 天的那天第一次餵 +30。
+  - 成長值到了就長大：小奶貓 0、幼貓 100、少年貓 400、成貓 1000、大胖貓 2000。只照顧不刷的話，一天大約 60～80，大概 2 天變幼貓、一週變少年貓、半個月變成貓、一個月變大胖貓。
+- **牠的心情**（`Pet.mood`）：飽足 < 25 餓了（半夜也會叫）、台北時間 23 點到 7 點在睡覺、乾淨 < 25 想洗澡、開心 < 25 寂寞、開心 ≥ 80 而且飽足 ≥ 60 很開心，其他是普通。
+- **畫面**：首頁卡片（牠、心情、三條狀態、今天有沒有人餵、點牠摸摸）；「我們的貓咪」頁：牠的房間（白天窗外有太陽和雲、晚上有月亮和星星）、牠說的話、名字和長大的進度、照顧的五個按鈕（餵食、陪玩再選一種，寫出加減多少）、今天的任務、最近的照顧紀錄（連續的摸摸合成一行）。照顧時拿出碗、罐頭、小魚乾、逗貓棒、雷射紅點、毛線球、泡泡、梳子，牠跳一下、換表情、說一句話，跳出得到的成長值；長大時撒紙花、跳出新樣子。
+- **小貓的樣子**（`ui/components/PetArt.kt`，全部用 Canvas 畫）：六種毛色（橘、灰、白、黑、三花、賓士；深色的貓用黃綠色的眼睛和淺色的線），五個階段越長越大越圓（小奶貓頭上一撮毛、幼貓鈴鐺項圈、少年貓多一個蝴蝶結、成貓圍巾、大胖貓皇冠），九種表情（普通、開心、餓、難過、髒髒、睡覺、吃東西、呼嚕、玩），會呼吸、眨眼、甩尾巴、抖耳朵。
+- **領養與改名**：`app_adopt_pet({name, coat})`（名字 1～12 個字，沒填叫「咪咪」；已經有了是 `pet_exists`，App 改顯示對方領養的那隻）、`app_rename_pet({name})`。
+- **權限**：兩張表兩個人都只能讀（RLS），寫入只能透過上面的函式（`security definer`），直接改資料表會被擋；解除配對後雙方都看不到。`realtime_pets` 讓另一支手機即時重新載入。
+- **通知**（`pet`，通知設定和系統的「一起養的小貓」頻道都可以關）：對方領養、餵正餐（小魚乾是零食不通知）、洗澡，長大了兩個人都通知；pg_cron 的 `xlk-pet` 在當地時間晚上 8 點以後每 10 分鐘看一次，今天還沒有人餵、飽足又低於 35 就提醒兩個人；每隻貓一天最多提醒一次（`pets.reminded_on`），所以 8 點還不餓、10 點才餓的也提醒得到。
+- **資料庫還沒更新**（schema 6 以前）：首頁卡片寫「再更新一次資料庫就能養了」，點了到「Supabase 與帳號」；找不到小貓的函式時也記成 schema 6。
+
 ### 4.14 照片與語音的存放
 
 存在 Supabase Storage 不公開的 `media` 空間（單檔 10 MB 以內，只收 JPEG、PNG、WebP 和常見的語音格式）：日曆和共用備忘錄放在 `c/<配對>/`，只有目前配對的兩個人讀得到、傳得上去；私人備忘錄放在 `u/<自己>/`，只有自己讀得到。
@@ -336,6 +356,7 @@ App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「�
 - 4：再加上 GIPHY 貼圖（`moods.sticker`、`comforts.sticker`、`couples.giphy_key`、`app_set_giphy_key`，0.2.2）
 - 5：再加上更多心情和安撫（`moods`、`comforts` 的 check、`mood_label`、`comfort_text` 和「需要抱抱」的清單，0.2.3）。App 的種類和文字要和資料庫一樣，`MoreMoodsTest` 會拿 `setup.sql` 比對；schema 4 以前只顯示原本的 9 種心情、6 種安撫，並寫一行「再執行一次 upgrade-v2.sql 就有更多心情可以選」
 - 6：再加上 0.2.6 的 14 種安撫（`comforts` 的 check 和 `comfort_text`）。Catalog 的 `Comfort.since` 記每一種要哪一版（0、5、6），`AppState.canPick(since)` 決定顯示哪些；送出時資料庫的 check 擋下來，就把 schema 記成 `since - 1`、說要再執行一次 upgrade-v2.sql
+- 7：再加上一起養的小貓（`pets`、`pet_events`、`app_pet*`、通知種類 `pet`、晚上的提醒，0.3.0；見 4.13.3）
 
 小於 2 時，用到新功能的畫面會提醒「資料庫需要更新」；2 或 3 時新功能都能用，只在「我的 › Supabase 與帳號」溫和地提醒再執行一次 upgrade-v2.sql 會多出什麼（3 以前沒有 GIPHY 貼圖，2 也還沒有手機名稱和電信），記心情、送安撫的畫面也只寫一行「再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖」（見 4.15）。upgrade-v2.sql 包含 0.2 之後所有的資料庫變更、可以重複執行，所以不管跑過幾次，再跑一次就是最新的。「我的 › Supabase 與帳號」有一步一步的說明和「重新檢查」按鈕，回到 App 時也會自己再檢查一次。舊功能不受影響。
 
@@ -398,7 +419,7 @@ flowchart LR
 
 **背景執行**：登入後啟動前景服務（Android 14 以上用 `location`＋`remoteMessaging` 類型），保持 Realtime 連線並回報狀態。需要使用者把電池最佳化設為「不限制」，部分品牌另需允許自動啟動。
 
-**資料模型**：見 [`supabase/migrations/`](../supabase/migrations)，主要資料表為 profiles、couples、couple_members、pair_invites、sharing_settings、device_status、locations、places、place_events、expenses、expense_guesses、moods、comforts、anniversaries、events、cycle_settings、cycle_periods、cycle_logs、activity_log、notification_prefs、notification_outbox、realtime_events，0.2 加了 partner_notes、day_entries、memos 與 Storage 的 `media` 空間，0.2.2 在 moods、comforts 加了 `sticker`、couples 加了 `giphy_key`。
+**資料模型**：見 [`supabase/migrations/`](../supabase/migrations)，主要資料表為 profiles、couples、couple_members、pair_invites、sharing_settings、device_status、locations、places、place_events、expenses、expense_guesses、moods、comforts、anniversaries、events、cycle_settings、cycle_periods、cycle_logs、activity_log、notification_prefs、notification_outbox、realtime_events，0.2 加了 partner_notes、day_entries、memos 與 Storage 的 `media` 空間，0.2.2 在 moods、comforts 加了 `sticker`、couples 加了 `giphy_key`，0.3.0 加了 pets、pet_events。
 
 ---
 
@@ -409,6 +430,7 @@ flowchart LR
 | App 核心邏輯 | `cd android && ./gradlew testDebugUnitTest` | 經期預測、地理圍欄、猜花費、付款通知解析、紀念日（與 JS 版相同案例）；地址搜尋（Geocoder → Nominatim 的順序、台灣地址改寫、找不到與連不上）；在地圖上拖曳時頁面不會搶走觸控；頭像的裁切與壓縮、常駐通知的對方狀態、桌面小工具的內容；自動記帳（LINE錢包的付款訊息、儲值和廣告不記、聊天不記、同一筆消費的好幾則通知只記一筆並補上店名） |
 | 0.2 新功能 | `./gradlew testDebugUnitTest --tests '*MemoScreensTest*'`（換成要跑的類別） | `ProfileScreensTest` 我的資料、對方的資料與私人備註；`JournalScreensTest` 日曆的生活紀錄；`MemoScreensTest`、`MemoWidgetTest` 備忘錄與備忘錄小工具在各種大小、大字時的排版；`WidgetRowScreensTest`、`StatusWidgetTest` 一格高的小工具和拉高後的大版面；`FortuneScreensTest`、`HoroscopeTest`、`OmikujiTest` 星座運勢與御神籤（日期邊界、同一天結果固定、78 組速配、100 籤四句五言、吉凶分布）；`MediaUiTest` 照片縮圖、看大圖、語音；`DataV2Test` 示範模式的新資料與照片快取；`RemoteV2Test` 用假的 Supabase 檢查呼叫的函式、Storage 網址、資料庫還沒更新時的提醒 |
 | GIPHY 貼圖 | `./gradlew testDebugUnitTest --tests '*Sticker*' --tests '*GiphyTest*'` | `GiphyTest` 送到 GIPHY 的參數、回應解析、錯誤、查過的頁面一小時內不再查、注音選字時不查、圖片的記憶體快取；`StickerImageTest` 用 id 組網址、id 不對不載、同一張只下載一次、不帶 Supabase 的金鑰；`StickerNotificationTest` 通知先發文字、再補上貼圖的同一則（長的內容照樣展開成全文）、看不到的通知不抓圖；`StickerRemoteTest`、`StickerDemoTest` 資料層（舊的資料庫先擋下來、送出去才發現沒存到、收到的安撫標成看過（schema 4 一次標完、舊的一則一則）、首頁只拿最近 3 天的、共用的 key）；`StickerScreensTest` 心情、安撫、首頁、歷史紀錄、選貼圖視窗的各種狀態和查了幾次、帳號裡的 key。圖片和搜尋都是假的（`TestXlkApp`、`FakeGiphy`），不連網路 |
+| 一起養的小貓 | `./gradlew testDebugUnitTest --tests '*Pet*'` | `PetTest` 規則（和 `rls_smoke.sql` 同一組情境、同樣的數字）、時間過去的變化、連續照顧、心情、名字；`PetRemoteTest` 用假的 Supabase 檢查呼叫的函式和參數、被規則擋下來時重新載入、對方先領養、舊的資料庫先提醒更新；`PetScreensTest` 六種毛色、五個階段、表情和照顧的樣子、首頁卡片、白天和晚上的房間、餵食、摸摸、領養、大字 |
 | App 畫面 | `./gradlew recordRoborazziDebug` | 不需模擬器，把每個畫面（含深色模式、大字）畫成圖片，放在 `app/build/screens/`；加 `--tests '*FortuneScreensTest*'` 只畫一部分 |
 | App ↔ Supabase | `XLK_TEST_SUPABASE_URL=… XLK_TEST_SUPABASE_KEY=… ./gradlew testDebugUnitTest` | App 的資料層對真的 Supabase（本機啟動、還沒有帳號）走完註冊、配對、頭像同步、狀態、通知、標點、記帳、猜花費、約會、經期、個人資料、備註、日曆紀錄、備忘錄、照片的搬移與權限、共用的 GIPHY key、附貼圖的心情和安撫、收到的安撫標成看過、解除配對 |
 | 資料庫 | `npm run test:db` | 在本機 Supabase（包含 Storage）上跑權限測試、`app_*` 函式、即時通知、排程、照片與語音的上傳下載和權限；setup.sql、upgrade-v2.sql 與 migrations 的一致性；0.1 版資料庫執行 upgrade-v2.sql（兩次）、0.2.0 和 0.2.1 的資料庫再執行一次、空資料庫執行 setup.sql 都要通過冒煙測試；貼圖 id 和 GIPHY key 的格式、誰讀得到 key、key 不會出現在通知、歷史紀錄和即時事件裡 |

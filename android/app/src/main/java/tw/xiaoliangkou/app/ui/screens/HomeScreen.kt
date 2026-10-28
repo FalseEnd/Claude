@@ -116,6 +116,7 @@ fun HomeScreen(s: AppState, vm: AppViewModel, open: (String) -> Unit, sheet: (Sh
         if (received != null) item(key = "received") { ReceivedComfort(s, vm, received) }
         item(key = "phone") { PhoneCard(s, vm, open) }
         item(key = "mood") { MoodCard(s, open, sheet) }
+        if (s.paired) item(key = "pet") { HomePetCard(s, vm, open) }
         if (s.paired) item(key = "weather") { HomeWeatherCard(s, vm, open) }
         item(key = "quick") { QuickActions(s, open, sheet) }
         careBanner(s)?.let { (emoji, text) -> item(key = "care") { Banner(emoji, text, Cute.colors.periodSoft) { SoftButton("看看", small = true) { open("cycle") } } } }

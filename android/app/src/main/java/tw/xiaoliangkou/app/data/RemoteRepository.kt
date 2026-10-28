@@ -22,6 +22,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.PaymentParser
+import tw.xiaoliangkou.app.core.Pet
 import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -104,6 +105,7 @@ class RemoteRepository(
         "activity_log" -> listOf(::loadHistory)
         "day_entries" -> listOf(::loadCurrentDays)
         "memos" -> listOf(::loadMemos)
+        "pets" -> listOf(::loadPet)
         else -> emptyList()
     }
 
@@ -151,6 +153,14 @@ class RemoteRepository(
             throw e
         }
         _state.update { it.copy(memos = m, memosLoaded = true) }
+    }
+    /** 一起養的小貓：沒配對沒有；資料庫還沒有（schema 7 以前）就不問了 */
+    private suspend fun loadPet() {
+        val st = _state.value
+        if (st.couple == null) { _state.update { it.copy(pet = null) }; return }
+        if (!st.petReady) return
+        val p = pet { api.pet() }
+        _state.update { it.copy(pet = p.copy(result = null)) }
     }
     private suspend fun loadCurrentDays() { dayWindows(defaultDayRange(), browsing).forEach { (from, to) -> loadDays(from, to) } }
 
@@ -201,13 +211,15 @@ class RemoteRepository(
      */
     fun recheckSchema() {
         val st = _state.value
-        val behind = st.schemaOutdated || st.deviceInfoOutdated || st.stickersOutdated || st.moodsOutdated
+        val behind = st.schemaOutdated || st.deviceInfoOutdated || st.stickersOutdated || st.moodsOutdated || st.petOutdated
         if (!behind || refreshing.get() > 0 || !rechecking.compareAndSet(false, true)) return
         scope.launch {
             try {
                 checkSchema()
                 // 剛跑完 upgrade-v2.sql：新功能的資料重新載入（只差手機名稱、電信、貼圖、新的心情的話不用，對方下次回報就有）
                 if (st.schemaOutdated && !_state.value.schemaOutdated) refreshAll()
+                // 剛多了小貓：載入
+                else if (st.petOutdated && _state.value.petReady) loadPet()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -226,7 +238,8 @@ class RemoteRepository(
             loadMe()
             coroutineScope {
                 listOf(::loadPartnerStatus, ::loadPlaces, ::loadExpenses, ::loadMoods, ::loadComforts, ::loadAnniversaries,
-                    ::loadEvents, ::loadCycle, ::loadHistory, ::loadPrefs, ::checkSchema, ::loadNotes, ::loadCurrentDays, ::loadMemos)
+                    ::loadEvents, ::loadCycle, ::loadHistory, ::loadPrefs, ::checkSchema, ::loadNotes, ::loadCurrentDays, ::loadMemos,
+                    ::loadPet)
                     .map { async { runCatching { it() } } }.awaitAll()
             }
         } finally {
@@ -419,8 +432,13 @@ class RemoteRepository(
     override suspend fun setNotifPref(kind: String, enabled: Boolean) {
         apiCall { api.setNotificationPrefs(buildJsonObject { put(kind, enabled) }) }
         loadPrefs()
-        // 舊的資料庫不認得新的通知種類（生活紀錄、備忘錄）：存的時候直接略過、也不會回傳，開關只會默默彈回去
+        // 舊的資料庫不認得新的通知種類（生活紀錄、備忘錄、小貓）：存的時候直接略過、也不會回傳，開關只會默默彈回去
         if (kind !in _state.value.notifPrefs) {
+            // 小貓的通知是 schema 7 才有的：其他功能照樣能用，只是還沒有小貓
+            if (kind == "pet") {
+                _state.update { it.copy(dbSchema = (it.dbSchema ?: PET_SCHEMA).coerceAtMost(PET_SCHEMA - 1)) }
+                throw AppException(Errors.PET_OUTDATED, Errors.PET_OUTDATED_CODE)
+            }
             _state.update { it.copy(schemaOutdated = true) }
             throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
         }
@@ -597,6 +615,55 @@ class RemoteRepository(
 
     override suspend fun discardMedia(items: List<MediaItem>) = deleteUnused(items.map { it.path }, exceptMemo = null)
 
+    // ---------------------------------------------------------------- 一起養的小貓
+    /** 小貓的 RPC：資料庫還沒有（找不到函式）就記下 schema 還沒到 7，畫面上提醒再跑一次 upgrade-v2.sql */
+    private suspend fun <T> pet(block: suspend () -> T): T = try {
+        apiCall { block() }
+    } catch (e: AppException) {
+        if (e.code == Errors.PET_OUTDATED_CODE) _state.update { it.copy(dbSchema = (it.dbSchema ?: PET_SCHEMA).coerceAtMost(PET_SCHEMA - 1)) }
+        throw e
+    }
+
+    private fun checkPet() {
+        val st = _state.value
+        if (st.schemaOutdated) throw AppException(Errors.SCHEMA_OUTDATED, Errors.SCHEMA_OUTDATED_CODE)
+        if (!st.petReady) throw AppException(Errors.PET_OUTDATED, Errors.PET_OUTDATED_CODE)
+        if (st.couple == null) throw AppException(Errors.DB_MESSAGES.getValue("not_paired"), "not_paired")
+    }
+
+    override suspend fun adoptPet(name: String, coat: String) {
+        val n = Pet.cleanName(name) ?: throw AppException(PET_NAME, "invalid_input")
+        checkPet()
+        val r = try {
+            pet { api.adoptPet(buildJsonObject { put("name", n); put("coat", coat) }) }
+        } catch (e: AppException) {
+            // 對方剛好也領養了：顯示對方領養的那隻
+            if (e.code == "pet_exists") reloadQuietly(::loadPet)
+            throw e
+        }
+        _state.update { it.copy(pet = r.copy(result = null)) }
+    }
+
+    override suspend fun renamePet(name: String) {
+        val n = Pet.cleanName(name) ?: throw AppException(PET_NAME, "invalid_input")
+        checkPet()
+        val r = pet { api.renamePet(buildJsonObject { put("name", n) }) }
+        _state.update { it.copy(pet = r.copy(result = null)) }
+    }
+
+    override suspend fun petAction(action: String, item: String?): PetResult {
+        checkPet()
+        val r = try {
+            pet { api.petAction(buildJsonObject { put("action", action); if (item != null) put("item", item) }) }
+        } catch (e: AppException) {
+            // 吃不下、太乾淨這些：可能是對方剛照顧過，畫面上的還是舊的
+            if (e.code?.startsWith("pet_") == true) reloadQuietly(::loadPet)
+            throw e
+        }
+        _state.update { it.copy(pet = r.copy(result = null)) }
+        return r.result ?: PetResult()
+    }
+
     // ---------------------------------------------------------------- 背景服務
     override suspend fun reportDevice(body: JsonObject) { apiCall { api.putDevice(body) } }
     override suspend fun reportLocation(lat: Double, lng: Double, accuracy: Float?, speed: Float?, recordedAt: java.time.Instant?) {
@@ -637,6 +704,9 @@ class RemoteRepository(
         const val STICKER_SCHEMA = 4
         /** 有最新的心情和安撫的資料庫版本（5 是 0.2.3 多的，6 是 0.2.6 再多的安撫）：沒有的話只能選原本的 */
         const val MOODS_SCHEMA = 6
+        /** 有一起養的小貓的資料庫版本 */
+        const val PET_SCHEMA = 7
+        const val PET_NAME = "名字要 1～${Pet.NAME_MAX} 個字"
 
         const val STICKERS_OUTDATED_CODE = "stickers_outdated"
         /** 舊的資料庫（schema 3 以前）存不了貼圖 */
@@ -674,6 +744,7 @@ class RemoteRepository(
             // 對方心情不好（「要不要安撫一下？」）：直接打開安撫
             "mood" -> if (Catalog.mood(textIn(data, "mood"))?.needsComfort == true) "comfort" else "home"
             "memo" -> "memos"
+            "pet" -> "pet"
             "cycle_care" -> "cycle"
             "battery_low" -> "home"
             "sharing_changed", "pairing" -> "privacy"

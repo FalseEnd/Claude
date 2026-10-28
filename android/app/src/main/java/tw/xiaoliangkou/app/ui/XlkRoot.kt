@@ -121,6 +121,7 @@ import tw.xiaoliangkou.app.ui.screens.ParseTestSheet
 import tw.xiaoliangkou.app.ui.screens.PartnerProfileScreen
 import tw.xiaoliangkou.app.ui.screens.PeriodSheet
 import tw.xiaoliangkou.app.ui.screens.PermissionsScreen
+import tw.xiaoliangkou.app.ui.screens.PetScreen
 import tw.xiaoliangkou.app.ui.screens.PlaceSheet
 import tw.xiaoliangkou.app.ui.screens.PrivacyScreen
 import tw.xiaoliangkou.app.ui.screens.RegisterScreen
@@ -163,7 +164,7 @@ private val TABS = listOf(
 private fun bannerEmoji(kind: String) = when (kind) {
     "comfort" -> "🤗"; "mood" -> "😊"; "place" -> "📍"; "battery_low" -> "🔋"; "guess" -> "💰"
     "event" -> "📅"; "anniversary" -> "🎂"; "cycle_care" -> "🌸"; "sharing_changed" -> "🔒"; "pairing" -> "💞"
-    "diary" -> "📔"; "memo" -> "📝"; else -> "💗"
+    "diary" -> "📔"; "memo" -> "📝"; "pet" -> "🐱"; else -> "💗"
 }
 
 @Composable
@@ -347,6 +348,7 @@ private fun MainScaffold(vm: AppViewModel, pendingRoute: String?, routeHandled: 
             composable("memos") { MemosScreen(s, vm, back, showSheet) }
             composable("fortune") { FortuneScreen(s, vm, back) }
             composable("weather") { WeatherScreen(s, vm, back, open) }
+            composable("pet") { PetScreen(s, vm, back, open) }
             composable("security") { SecurityScreen(vm, back) }
             composable("account") { AccountScreen(s, vm, back = back) }
             composable("permissions") { PermissionsScreen(vm, back, null) }

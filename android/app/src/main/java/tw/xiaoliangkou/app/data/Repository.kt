@@ -48,6 +48,8 @@ data class AppState(
     val dbSchema: Int? = null,
     /** 這支手機自己的狀態：直接從手機讀，不經過伺服器，沒分享也看得到 */
     val myDevice: DeviceStatus? = null,
+    /** 一起養的小貓：還沒載入（或沒配對、資料庫還沒有）是 null；載入了但還沒領養是 pet == null */
+    val pet: PetResponse? = null,
 ) {
     /** 新功能都能用，只是資料庫還沒有手機名稱與電信（跑過舊的 upgrade-v2.sql）：再跑一次就好，不急 */
     val deviceInfoOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.DEVICE_SCHEMA
@@ -64,6 +66,10 @@ data class AppState(
     val moreMoodsReady get() = canPick(RemoteRepository.MOODS_SCHEMA)
     /** 資料庫存得進去 schema [since] 才多的心情、安撫（0＝一開始就有的，一定可以） */
     fun canPick(since: Int) = since == 0 || (!schemaOutdated && (dbSchema ?: RemoteRepository.MOODS_SCHEMA) >= since)
+    /** 資料庫還沒有小貓（schema 7 以前）：其他功能照樣能用，再跑一次 upgrade-v2.sql 就好 */
+    val petOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.PET_SCHEMA
+    /** 可以養小貓；還不知道版本時先當作可以，載入失敗會再說 */
+    val petReady get() = !schemaOutdated && (dbSchema ?: RemoteRepository.PET_SCHEMA) >= RemoteRepository.PET_SCHEMA
     /** 兩個人共用的 GIPHY API key，還沒設定是 null */
     val giphyKey get() = couple?.giphyKey?.takeIf { it.isNotBlank() }
 
@@ -227,6 +233,13 @@ interface CoupleRepository {
     // 備忘錄
     suspend fun saveMemo(id: String?, title: String, body: String, media: List<MediaItem>, shared: Boolean, pinned: Boolean, color: String)
     suspend fun deleteMemo(id: String)
+
+    // 一起養的小貓（一對情侶一隻，兩個人都能照顧）
+    /** 領養：[coat] 是 [tw.xiaoliangkou.app.core.Pet.coats] 的 key */
+    suspend fun adoptPet(name: String, coat: String)
+    suspend fun renamePet(name: String)
+    /** 照顧一次：[action] 是 feed、play、pet、bath、brush，餵食、陪玩要選 [item]；回傳得到的成長值、獎勵、有沒有長大 */
+    suspend fun petAction(action: String, item: String?): PetResult
 
     // 照片與語音
     /** 上傳照片或語音，回傳要存進 media 的 MediaItem（path 依 shared 放在 c/<couple>/ 或 u/<我>/） */

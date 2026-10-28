@@ -110,6 +110,12 @@ class Api(private val rest: RestService, private val storage: StorageService? = 
     suspend fun saveMemo(body: JsonObject): Memo = call("app_save_memo", body)
     suspend fun deleteMemo(id: String): JsonObject = call("app_delete_memo", idBody(id))
 
+    // 一起養的小貓
+    suspend fun pet(): PetResponse = call("app_pet")
+    suspend fun adoptPet(body: JsonObject): PetResponse = call("app_adopt_pet", body)
+    suspend fun renamePet(body: JsonObject): PetResponse = call("app_rename_pet", body)
+    suspend fun petAction(body: JsonObject): PetResponse = call("app_pet_action", body)
+
     /** 上傳到 media bucket（檔名都是新的 uuid，不覆寫） */
     suspend fun uploadMedia(path: String, mime: String, bytes: ByteArray) {
         val s = storage ?: throw AppException("這個連線不能上傳檔案", "no_storage")
@@ -184,6 +190,8 @@ object Errors {
     const val RELOGIN = "請重新登入"
     const val SCHEMA_OUTDATED = "資料庫需要更新：請到 Supabase 的 SQL Editor 執行 upgrade-v2.sql（說明在「我的 › Supabase 與帳號」）"
     const val SCHEMA_OUTDATED_CODE = "schema_outdated"
+    const val PET_OUTDATED = "資料庫還沒有小貓：請到 Supabase 的 SQL Editor 再執行一次 upgrade-v2.sql（說明在「我的 › Supabase 與帳號」）"
+    const val PET_OUTDATED_CODE = "pet_outdated"
 
     /** 2026-10 新增的函式：找不到代表還沒執行 upgrade-v2.sql，不是整個 setup.sql 沒跑 */
     val V2_FUNCTIONS = setOf(
@@ -192,6 +200,8 @@ object Errors {
         "app_memos", "app_save_memo", "app_delete_memo",
         "app_set_giphy_key",
     )
+    /** 2026-10 底的小貓（schema 7）：找不到代表 upgrade-v2.sql 是舊的，再跑一次就好 */
+    val PET_FUNCTIONS = setOf("app_pet", "app_adopt_pet", "app_rename_pet", "app_pet_action")
     private val FUNCTION_NAME = Regex("""public\.(\w+)""")
 
     // 資料庫函式丟出的錯誤代碼（raise exception '<code>'）
@@ -212,6 +222,11 @@ object Errors {
         "invalid_status" to "狀態不正確",
         "invalid_range" to "日期格式不正確",
         "invalid_media" to "照片或語音的檔案不正確，請重新加入一次",
+        "pet_exists" to "你們已經有一隻貓咪了",
+        "pet_full" to "牠吃不下了，晚點再餵",
+        "pet_hungry" to "牠肚子太餓了，先餵牠吃點東西",
+        "pet_clean" to "牠已經很乾淨了",
+        "pet_treats" to "小魚乾今天給太多了，明天再給",
     )
 
     private val INVALID_INPUT = setOf("23502", "23514", "22P02", "22007", "22008", "22003", "22023", "2201B")
@@ -237,6 +252,8 @@ object Errors {
             code == "23505" -> AppException("資料重複了", "conflict", status)
             code == "23503" -> AppException("關聯的資料不存在", "invalid_reference", status)
             code in INVALID_INPUT -> AppException("輸入的資料格式不正確", "invalid_input", status)
+            code == "PGRST202" && FUNCTION_NAME.find(message.orEmpty())?.groupValues?.get(1) in PET_FUNCTIONS ->
+                AppException(PET_OUTDATED, PET_OUTDATED_CODE, status)
             // 找不到新功能的函式：還沒執行 upgrade-v2.sql
             code == "PGRST202" && FUNCTION_NAME.find(message.orEmpty())?.groupValues?.get(1) in V2_FUNCTIONS ->
                 AppException(SCHEMA_OUTDATED, SCHEMA_OUTDATED_CODE, status)

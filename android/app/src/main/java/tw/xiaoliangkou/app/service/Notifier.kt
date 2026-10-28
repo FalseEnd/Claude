@@ -32,6 +32,7 @@ class Notifier(private val context: Context) {
         const val CH_STATUS = "partner_status"
         const val CH_SHARE = "share"
         const val CH_WEATHER = "weather"
+        const val CH_PET = "pet"
         const val SERVICE_ID = 1
         /** 早上的天氣通知（每天換掉前一天的） */
         const val MORNING_ID = 2
@@ -55,6 +56,7 @@ class Notifier(private val context: Context) {
             NotificationChannel(CH_SERVICE, "背景連線", NotificationManager.IMPORTANCE_MIN).apply { description = "保持即時連線、分享位置時常駐"; setShowBadge(false) },
             NotificationChannel(CH_STATUS, "對方狀態", NotificationManager.IMPORTANCE_LOW).apply { description = "常駐在通知列，顯示對方的電量、位置、心情"; setShowBadge(false) },
             NotificationChannel(CH_WEATHER, "每天早上的天氣", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "兩邊今天的天氣和要注意的事" },
+            NotificationChannel(CH_PET, "一起養的小貓", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "對方餵了小貓、小貓長大了、晚上還沒人餵的提醒" },
         ))
     }
 
@@ -62,6 +64,7 @@ class Notifier(private val context: Context) {
         "comfort", "mood", "guess" -> CH_LOVE
         "place", "battery_low", "sharing_changed", "pairing" -> CH_PLACE
         "diary", "memo" -> CH_SHARE
+        "pet" -> CH_PET
         else -> CH_REMIND
     }
 

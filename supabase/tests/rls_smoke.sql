@@ -466,8 +466,8 @@ select test.ok((select bool_and(e ? 'theirGuess' and e ? 'theirPoints' and e ? '
                and jsonb_array_length(public.app_expenses()) = 4, 'app_expenses includes theirGuess / theirPoints');
 select test.ok((select (e->>'theirGuess')::numeric = 130 and jsonb_typeof(e->'amount') = 'number'
                 from jsonb_array_elements(public.app_expenses()) e where e->>'guessable' = 'true'), 'numbers stay JSON numbers');
-select test.ok((select count(*) from jsonb_object_keys(public.app_notification_prefs())) = 12
-               and public.app_notification_prefs() ?& array['diary', 'memo'], 'notification prefs list every kind');
+select test.ok((select count(*) from jsonb_object_keys(public.app_notification_prefs())) = 13
+               and public.app_notification_prefs() ?& array['diary', 'memo', 'pet'], 'notification prefs list every kind');
 select public.app_set_notification_prefs('{"diary": false}');
 select test.ok(public.app_notification_prefs()->'diary' = 'false', 'diary notifications can be turned off');
 select public.app_set_notification_prefs('{"diary": true}');
@@ -681,6 +681,106 @@ delete from storage.objects where name = 'c/' || :'couple_id' || '/y1.jpg';
 select test.ok((select count(*) from storage.objects where bucket_id = 'media') = 1, 'the uploader can delete a file');
 select test.login(test.id('zhe'));
 
+-- ---------------------------------------------------------------- 一起養的小貓
+-- 整個測試在同一個交易裡，now() 不會變：要「過了 20 小時」就用 postgres 把 updated_at 往前調
+select test.ok(public.app_pet()->'pet' = 'null' and public.app_pet()->'events' = '[]', 'no cat before adopting');
+select test.ok(test.error_of($$select public.app_adopt_pet('{"name": "一二三四五六七八九十一二三", "coat": "orange"}')$$)
+               like 'P0001: invalid_input%', 'a cat name is at most 12 characters');
+select test.ok(test.error_of($$select public.app_adopt_pet('{"name": "小橘", "coat": "pink"}')$$) like 'P0001: invalid_input%',
+               'only the known coats');
+select public.app_adopt_pet('{"name": " 小橘 ", "coat": "orange"}') as adopted \gset
+select test.ok((:'adopted'::jsonb)->'pet'->>'name' = '小橘' and (:'adopted'::jsonb)->'pet'->>'coat' = 'orange'
+               and ((:'adopted'::jsonb)->'pet'->>'fullness')::float = 80 and ((:'adopted'::jsonb)->'pet'->>'xp')::int = 0
+               and (:'adopted'::jsonb)->'pet'->>'adoptedBy' = test.id('zhe')::text
+               and (:'adopted'::jsonb)->'events'->0->>'action' = 'adopt', 'adopting a cat');
+select test.ok(test.outbox_titled(test.id('yu'), '阿哲 領養了一隻小貓 🐱') = 1
+               and test.outbox_body(test.id('yu'), '阿哲 領養了一隻小貓 🐱') = '牠叫「小橘」，快來跟牠打招呼', 'the partner hears about the new cat');
+select test.ok(test.error_of($$select public.app_adopt_pet('{"name": "小黑", "coat": "black"}')$$) like 'P0001: pet_exists%',
+               'one cat per couple');
+select test.ok(test.error_of($$update public.pets set xp = 9999$$) like '42501:%', 'clients cannot change the cat directly');
+select test.ok(test.error_of(format($$insert into public.pet_events (couple_id, action, xp) values (%L, 'bonus', 999)$$, :'couple_id'))
+               like '42501:%', 'clients cannot write care records directly');
+-- 餵罐罐：80 不算餓（≥ 70）所以沒有成長值，飽足 100、開心 88；第一次餵，連續照顧 1 天
+select public.app_pet_action('{"action": "feed", "item": "can"}') as fed \gset
+select test.ok(((:'fed'::jsonb)->'result'->>'xp')::int = 0 and ((:'fed'::jsonb)->'pet'->>'fullness')::float = 100
+               and ((:'fed'::jsonb)->'pet'->>'happiness')::float = 88 and ((:'fed'::jsonb)->'pet'->>'streak')::int = 1
+               and (:'fed'::jsonb)->'today'->>'feeds' = '1', 'feeding a cat that is not hungry gives no growth');
+select test.ok(test.outbox_titled(test.id('yu'), '阿哲 餵 小橘 吃了罐罐 🥫') = 1, 'the partner is told about meals');
+select test.ok(test.error_of($$select public.app_pet_action('{"action": "feed", "item": "can"}')$$) like 'P0001: pet_full%',
+               'a full cat cannot eat more');
+select test.ok(test.error_of($$select public.app_pet_action('{"action": "feed", "item": "cake"}')$$) like 'P0001: invalid_input%'
+               and test.error_of($$select public.app_pet_action('{"action": "dance"}')$$) like 'P0001: invalid_input%',
+               'unknown food and actions are rejected');
+reset role;
+update public.pets set updated_at = updated_at - interval '20 hours';
+set local role authenticated;
+-- 20 小時後：飽足 100 - 60 = 40、開心 88 - 40 = 48、乾淨 100 - 24 = 76（core/Pet.kt 的 PetTest 算同一組數字）
+select public.app_pet() as later \gset
+select test.ok(((:'later'::jsonb)->'pet'->>'fullness')::float = 40 and ((:'later'::jsonb)->'pet'->>'happiness')::float = 48
+               and abs(((:'later'::jsonb)->'pet'->>'cleanliness')::float - 76) < 1e-9, 'the cat gets hungry, bored and dirty over time');
+select test.ok(((public.app_pet_action('{"action": "feed", "item": "kibble"}'))->'result'->>'xp')::int = 8, 'feeding a hungry cat gives growth');
+select test.ok(((public.app_pet_action('{"action": "play", "item": "wand"}'))->'result'->>'xp')::int = 10, 'playing with a bored cat gives growth');
+select public.app_pet_action('{"action": "pet"}');
+select public.app_pet_action('{"action": "pet"}');
+select public.app_pet_action('{"action": "pet"}') as petted \gset
+select test.ok(((:'petted'::jsonb)->'result'->>'xp')::int = 22 and ((:'petted'::jsonb)->'result'->>'bonus')::boolean
+               and ((:'petted'::jsonb)->'pet'->>'xp')::int = 44 and ((:'petted'::jsonb)->'pet'->>'happiness')::float = 82
+               and (:'petted'::jsonb)->'today' = '{"feeds": 2, "plays": 1, "pets": 3, "treats": 0}'
+               and (:'petted'::jsonb)->'events'->0->>'action' = 'bonus', 'finishing today''s tasks gives a bonus');
+select test.ok(((public.app_pet_action('{"action": "pet"}'))->'result'->>'xp')::int = 2, 'the bonus is given once a day');
+-- 小魚乾一天 3 次；第 4 次飽足 94 還吃得下，但是給太多了
+select public.app_pet_action('{"action": "feed", "item": "fish"}');
+select public.app_pet_action('{"action": "feed", "item": "fish"}');
+select public.app_pet_action('{"action": "feed", "item": "fish"}') as treated \gset
+select test.ok(((:'treated'::jsonb)->'pet'->>'fullness')::float = 94 and (:'treated'::jsonb)->'today'->>'treats' = '3',
+               'three treats');
+select test.ok(test.error_of($$select public.app_pet_action('{"action": "feed", "item": "fish"}')$$) like 'P0001: pet_treats%',
+               'at most three treats a day');
+select test.ok(test.outbox(test.id('yu'), 'pet') = 3, 'treats do not notify the partner (adopt + two meals)');
+select test.ok(((public.app_pet_action('{"action": "bath"}'))->'pet'->>'cleanliness')::float = 100
+               and test.outbox_titled(test.id('yu'), '阿哲 幫 小橘 洗了澡 🛁') = 1, 'a bath makes the cat clean and tells the partner');
+select test.ok(test.error_of($$select public.app_pet_action('{"action": "bath"}')$$) like 'P0001: pet_clean%'
+               and test.error_of($$select public.app_pet_action('{"action": "brush"}')$$) like 'P0001: pet_clean%',
+               'a clean cat needs no bath or brushing');
+reset role;
+update public.pets set xp = 99;
+set local role authenticated;
+select public.app_pet_action('{"action": "pet"}') as grown \gset
+select test.ok((:'grown'::jsonb)->'result'->>'grewTo' = '幼貓' and ((:'grown'::jsonb)->'pet'->>'xp')::int = 101
+               and (:'grown'::jsonb)->'events'->0->>'action' = 'grow' and (:'grown'::jsonb)->'events'->0->>'item' = '幼貓', 'the cat grows up');
+select test.ok(test.outbox_titled(test.id('yu'), '小橘 長大了！🎉') = 1 and test.outbox_titled(test.id('zhe'), '小橘 長大了！🎉') = 1,
+               'both are told the cat grew up');
+reset role;
+update public.pets set fullness = 10;
+set local role authenticated;
+select test.ok(test.error_of($$select public.app_pet_action('{"action": "play", "item": "yarn"}')$$) like 'P0001: pet_hungry%',
+               'a hungry cat does not want to play');
+select test.ok(test.changed(test.id('yu'), 'pets') > 0, 'the partner sees the cat change in real time');
+select test.login(test.id('yu'));
+select test.ok(public.app_pet()->'pet'->>'name' = '小橘' and jsonb_array_length(public.app_pet()->'events') > 10
+               and (select count(*) from public.pet_events) > 10, 'the partner can see the cat and its care records');
+select test.ok(public.app_rename_pet('{"name": "大橘"}')->'pet'->>'name' = '大橘', 'the partner can rename the cat');
+select test.ok(test.error_of($$select public.app_rename_pet('{"name": " "}')$$) like 'P0001: invalid_input%', 'a cat needs a name');
+select test.login(test.id('mia'));
+select test.ok((select count(*) from public.pets) = 0 and (select count(*) from public.pet_events) = 0, 'outsiders cannot see the cat');
+select test.ok(test.error_of($$select public.app_pet()$$) like 'P0001: not_paired%'
+               and test.error_of($$select public.app_pet_action('{"action": "pet"}')$$) like 'P0001: not_paired%',
+               'no cat without a partner');
+select test.login(test.id('zhe'));
+-- 晚上的提醒：今天還沒有人餵、肚子餓（< 35）；每隻貓一天一次
+reset role;
+update public.pets set fullness = 30;
+select test.ok(public.app_job_pet_reminders((select last_fed_on from public.pets)) = 0, 'no reminder when someone fed the cat today');
+select test.ok(public.app_job_pet('2030-11-01') = 1 and test.outbox_titled(test.id('zhe'), '大橘 肚子餓了 🥺') = 1
+               and test.outbox_titled(test.id('yu'), '大橘 肚子餓了 🥺') = 1, 'both are reminded when nobody fed the hungry cat');
+select test.ok(public.app_job_pet('2030-11-01') = 0 and test.outbox_titled(test.id('yu'), '大橘 肚子餓了 🥺') = 1,
+               'each cat is reminded once a day (the job runs every 10 minutes)');
+select test.ok(public.app_job_pet('2030-11-01', true) = 1, 'the reminder can be forced');
+update public.pets set fullness = 50;
+select test.ok(public.app_job_pet('2030-11-01', true) = 0, 'no reminder when the cat is not hungry');
+select test.ok(not (public.app_pet()->'pet' ? 'remindedOn'), 'reminded_on stays in the database');
+set local role authenticated;
+
 -- ---------------------------------------------------------------- 即時事件與通知補送
 select test.ok((select count(*) from public.realtime_events where kind = 'changed' and table_name = 'expenses' and by_user = test.id('zhe')) > 0,
                'a data change creates changed events for me');
@@ -730,6 +830,8 @@ select test.ok(not exists (select 1 from public.couples), 'the old couple and it
 select test.ok(public.app_day_entries('{"from": "2026-10-01", "to": "2026-10-31"}') = '[]', 'diary entries are no longer visible after unpairing');
 select test.ok((select count(*) from storage.objects where bucket_id = 'media') = 1, 'the old couple folder is no longer readable (only my own folder is)');
 select test.ok(public.app_notes() = '[]', 'notes about the former partner are hidden');
+select test.ok((select count(*) from public.pets) = 0 and test.error_of($$select public.app_pet()$$) like 'P0001: not_paired%',
+               'the cat stays with the couple after unpairing');
 select test.ok(test.error_of($$select public.app_save_day_entry('{"day": "2026-10-20", "body": "一個人"}')$$) like 'P0001: not_paired%',
                'diary entries need a partner');
 select test.ok((public.app_save_memo('{"title": "一個人的清單", "shared": true}'))->>'shared' = 'false', 'memos are private while unpaired');
@@ -759,7 +861,9 @@ select test.ok(not exists (select 1 from pg_proc p where p.pronamespace = 'publi
                                              'couple_of', 'partner_of', 'shares', 'display_name_of', 'handle_new_user', 'tg_changed',
                                              'expense_shown', 'tg_couple_member_deleted', 'tg_place_saved',
                                              'media_valid', 'media_summary', 'tg_media_valid', 'tg_day_entry_inserted',
-                                             'tg_memo_inserted', 'tg_changed_memo', 'tg_mood_inserted', 'tg_comfort_inserted')
+                                             'tg_memo_inserted', 'tg_changed_memo', 'tg_mood_inserted', 'tg_comfort_inserted',
+                                             'pet_at', 'pet_stage', 'pet_zone', 'pet_today', 'pet_today_counts', 'pet_payload',
+                                             'app_job_pet', 'app_job_pet_reminders')
                            and has_function_privilege('authenticated', p.oid, 'execute')),
                'jobs and internal helpers are not callable by clients');
 select test.ok(not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef

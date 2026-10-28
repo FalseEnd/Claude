@@ -108,7 +108,7 @@ class ServerIntegrationTest {
     /** 個人資料、只有自己看得到的備註、日曆紀錄、備忘錄、照片與語音 */
     private suspend fun v2Features(zhe: Client, yu: Client): V2Files {
         val health = apiCall { anon().api.health() }
-        assertEquals(RemoteRepository.MOODS_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
+        assertEquals(RemoteRepository.PET_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
         zhe.repo.refreshAll()
         assertFalse(zhe.repo.state.value.schemaOutdated)
         assertFalse(zhe.repo.state.value.deviceInfoOutdated)
@@ -254,6 +254,7 @@ class ServerIntegrationTest {
 
     /** 解除配對後：原本共用的檔案對方讀不到了，自己的私人檔案還在；沒配對不能寫日曆，備忘錄只能私人 */
     private suspend fun afterUnpair(zhe: Client, yu: Client, files: V2Files) {
+        eventually("解除後看不到小貓") { yu.repo.state.value.pet == null && zhe.repo.state.value.pet == null }
         fails("解除後讀原本共用的檔案") { yu.repo.downloadMedia(files.shared.path) }
         assertArrayEquals(files.secretBytes, zhe.repo.downloadMedia(files.secret.path))
         failsWith("not_paired") { yu.repo.uploadMedia(byteArrayOf(1), "image/jpeg", MediaItem.PHOTO, shared = true) }
@@ -398,7 +399,7 @@ class ServerIntegrationTest {
             assertNull(zhe.notes.last { it.kind == "comfort" }.data.sticker())
             // 打開歷史紀錄：收到的全部標成已讀（「晚上請你吃好料」那則也是），自己送出去的不算。
             // schema 4 以後一次標完（app_read_comfort 的 {"all": true}）
-            assertEquals(RemoteRepository.MOODS_SCHEMA, yu.repo.state.value.dbSchema)
+            assertEquals(RemoteRepository.PET_SCHEMA, yu.repo.state.value.dbSchema)
             assertTrue(yu.repo.state.value.comforts.any { it.receiverId == yu.userId && it.readAt == null })
             yu.repo.markComfortsRead()
             assertTrue(yu.repo.state.value.comforts.none { it.receiverId == yu.userId && it.readAt == null })
@@ -415,6 +416,19 @@ class ServerIntegrationTest {
             }
             // key 不會跟著歷史紀錄出去（通知的部分最後再檢查一次全部）
             listOf(zhe, yu).forEach { c -> assertTrue(apiCall { c.api.history(limit = 200) }.none { giphyKey in it.payload.toString() }) }
+
+            // 一起養的小貓：阿哲領養，小雨即時看到、餵牠；吃飽了再餵被擋下來
+            eventually("還沒有小貓") { zhe.repo.state.value.pet != null && zhe.repo.state.value.pet!!.pet == null }
+            zhe.repo.adoptPet("湯圓", "white")
+            eventually("對方看到小貓") { yu.repo.state.value.pet?.pet?.name == "湯圓" }
+            eventually("領養通知") { yu.notes.any { it.kind == "pet" && it.title == "阿哲 領養了一隻小貓 🐱" } }
+            assertEquals("80 分不算餓，沒有成長值", 0, yu.repo.petAction("feed", "can").xp)
+            eventually("自己看到對方餵了") { zhe.repo.state.value.pet?.today?.feeds == 1 && zhe.repo.state.value.pet!!.events.first().userId == yu.userId }
+            eventually("餵食通知") { zhe.notes.any { it.kind == "pet" && it.title == "小雨 餵 湯圓 吃了罐罐 🥫" } }
+            failsWith("pet_full") { zhe.repo.petAction("feed", "kibble") }
+            repeat(3) { zhe.repo.petAction("pet", null) }
+            assertEquals(6, zhe.repo.state.value.pet!!.pet!!.xp)
+            eventually("對方看到成長值") { yu.repo.state.value.pet?.pet?.xp == 6 && yu.repo.state.value.pet?.today?.pets == 3 }
 
             // 地點與地理圍欄
             zhe.repo.savePlace(null, buildJsonObject {

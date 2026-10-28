@@ -35,6 +35,7 @@ import tw.xiaoliangkou.app.core.Geo
 import tw.xiaoliangkou.app.core.GeofenceTracker
 import tw.xiaoliangkou.app.core.Guess
 import tw.xiaoliangkou.app.core.PaymentParser
+import tw.xiaoliangkou.app.core.Pet
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -89,6 +90,8 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
 
     /** 對方開放猜的開銷，真正的金額先藏在這裡（跟資料庫一樣，猜之前拿不到） */
     private val hiddenAmounts = mutableMapOf<String, Double>()
+    /** 小貓全部的照顧紀錄（新的在前；畫面上只放最近 30 筆，跟 app_pet 一樣） */
+    private val petLog = mutableListOf<PetEvent>()
     /** 上傳的照片、語音（path → 檔案內容），示範照片第一次下載時才畫 */
     private val files = ConcurrentHashMap<String, ByteArray>()
     private var nextId = 1000L
@@ -216,7 +219,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         ).sortedByDescending { it.time }
 
         return AppState(
-            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.MOODS_SCHEMA,
+            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.PET_SCHEMA,
             myDevice = DeviceStatus(
                 ME, 82, true, "wifi", "約 120 Mbps", false, 3_120, iso(), "samsung SM-S921B", iso(),
                 deviceName = "阿哲的 Galaxy S24", carrier = "台灣大哥大",
@@ -268,7 +271,8 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
             ),
             history = history,
             historyEnd = true,
-            notifPrefs = listOf("pairing", "place", "mood", "comfort", "battery_low", "guess", "event", "anniversary", "cycle_care", "sharing_changed", "diary", "memo")
+            notifPrefs = listOf("pairing", "place", "mood", "comfort", "battery_low", "guess", "event", "anniversary", "cycle_care", "sharing_changed", "diary", "memo",
+                "pet")
                 .associateWith { true },
             notes = listOf(
                 Note("n1", PARTNER, "她喜歡半糖少冰 🥤 珍奶要加波霸，不要椰果", iso(at(3, 21, 30))),
@@ -290,8 +294,40 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
                 Memo("m3", PARTNER, "想一起去的地方 ✈️", "京都賞楓 🍁\n墾丁看海 🌊\n九份吃芋圓", listOf(DemoMedia.TRIP), shared = true, color = "mint",
                     createdAt = iso(at(4, 22, 0)), updatedAt = iso(at(1, 22, 30))),
             ).sortedWith(Memo.ORDER),
+            pet = seedPet(),
         )
     }
+
+    /** 小雨 12 天前領養的橘貓「麻糬」：已經是幼貓，連續照顧 12 天；今天小雨餵過早餐、摸了一下 */
+    private fun seedPet(): PetResponse {
+        petLog.clear()
+        petLog += listOf(
+            PetEvent(id(), PARTNER, "pet", null, 2, iso(ago(118))),
+            PetEvent(id(), PARTNER, "feed", "kibble", 8, iso(ago(120))),
+            PetEvent(id(), ME, "play", "laser", 10, iso(at(1, 21, 40))),
+            PetEvent(id(), ME, "feed", "can", 12, iso(at(1, 19, 5))),
+            PetEvent(id(), PARTNER, "bath", null, 15, iso(at(2, 20, 30))),
+            PetEvent(id(), ME, "grow", "幼貓", 0, iso(at(5, 21, 0))),
+            PetEvent(id(), PARTNER, "adopt", "orange", 0, iso(at(12, 20, 0))),
+        )
+        val fed = ago(120)
+        return petPayload(PetDto(
+            name = "麻糬", coat = "orange", fullness = 66.0, happiness = 72.0, cleanliness = 61.0, xp = 168, streak = 12,
+            lastFedOn = Pet.localDay(fed).toString(), adoptedBy = PARTNER, adoptedAt = iso(at(12, 20, 0)), updatedAt = iso(ago(118)),
+        ))
+    }
+
+    /** 今天（台北時間）做過的，從照顧紀錄算 */
+    private fun petToday(): Pet.Today {
+        val day = Pet.localDay(now())
+        val todays = petLog.filter { Pet.localDay(it.time) == day }
+        return Pet.Today(
+            feeds = todays.count { it.action == "feed" }, plays = todays.count { it.action == "play" },
+            pets = todays.count { it.action == "pet" }, treats = todays.count { it.action == "feed" && it.item == "fish" },
+        )
+    }
+
+    private fun petPayload(pet: PetDto?) = PetResponse(pet, PetToday.of(petToday()), petLog.take(30))
 
     private fun fences() = _state.value.places.filter { it.watchUser != ME }.map { Geo.Fence(it.id, it.lat, it.lng, it.radiusM.toDouble()) }
 
@@ -446,6 +482,24 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
                         createdAt = iso(), updatedAt = iso())
                     _state.update { it.copy(memos = (it.memos + m).sortedWith(Memo.ORDER)) }
                     banner("小雨 新增了共同備忘錄", m.title, "memo")
+                }
+                "petFeed" -> {
+                    val pet = _state.value.pet?.pet ?: return@launch
+                    val food = if (Pet.decay(pet.state(), now()).fullness < 60) Pet.foods[1] else Pet.foods[2]
+                    val r = runCatching { care(PARTNER, "feed", food.key) }
+                    if (r.isSuccess && food.key != "fish") banner("小雨 餵 ${pet.name} 吃了${food.label} ${food.emoji}", "${pet.name} 吃得飽飽的 😋", "pet")
+                    if (r.isSuccess && food.key == "fish") banner("小雨 給 ${pet.name} 一條小魚乾 🐟", "${pet.name} 開心得打滾", "pet")
+                }
+                "petHungry" -> {
+                    val pet = _state.value.pet?.pet ?: return@launch
+                    // 假裝過了一天沒人照顧
+                    val later = Pet.decay(pet.state().copy(at = now().minus(26, ChronoUnit.HOURS)), now())
+                    _state.update { it.copy(pet = petPayload(pet.with(later))) }
+                    banner("${pet.name} 肚子餓了 🥺", "今天還沒有人餵牠，快來餵牠吃飯吧", "pet")
+                }
+                "petReset" -> {
+                    petLog.clear()
+                    _state.update { it.copy(pet = petPayload(null)) }
                 }
                 "go" -> {
                     val place = _state.value.places.firstOrNull { it.id == placeId } ?: return@launch
@@ -701,6 +755,46 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
             val logs = s.cycle.mine.logs.filterNot { it.logDate == date } + CycleLog(ME, date, flow, symptoms)
             s.copy(cycle = s.cycle.copy(mine = s.cycle.mine.copy(logs = logs)))
         }
+    }
+
+    // ---------------------------------------------------------------- 一起養的小貓（規則和資料庫一樣，見 core/Pet.kt）
+    override suspend fun adoptPet(name: String, coat: String) {
+        val n = Pet.cleanName(name) ?: throw AppException(RemoteRepository.PET_NAME, "invalid_input")
+        if (_state.value.pet?.pet != null) throw AppException(Errors.DB_MESSAGES.getValue("pet_exists"), "pet_exists")
+        petLog.clear()
+        petLog += PetEvent(id(), ME, "adopt", Pet.coat(coat).key, 0, iso())
+        val born = Pet.newborn(now())
+        _state.update { it.copy(pet = petPayload(PetDto(name = n, coat = Pet.coat(coat).key, adoptedBy = ME, adoptedAt = iso()).with(born))) }
+    }
+
+    override suspend fun renamePet(name: String) {
+        val n = Pet.cleanName(name) ?: throw AppException(RemoteRepository.PET_NAME, "invalid_input")
+        val cur = _state.value.pet?.pet ?: throw notFound()
+        petLog.add(0, PetEvent(id(), ME, "rename", n, 0, iso()))
+        _state.update { it.copy(pet = petPayload(cur.copy(name = n))) }
+    }
+
+    override suspend fun petAction(action: String, item: String?): PetResult = care(ME, action, item)
+
+    /** [who] 照顧一次：寫紀錄、更新狀態；長大了發通知 */
+    private suspend fun care(who: String, action: String, item: String?): PetResult {
+        val cur = _state.value.pet?.pet ?: throw AppException("還沒有領養貓咪", "not_found")
+        val out = try {
+            Pet.act(Pet.decay(cur.state(), now()), petToday(), action, item)
+        } catch (e: Pet.Refused) {
+            throw AppException(Errors.DB_MESSAGES[e.code] ?: e.message.orEmpty(), e.code)
+        }
+        val extra = (if (out.bonus) Pet.TASK_BONUS else 0) + (if (out.streakBonus) Pet.STREAK_BONUS else 0)
+        val added = listOfNotNull(
+            PetEvent(id(), who, action, item.takeIf { action == "feed" || action == "play" }, out.xp - extra, iso()),
+            PetEvent(id(), who, "bonus", null, Pet.TASK_BONUS, iso()).takeIf { out.bonus },
+            PetEvent(id(), who, "streak", out.state.streak.toString(), Pet.STREAK_BONUS, iso()).takeIf { out.streakBonus },
+            out.grewTo?.let { PetEvent(id(), who, "grow", it.label, 0, iso()) },
+        )
+        petLog.addAll(0, added.reversed())
+        _state.update { it.copy(pet = petPayload(cur.with(out.state))) }
+        if (out.grewTo != null) banner("${cur.name} 長大了！🎉", "現在是${out.grewTo.label}了，謝謝你們的照顧", "pet")
+        return PetResult(out.xp, out.bonus, out.streakBonus, out.grewTo?.label)
     }
 
     override suspend fun loadMoreHistory() = Unit

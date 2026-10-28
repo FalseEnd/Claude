@@ -219,7 +219,7 @@ test('健康檢查：還沒登入也能確認網址和金鑰', { skip }, async (
   const r = await ok(null, 'app_health');
   assert.equal(r.ok, true);
   assert.match(r.time, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?\+00:00$/);
-  assert.equal(r.schema, 6, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql（6 = 也有 0.2.6 再多的安撫）');
+  assert.equal(r.schema, 7, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql（7 = 也有一起養的小貓）');
   // 金鑰錯誤的 401 由雲端的 API gateway 檢查；本機的 Supabase CLI 不檢查 apikey，這裡測不到
 });
 
@@ -413,6 +413,44 @@ test('0.2.6 再多的安撫：存得進去，通知用新的文字', { skip }, a
   await ok(B, 'app_send_comfort', { kind: 'gethome' });
   assert.equal((await A.sock.notified('comfort')).title, '小雨 問你到家了沒');
   assert.equal((await rpc(A, 'app_send_comfort', { kind: 'slap' })).data.code, '23514', '不認得的安撫還是不能存');
+});
+
+test('一起養的小貓：領養、照顧、對方即時看到、規則在資料庫裡', { skip }, async () => {
+  assert.equal((await ok(A, 'app_pet')).pet, null);
+  const adopted = await ok(A, 'app_adopt_pet', { name: '小橘', coat: 'calico' });
+  assert.equal(adopted.pet.name, '小橘');
+  assert.equal(adopted.pet.coat, 'calico');
+  assert.equal(adopted.pet.xp, 0);
+  assert.equal((await B.sock.notified('pet')).title, '阿哲 領養了一隻小貓 🐱');
+  await B.sock.next((m) => m.type === 'changed' && m.table === 'pets');
+  const again = await rpc(B, 'app_adopt_pet', { name: '小黑', coat: 'black' });
+  assert.equal(again.data.message, 'pet_exists');
+  assert.equal(again.data.details, '你們已經有一隻貓咪了', 'App 顯示 detail 的中文');
+
+  // 小雨餵罐罐：阿哲收到通知、即時看到；吃飽了再餵就被擋
+  const fed = await ok(B, 'app_pet_action', { action: 'feed', item: 'can' });
+  assert.equal(fed.pet.fullness, 100);
+  assert.equal(fed.pet.streak, 1);
+  assert.deepEqual(fed.result, { xp: 0, bonus: false, streakBonus: false, grewTo: null });
+  assert.equal(fed.events[0].action, 'feed');
+  assert.equal(fed.events[0].userId, B.id);
+  assert.equal((await A.sock.notified('pet')).title, '小雨 餵 小橘 吃了罐罐 🥫');
+  const full = await rpc(A, 'app_pet_action', { action: 'feed', item: 'kibble' });
+  assert.equal(full.data.code, 'P0001');
+  assert.equal(full.data.message, 'pet_full');
+  // 摸摸三次、陪玩：成長值累積，兩個人看到的一樣
+  for (let i = 0; i < 3; i++) await ok(A, 'app_pet_action', { action: 'pet' });
+  const played = await ok(B, 'app_pet_action', { action: 'play', item: 'laser' });
+  assert.deepEqual(played.today, { feeds: 1, plays: 1, pets: 3, treats: 0 });
+  assert.equal(played.result.bonus, true, '今天的任務都做完了');
+  assert.equal(played.pet.xp, 6 + 20, '摸摸 3 次 + 任務獎勵（88 分開心陪玩不加成長值）');
+  assert.equal((await ok(A, 'app_pet')).pet.xp, 26);
+
+  // 規則在資料庫裡：直接改資料表、或冒充別人的照顧紀錄都不行
+  denied(await rest(A, 'PATCH', 'pets?xp=gte.0', { xp: 99999 }));
+  denied(await rest(A, 'POST', 'pet_events', { couple_id: '00000000-0000-0000-0000-000000000000', action: 'bonus', xp: 999 }));
+  assert.equal((await rest(B, 'GET', 'pets?select=xp')).data[0].xp, 26);
+  assert.ok(typeof (await job('app_job_pet', { p_today: localToday(), p_force: true })) === 'number');
 });
 
 test('GIPHY 貼圖：心情和安撫附上貼圖 id，通知也帶著；API key 兩個人都讀得到，但不會出現在通知或歷史紀錄', { skip }, async () => {
@@ -694,9 +732,10 @@ test('歷史紀錄與通知設定', { skip }, async () => {
   const prefs = await ok(A, 'app_notification_prefs');
   assert.equal(prefs.comfort, false);
   assert.equal(prefs.mood, true);
-  assert.equal(Object.keys(prefs).length, 12);
+  assert.equal(Object.keys(prefs).length, 13);
   assert.equal(prefs.diary, true);
   assert.equal(prefs.memo, true);
+  assert.equal(prefs.pet, true);
   await ok(B, 'app_send_comfort', { kind: 'kiss' });
   await assert.rejects(A.sock.notified('comfort'), /等不到/);
 });

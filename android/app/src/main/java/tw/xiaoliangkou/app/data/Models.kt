@@ -2,6 +2,7 @@ package tw.xiaoliangkou.app.data
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import tw.xiaoliangkou.app.core.Pet
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -282,6 +283,70 @@ import java.time.ZoneId
         val ORDER: Comparator<Memo> = compareByDescending<Memo> { it.pinned }.thenByDescending { it.time }
     }
 }
+
+/**
+ * 一起養的小貓（app_pet 的 pet）：狀態是資料庫在 [updatedAt] 算好的，畫面上用 [state] 和 [Pet.decay] 一直算到現在
+ */
+@Serializable data class PetDto(
+    val name: String,
+    val coat: String = "orange",
+    val fullness: Double = 80.0,
+    val happiness: Double = 80.0,
+    val cleanliness: Double = 100.0,
+    val xp: Int = 0,
+    val streak: Int = 0,
+    val lastFedOn: String? = null,
+    val bonusOn: String? = null,
+    val adoptedBy: String? = null,
+    val adoptedAt: String? = null,
+    val updatedAt: String? = null,
+) {
+    val adopted: Instant? get() = adoptedAt?.toInstantOrNull()
+
+    fun state() = Pet.State(
+        fullness = fullness, happiness = happiness, cleanliness = cleanliness, xp = xp, streak = streak,
+        lastFedOn = lastFedOn?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
+        bonusOn = bonusOn?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
+        at = updatedAt?.toInstantOrNull() ?: Instant.now(),
+    )
+
+    /** 照顧之後的狀態寫回來（示範模式用） */
+    fun with(s: Pet.State) = copy(
+        fullness = s.fullness, happiness = s.happiness, cleanliness = s.cleanliness, xp = s.xp, streak = s.streak,
+        lastFedOn = s.lastFedOn?.toString(), bonusOn = s.bonusOn?.toString(), updatedAt = s.at.toString(),
+    )
+}
+
+/** 照顧紀錄：action 是 adopt、feed、play、pet、bath、brush、bonus、streak、grow、rename */
+@Serializable data class PetEvent(
+    val id: Long,
+    val userId: String? = null,
+    val action: String,
+    val item: String? = null,
+    val xp: Int = 0,
+    val createdAt: String,
+) {
+    val time: Instant get() = createdAt.toInstantOrNull() ?: Instant.EPOCH
+}
+
+@Serializable data class PetToday(val feeds: Int = 0, val plays: Int = 0, val pets: Int = 0, val treats: Int = 0) {
+    fun core() = Pet.Today(feeds, plays, pets, treats)
+
+    companion object {
+        fun of(t: Pet.Today) = PetToday(t.feeds, t.plays, t.pets, t.treats)
+    }
+}
+
+/** 這次照顧得到的：成長值、今天的任務獎勵、連續照顧獎勵、長大成什麼（沒有長大是 null） */
+@Serializable data class PetResult(val xp: Int = 0, val bonus: Boolean = false, val streakBonus: Boolean = false, val grewTo: String? = null)
+
+/** app_pet、app_pet_action 回傳的：還沒領養的話 [pet] 是 null */
+@Serializable data class PetResponse(
+    val pet: PetDto? = null,
+    val today: PetToday = PetToday(),
+    val events: List<PetEvent> = emptyList(),
+    val result: PetResult? = null,
+)
 
 /** app_pending_notifications 回傳的通知 */
 @Serializable data class PendingNotification(

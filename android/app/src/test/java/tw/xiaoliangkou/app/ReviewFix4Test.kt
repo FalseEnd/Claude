@@ -81,7 +81,7 @@ class ReviewFix4Test {
     private val paired = """{"user":{"id":"u-1","displayName":"阿哲"},"couple":{"id":"c-1"},"partner":{"id":"u-2","displayName":"小雨"},"partnerOnline":false}"""
     private val single = """{"user":{"id":"u-1","displayName":"阿哲"},"partnerOnline":false}"""
     private val v1Health = """{"ok":true,"time":"2026-10-16T00:00:00Z"}"""
-    private val v2Health = """{"ok":true,"schema":${RemoteRepository.MOODS_SCHEMA}}"""
+    private val v2Health = """{"ok":true,"schema":${RemoteRepository.PET_SCHEMA}}"""
 
     private fun memo(id: String, user: String, shared: Boolean, pinned: Boolean = false, media: String = "[]") =
         """{"id":"$id","userId":"$user","title":"便利貼","body":"","media":$media,"shared":$shared,"pinned":$pinned,"color":"pink","createdAt":"2026-10-15T02:16:21+00:00"}"""
@@ -127,6 +127,7 @@ class ReviewFix4Test {
         rpc("app_notes") { notes }
         rpc("app_memos") { memos }
         rpc("app_day_entries") { "[]" }
+        rpc("app_pet") { """{"pet":null}""" }
     }
 
     /** 跑完 upgrade-v2.sql 回到 App（ON_START）：再檢查一次，提醒拿掉、新功能的資料載進來，不用把 App 整個關掉 */
