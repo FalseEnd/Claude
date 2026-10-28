@@ -2,6 +2,7 @@ package tw.xiaoliangkou.app.ui
 
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Dates
+import tw.xiaoliangkou.app.core.PhoneHeat
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.toInstantOrNull
 import java.time.Duration
@@ -19,9 +20,12 @@ object StatusText {
     const val PHONE = "phone"
     const val NETWORK = "network"
     const val STEPS = "steps"
+    const val TEMP = "temp"
 
     /** 設定畫面的選項，也是顯示的順序 */
-    val options = listOf(PLACE to "位置與距離", BATTERY to "電量", MOOD to "今天的心情", PHONE to "手機使用", NETWORK to "網路", STEPS to "步數")
+    val options = listOf(
+        PLACE to "位置與距離", BATTERY to "電量", MOOD to "今天的心情", PHONE to "手機使用", NETWORK to "網路", STEPS to "步數", TEMP to "手機溫度",
+    )
     val DEFAULTS = setOf(PLACE, BATTERY, MOOD, PHONE)
 
     data class Item(val key: String, val emoji: String, val text: String) {
@@ -80,6 +84,11 @@ object StatusText {
                     "offline" -> add(Item(NETWORK, "📵", "沒有網路"))
                 }
                 d.stepsToday?.let { add(Item(STEPS, "👣", "${Fmt.int(it)} 步")) }
+                PhoneHeat.level(d.batteryTemp, d.thermal)?.let { h ->
+                    val emoji = if (h == PhoneHeat.Level.NORMAL) "🌡️" else h.emoji
+                    add(Item(TEMP, emoji, listOfNotNull(d.batteryTemp?.let(PhoneHeat::text), "手機${h.label}".takeIf { h != PhoneHeat.Level.NORMAL }).joinToString(" ")
+                        .ifEmpty { "手機溫度正常" }))
+                }
             }
         }.sortedBy { item -> options.indexOfFirst { it.first == item.key } }
         val note = when {

@@ -108,7 +108,7 @@ class ServerIntegrationTest {
     /** 個人資料、只有自己看得到的備註、日曆紀錄、備忘錄、照片與語音 */
     private suspend fun v2Features(zhe: Client, yu: Client): V2Files {
         val health = apiCall { anon().api.health() }
-        assertEquals(RemoteRepository.PET_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
+        assertEquals(RemoteRepository.TEMP_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
         zhe.repo.refreshAll()
         assertFalse(zhe.repo.state.value.schemaOutdated)
         assertFalse(zhe.repo.state.value.deviceInfoOutdated)
@@ -312,10 +312,12 @@ class ServerIntegrationTest {
             eventually("分享變更通知") { yu.notes.any { it.kind == "sharing_changed" } }
             zhe.repo.reportDevice(buildJsonObject {
                 put("batteryLevel", 55); put("isCharging", false); put("network", "wifi"); put("stepsToday", 3210); put("deviceModel", "Google Pixel 8")
-                put("deviceName", "阿哲的 Pixel"); put("carrier", "中華電信")
+                put("deviceName", "阿哲的 Pixel"); put("carrier", "中華電信"); put("batteryTemp", 41.26); put("thermal", 2)
             })
             zhe.repo.reportLocation(25.0330, 121.5654, 12f, 0f)
             eventually("對方畫面自動更新電量") { yu.repo.state.value.partnerStatus.device?.batteryLevel == 55 }
+            assertEquals("手機溫度到小數點一位", 41.3, yu.repo.state.value.partnerStatus.device!!.batteryTemp!!, 0.0)
+            assertEquals(2, yu.repo.state.value.partnerStatus.device!!.thermal)
             eventually("對方在線上") { yu.repo.state.value.partnerOnline }
             assertEquals(25.0330, yu.repo.state.value.partnerStatus.location!!.lat, 1e-6)
             yu.repo.state.value.partnerStatus.device!!.let {
@@ -399,7 +401,7 @@ class ServerIntegrationTest {
             assertNull(zhe.notes.last { it.kind == "comfort" }.data.sticker())
             // 打開歷史紀錄：收到的全部標成已讀（「晚上請你吃好料」那則也是），自己送出去的不算。
             // schema 4 以後一次標完（app_read_comfort 的 {"all": true}）
-            assertEquals(RemoteRepository.PET_SCHEMA, yu.repo.state.value.dbSchema)
+            assertEquals(RemoteRepository.TEMP_SCHEMA, yu.repo.state.value.dbSchema)
             assertTrue(yu.repo.state.value.comforts.any { it.receiverId == yu.userId && it.readAt == null })
             yu.repo.markComfortsRead()
             assertTrue(yu.repo.state.value.comforts.none { it.receiverId == yu.userId && it.readAt == null })

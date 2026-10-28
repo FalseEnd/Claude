@@ -211,7 +211,7 @@ class RemoteRepository(
      */
     fun recheckSchema() {
         val st = _state.value
-        val behind = st.schemaOutdated || st.deviceInfoOutdated || st.stickersOutdated || st.moodsOutdated || st.petOutdated
+        val behind = st.schemaOutdated || st.deviceInfoOutdated || st.stickersOutdated || st.moodsOutdated || st.petOutdated || st.tempOutdated
         if (!behind || refreshing.get() > 0 || !rechecking.compareAndSet(false, true)) return
         scope.launch {
             try {
@@ -706,6 +706,8 @@ class RemoteRepository(
         const val MOODS_SCHEMA = 6
         /** 有一起養的小貓的資料庫版本 */
         const val PET_SCHEMA = 7
+        /** 存得了手機溫度的資料庫版本：沒有的話對方看不到溫度 */
+        const val TEMP_SCHEMA = 8
         const val PET_NAME = "名字要 1～${Pet.NAME_MAX} 個字"
 
         const val STICKERS_OUTDATED_CODE = "stickers_outdated"

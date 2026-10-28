@@ -12,6 +12,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
+import tw.xiaoliangkou.app.core.PhoneHeat
 import tw.xiaoliangkou.app.data.DeviceStatus
 import java.time.Instant
 
@@ -34,6 +35,10 @@ object DeviceProbe {
         val deviceModel: String,
         /** 上網用的那張 SIM 卡的電信，沒有 SIM 卡是 null */
         val carrier: String?,
+        /** 電池溫度（°C） */
+        val batteryTemp: Double? = null,
+        /** 系統的過熱等級（Android 10 以上） */
+        val thermal: Int? = null,
     )
 
     fun read(context: Context): Reading {
@@ -53,6 +58,7 @@ object DeviceProbe {
             else -> "cellular"
         }
         val nm = context.getSystemService(NotificationManager::class.java)
+        val pm = context.getSystemService(PowerManager::class.java)
         val model = model(Build.MANUFACTURER.orEmpty(), Build.MODEL.orEmpty())
         return Reading(
             batteryLevel = level,
@@ -60,10 +66,12 @@ object DeviceProbe {
             network = network,
             speed = caps?.let { ShareService.Net.speedLabel(it.linkDownstreamBandwidthKbps) },
             silenced = nm != null && nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL,
-            interactive = context.getSystemService(PowerManager::class.java)?.isInteractive == true,
+            interactive = pm?.isInteractive == true,
             deviceName = deviceName(rawDeviceName(context), model),
             deviceModel = model,
             carrier = carrier(context),
+            batteryTemp = PhoneHeat.fromBattery(battery?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)),
+            thermal = if (Build.VERSION.SDK_INT >= 29) runCatching { pm?.currentThermalStatus }.getOrNull() else null,
         )
     }
 
@@ -81,6 +89,8 @@ object DeviceProbe {
         updatedAt = now.toString(),
         deviceName = r.deviceName,
         carrier = r.carrier,
+        batteryTemp = r.batteryTemp,
+        thermal = r.thermal,
     )
 
     /** 「OPPO CPH2689」；型號裡已經有廠牌的不要重複（「samsung SM-S921B」不是「samsung samsung …」） */

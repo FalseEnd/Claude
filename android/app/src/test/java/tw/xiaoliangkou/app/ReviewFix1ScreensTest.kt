@@ -134,7 +134,8 @@ class ReviewFix1ScreensTest {
         shot("33b_notification_settings_outdated") { NotificationScreen(s.copy(schemaOutdated = true), vm) {} }
         compose.onNodeWithText("對方記錄那天的生活").performScrollTo().assertIsEnabled()
         compose.onNodeWithText("新的共同備忘錄").assertIsEnabled()
-        assertEquals(2, compose.onAllNodesWithText("資料庫更新後才能設定").fetchSemanticsNodes().size)
+        // 生活紀錄、備忘錄，和 0.3.0 的小貓
+        assertEquals(3, compose.onAllNodesWithText("資料庫更新後才能設定").fetchSemanticsNodes().size)
         compose.onNodeWithText("抱抱與悄悄話").assertIsEnabled()
     }
 

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.SignalCellularAlt
 import androidx.compose.material.icons.rounded.SimCard
+import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Train
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material.icons.rounded.WifiOff
@@ -67,6 +68,7 @@ import kotlinx.coroutines.withContext
 import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Cycle
 import tw.xiaoliangkou.app.core.Dates
+import tw.xiaoliangkou.app.core.PhoneHeat
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.Comfort
 import tw.xiaoliangkou.app.data.DeviceStatus
@@ -277,6 +279,7 @@ private fun PartnerPhone(s: AppState, vm: AppViewModel) {
         // 沒有步數（手機沒有計步器、沒給權限，或今天還沒回報）：說清楚，不要只寫「— 步」
         StatTile("今日步數", d.stepsToday?.let { Fmt.int(it) } ?: "—", m, sub = if (d.stepsToday != null) "👣 步" else "手機沒回報")
     }
+    HeatTile(d, Modifier.fillMaxWidth(), mine = false)
     val act = s.partnerStatus.location?.activity
     StatTile(
         "位置", if (ps.locationLive) Derived.partnerWhere(s) else "沒有分享位置", Modifier.fillMaxWidth(),
@@ -290,8 +293,9 @@ private fun PartnerPhone(s: AppState, vm: AppViewModel) {
                 vm.act { r -> vm.toast(if (r.locatePartner()) "已請 ${s.partnerName} 的手機回報位置 📍" else "${s.partnerName} 的手機目前不在線上") }
             }
         }
+        val missing = listOfNotNull("手機名稱和電信".takeIf { s.deviceInfoOutdated }, "手機溫度".takeIf { s.tempOutdated })
         TidyText(
-            if (s.deviceInfoOutdated) "只顯示對方選擇分享的項目 · 資料庫再更新一次就能看到手機名稱和電信" else "只顯示對方選擇分享的項目",
+            if (missing.isEmpty()) "只顯示對方選擇分享的項目" else "只顯示對方選擇分享的項目 · 資料庫再更新一次就能看到${missing.joinToString("和")}",
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -343,6 +347,7 @@ private fun MyPhone(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
             },
         )
     }
+    HeatTile(d, Modifier.fillMaxWidth(), mine = true)
     val sh = s.mySharing
     val shared = listOfNotNull("手機狀態".takeIf { sh?.deviceLive == true }, "位置".takeIf { sh?.locationLive == true })
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -393,6 +398,24 @@ private fun BatteryTile(d: DeviceStatus, modifier: Modifier) {
     val level = d.batteryLevel ?: 0
     val charging = d.isCharging == true
     StatTile("電量", d.batteryLevel?.let { "$it%" } ?: "—", modifier, sub = if (charging) "充電中 ⚡" else if (level <= 20) "電量偏低 🔋" else "未充電", extra = { BatteryPill(level, charging) })
+}
+
+/** 手機溫度：電池溫度和系統的過熱等級；太熱的時候說怎麼辦（舊的手機、舊的 App 沒有回報就不顯示） */
+@Composable
+private fun HeatTile(d: DeviceStatus, modifier: Modifier, mine: Boolean) {
+    val level = PhoneHeat.level(d.batteryTemp, d.thermal) ?: return
+    val tint = when (level) {
+        PhoneHeat.Level.HOT -> Cute.colors.bad
+        PhoneHeat.Level.WARM -> Cute.colors.peach
+        PhoneHeat.Level.COLD -> Cute.colors.sky
+        PhoneHeat.Level.NORMAL -> Cute.colors.mint
+    }
+    val advice = if (level == PhoneHeat.Level.NORMAL) "" else if (mine) " · ${level.tip}" else " · 提醒對方：${level.tip}"
+    StatTile(
+        "手機溫度", d.batteryTemp?.let(PhoneHeat::text) ?: level.label, modifier,
+        sub = "${level.label} ${level.emoji}$advice",
+        labelIcon = { Icon(Icons.Rounded.Thermostat, null, tint = tint, modifier = Modifier.size(14.dp)) },
+    )
 }
 
 /** 網路：Wi-Fi 或行動網路，下面是所在的標點或網速（電信寫在上面的手機資訊裡，連 Wi-Fi 時也看得到） */

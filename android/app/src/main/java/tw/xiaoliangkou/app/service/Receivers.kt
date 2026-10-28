@@ -8,6 +8,7 @@ import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.widget.Toast
+import androidx.core.app.RemoteInput
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -74,10 +75,30 @@ class StatusActionReceiver : BroadcastReceiver() {
             Intent(context, StatusActionReceiver::class.java).setAction(action),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+
+        /** 在安撫、心情的通知上回覆：[text] 是「💬 回覆」（打的字由 RemoteInput 放進來），不然是「🤗 回抱」 */
+        const val REPLY = "tw.xiaoliangkou.app.action.REPLY"
+        const val KEY_REPLY = "reply"
+        const val EXTRA_NOTIFICATION = "notification"
+        const val EXTRA_COMFORT = "comfort_id"
+        const val EXTRA_TITLE = "title"
+        const val EXTRA_TEXT = "text"
+        /** 打字回覆送「我在 💬」的安撫，悄悄話就是打的字 */
+        const val REPLY_KIND = "here"
+
+        fun reply(context: Context, notification: Long, comfortId: Long?, title: String, text: Boolean): PendingIntent {
+            val i = Intent(context, StatusActionReceiver::class.java).setAction(REPLY)
+                .putExtra(EXTRA_NOTIFICATION, notification).putExtra(EXTRA_TITLE, title).putExtra(EXTRA_TEXT, text)
+            if (comfortId != null) i.putExtra(EXTRA_COMFORT, comfortId)
+            // 要讓系統把打的字放進來，打字的那個要是 MUTABLE（只送到這個 App 自己的 receiver）
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or if (text && android.os.Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else PendingIntent.FLAG_IMMUTABLE
+            return PendingIntent.getBroadcast(context, "$REPLY/$notification/$text".hashCode(), i, flags)
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
+        if (action == REPLY) return onReply(context, intent)
         if (action != LOCATE && action != HUG && action != COMFORT) return
         // 只送得出原本就有的種類（這個 App 自己的按鈕才會送來，還是檢查一下）
         val kind = if (action == COMFORT) intent.getStringExtra(EXTRA_KIND)?.takeIf { Catalog.comfort(it) != null } ?: return else "hug"
@@ -90,6 +111,55 @@ class StatusActionReceiver : BroadcastReceiver() {
             pending.finish()
         }
     }
+
+    /** 在通知上回覆：送出去、把收到的那則安撫標成看過，再換掉通知 */
+    private fun onReply(context: Context, intent: Intent) {
+        val id = intent.getLongExtra(StatusActionReceiver.EXTRA_NOTIFICATION, -1)
+        val title = intent.getStringExtra(StatusActionReceiver.EXTRA_TITLE).orEmpty()
+        val comfortId = intent.getLongExtra(StatusActionReceiver.EXTRA_COMFORT, -1).takeIf { it >= 0 }
+        val typing = intent.getBooleanExtra(StatusActionReceiver.EXTRA_TEXT, false)
+        val typed = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(StatusActionReceiver.KEY_REPLY)?.toString()?.trim()?.take(200)
+        val c = context.applicationContext.container
+        // 打字回覆卻沒打字：當作抱抱
+        val text = typed?.ifEmpty { null }.takeIf { typing }
+        val pending = goAsync()
+        c.scope.launch {
+            val r = replyFromNotification(c, comfortId, text)
+            val kind = if (comfortId != null) "comfort" else "mood"
+            c.notifier.replied(id, title, r.second, r.first, kind, comfortId)
+            pending.finish()
+        }
+    }
+}
+
+/**
+ * 回覆：[text] 是打的字（送「我在 💬」的安撫），null 是回抱。先把 [comfortId] 標成看過（App 首頁那張卡片就收起來）。
+ * 回傳（送出去了沒, 通知上要寫的字）
+ */
+internal suspend fun replyFromNotification(c: AppContainer, comfortId: Long?, text: String?): Pair<Boolean, String> = try {
+    val repo = withTimeoutOrNull(6_000) {
+        c.prefs.first { it != null }
+        c.repo.value?.also { r -> r.state.first { it.loaded } }
+    }
+    val st = repo?.state?.value
+    when {
+        repo == null || st == null -> false to "請先打開小倆口登入"
+        !st.paired -> false to "還沒配對喔"
+        else -> {
+            if (comfortId != null) runCatching { repo.readComfort(comfortId) }
+            if (text != null) {
+                repo.sendComfort(StatusActionReceiver.REPLY_KIND, text)
+                true to "已回覆 ${st.partnerName}：$text 💬"
+            } else {
+                repo.sendComfort("hug", null)
+                true to "已經抱抱 ${st.partnerName} 🤗"
+            }
+        }
+    }
+} catch (e: AppException) {
+    false to "沒有送出：${e.message ?: "請稍後再試"}"
+} catch (e: Exception) {
+    false to "沒有送出，請確認網路連線後再試一次"
 }
 
 /**

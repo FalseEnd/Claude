@@ -66,6 +66,8 @@ data class AppState(
     val moreMoodsReady get() = canPick(RemoteRepository.MOODS_SCHEMA)
     /** 資料庫存得進去 schema [since] 才多的心情、安撫（0＝一開始就有的，一定可以） */
     fun canPick(since: Int) = since == 0 || (!schemaOutdated && (dbSchema ?: RemoteRepository.MOODS_SCHEMA) >= since)
+    /** 資料庫還存不了手機溫度（schema 8 以前）：對方的手機卡片看不到溫度，再跑一次 upgrade-v2.sql 就好 */
+    val tempOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.TEMP_SCHEMA
     /** 資料庫還沒有小貓（schema 7 以前）：其他功能照樣能用，再跑一次 upgrade-v2.sql 就好 */
     val petOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.PET_SCHEMA
     /** 可以養小貓；還不知道版本時先當作可以，載入失敗會再說 */

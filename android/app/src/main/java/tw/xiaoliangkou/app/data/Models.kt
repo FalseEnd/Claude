@@ -76,6 +76,10 @@ import java.time.ZoneId
     val deviceName: String? = null,
     /** 電信（中華電信、台灣大哥大…），沒有 SIM 卡是 null */
     val carrier: String? = null,
+    /** 電池溫度（°C），資料庫 schema 8 起才有 */
+    val batteryTemp: Double? = null,
+    /** 系統的過熱等級（Android 10 以上，0～6，見 [tw.xiaoliangkou.app.core.PhoneHeat]） */
+    val thermal: Int? = null,
 )
 
 @Serializable data class LocationDto(

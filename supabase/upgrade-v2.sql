@@ -895,6 +895,35 @@ create or replace function public.app_health(jsonb default '{}') returns jsonb
 language sql stable set search_path = public set timezone to 'UTC' as $$
   select jsonb_build_object('ok', true, 'time', now(), 'schema', 7)
 $$;
+notify pgrst, 'reload schema';alter table public.device_status add column if not exists battery_temp numeric(4, 1) check (battery_temp between -40 and 100);
+alter table public.device_status add column if not exists thermal smallint check (thermal between 0 and 6);
+create or replace function public.app_report_device(jsonb default '{}') returns jsonb
+language plpgsql set search_path = public set timezone to 'UTC' as $$
+declare
+  v_temp    numeric := case when jsonb_typeof($1->'batteryTemp') = 'number' then ($1->>'batteryTemp')::numeric end;
+  v_thermal numeric := case when jsonb_typeof($1->'thermal') = 'number' then ($1->>'thermal')::numeric end;
+begin
+  if v_temp not between -40 and 100 then v_temp := null; end if;
+  if v_thermal not between 0 and 6 then v_thermal := null; end if;
+  insert into device_status (user_id, battery_level, is_charging, network, network_label, notifications_silenced,
+                             steps_today, last_active_at, device_model, device_name, carrier, battery_temp, thermal, updated_at)
+  values (auth.uid(), ($1->>'batteryLevel')::numeric::smallint, ($1->>'isCharging')::boolean, $1->>'network',
+          $1->>'networkLabel', ($1->>'notificationsSilenced')::boolean, ($1->>'stepsToday')::numeric::integer,
+          nullif($1->>'lastActiveAt', '')::timestamptz, $1->>'deviceModel',
+          left(nullif(btrim($1->>'deviceName'), ''), 60), left(nullif(btrim($1->>'carrier'), ''), 60),
+          round(v_temp, 1), v_thermal::smallint, now())
+  on conflict (user_id) do update set
+    battery_level = excluded.battery_level, is_charging = excluded.is_charging, network = excluded.network,
+    network_label = excluded.network_label, notifications_silenced = excluded.notifications_silenced,
+    steps_today = excluded.steps_today, last_active_at = coalesce(excluded.last_active_at, device_status.last_active_at),
+    device_model = excluded.device_model, device_name = excluded.device_name, carrier = excluded.carrier,
+    battery_temp = excluded.battery_temp, thermal = excluded.thermal, updated_at = now();
+  return jsonb_build_object('ok', true);
+end $$;
+create or replace function public.app_health(jsonb default '{}') returns jsonb
+language sql stable set search_path = public set timezone to 'UTC' as $$
+  select jsonb_build_object('ok', true, 'time', now(), 'schema', 8)
+$$;
 notify pgrst, 'reload schema';
 select '更新完成 🎉' as "小倆口";
 commit;

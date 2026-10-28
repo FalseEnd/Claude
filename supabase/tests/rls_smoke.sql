@@ -133,8 +133,17 @@ update public.sharing_settings set share_location = true, share_device = true, s
 insert into public.device_status (user_id, battery_level, is_charging, network) values (test.id('zhe'), 60, false, 'wifi');
 insert into public.locations (user_id, lat, lng, recorded_at) values (test.id('zhe'), 25.033, 121.565, now());
 -- 手機名稱與電信（20261017000006）：前後空白去掉、最多 60 個字
+-- 手機溫度（20261028000011）：四捨五入到 0.1°，不合理的溫度、等級當作沒有（手機狀態照樣存）
 select public.app_report_device(jsonb_build_object('batteryLevel', 60, 'isCharging', false, 'network', 'wifi',
-                                                   'deviceName', '  阿哲的 Pixel  ', 'carrier', '中華電信'));
+                                                   'deviceName', '  阿哲的 Pixel  ', 'carrier', '中華電信', 'batteryTemp', 36.54, 'thermal', 1));
+select test.ok((select battery_temp = 36.5 and thermal = 1 from public.device_status where user_id = auth.uid()), 'phone temperature is saved');
+select public.app_report_device(jsonb_build_object('batteryLevel', 61, 'network', 'wifi', 'batteryTemp', 999, 'thermal', 9));
+select test.ok((select battery_level = 61 and battery_temp is null and thermal is null from public.device_status where user_id = auth.uid()),
+               'a nonsense temperature is dropped, the rest is saved');
+select public.app_report_device(jsonb_build_object('batteryLevel', 60, 'isCharging', false, 'network', 'wifi',
+                                                   'deviceName', '  阿哲的 Pixel  ', 'carrier', '中華電信', 'batteryTemp', 41.2, 'thermal', 2));
+select test.ok(test.error_of($$update public.device_status set thermal = 7 where user_id = auth.uid()$$) like '23514:%',
+               'thermal status is 0 to 6');
 select test.ok(test.error_of($$update public.device_status set device_name = repeat('x', 61) where user_id = auth.uid()$$) like '23514:%',
                'phone name is at most 60 characters');
 select test.ok(test.error_of($$update public.device_status set carrier = repeat('x', 61) where user_id = auth.uid()$$) like '23514:%',
@@ -143,6 +152,8 @@ select test.ok(test.error_of($$update public.device_status set carrier = repeat(
 select test.login(test.id('yu'));
 select test.ok(public.app_partner_status()->'device'->>'deviceName' = '阿哲的 Pixel', 'partner sees the phone name, trimmed');
 select test.ok(public.app_partner_status()->'device'->>'carrier' = '中華電信', 'partner sees the carrier');
+select test.ok(public.app_partner_status()->'device'->'batteryTemp' = '41.2' and public.app_partner_status()->'device'->'thermal' = '2',
+               'partner sees the phone temperature as numbers');
 select test.ok((select count(*) from public.device_status) = 1, 'partner sees shared device status');
 select test.ok((select count(*) from public.locations) = 1, 'partner sees shared location');
 select test.ok((select count(*) from public.profiles) = 2, 'partner sees both profiles');

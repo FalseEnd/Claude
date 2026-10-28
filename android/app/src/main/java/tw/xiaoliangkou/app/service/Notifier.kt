@@ -12,11 +12,15 @@ import android.graphics.Bitmap
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import tw.xiaoliangkou.app.MainActivity
 import tw.xiaoliangkou.app.R
+import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Weather
 import tw.xiaoliangkou.app.data.Avatars
 import tw.xiaoliangkou.app.data.RemoteRepository
@@ -43,6 +47,8 @@ class Notifier(private val context: Context) {
         private const val PARTNER = 0xFFFF7FA8.toInt()
         /** 附了貼圖時，內容在幾個字以內才展開成大圖：大圖下面的摘要只有一兩行，長的悄悄話會被切掉 */
         const val PICTURE_BODY = 18
+        /** 在通知上回覆之後，「已回覆」留幾毫秒 */
+        const val REPLIED_MS = 4_000L
     }
 
     fun createChannels() {
@@ -128,6 +134,51 @@ class Notifier(private val context: Context) {
             else -> b.setStyle(NotificationCompat.BigTextStyle().bigText(body))
         }
         if (picture != null) b.setLargeIcon(picture).setOnlyAlertOnce(true) else heart?.let(b::setLargeIcon)
+        if (repliable(kind, data)) addReplies(b, id, kind, title, (data?.get("comfort_id") as? JsonPrimitive)?.contentOrNull?.toLongOrNull())
+        runCatching { NotificationManagerCompat.from(context).notify(androidId(id), b.build()) }
+    }
+
+    /** 收到安撫、對方心情不好（「要不要安撫一下？」）的通知：可以直接在通知上回一句話或回抱 */
+    fun repliable(kind: String, data: JsonObject?) = when (kind) {
+        "comfort" -> true
+        "mood" -> Catalog.mood((data?.get("mood") as? JsonPrimitive)?.contentOrNull)?.needsComfort == true
+        else -> false
+    }
+
+    private fun addReplies(b: NotificationCompat.Builder, id: Long, kind: String, title: String, comfortId: Long?) {
+        val input = RemoteInput.Builder(StatusActionReceiver.KEY_REPLY).setLabel("回一句悄悄話…").build()
+        b.addAction(
+            NotificationCompat.Action.Builder(R.drawable.ic_stat_heart, "💬 回覆", StatusActionReceiver.reply(context, id, comfortId, title, text = true))
+                .addRemoteInput(input)
+                .setAllowGeneratedReplies(true)
+                .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+                .setShowsUserInterface(false)
+                .build(),
+        )
+        b.addAction(
+            NotificationCompat.Action.Builder(R.drawable.ic_stat_heart, if (kind == "comfort") "🤗 回抱" else "🤗 抱抱", StatusActionReceiver.reply(context, id, comfortId, title, text = false))
+                .setShowsUserInterface(false)
+                .build(),
+        )
+    }
+
+    /**
+     * 在通知上回覆之後換掉同一則：送出去了就寫回了什麼（幾秒後自己消失），沒送出去就寫原因、留著按鈕可以再試。
+     * 一定要換掉，不然系統會一直轉圈圈等回覆送出
+     */
+    fun replied(id: Long, title: String, text: String, ok: Boolean, kind: String = "comfort", comfortId: Long? = null) {
+        if (!canPost()) return
+        val b = NotificationCompat.Builder(context, CH_LOVE)
+            .setSmallIcon(R.drawable.ic_stat_heart)
+            .setColor(PINK)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setOnlyAlertOnce(true)
+            .setAutoCancel(true)
+            .setContentIntent(openApp("home", id.toInt()))
+        heart?.let(b::setLargeIcon)
+        if (ok) b.setTimeoutAfter(REPLIED_MS) else addReplies(b, id, kind, title, comfortId)
         runCatching { NotificationManagerCompat.from(context).notify(androidId(id), b.build()) }
     }
 

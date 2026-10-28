@@ -872,27 +872,39 @@ class StickerScreensTest {
         idleUntil { messages.size == 2 }
         assertEquals("還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次", messages.last())
 
+        // 補到更多心情，還沒有小貓和手機溫度：還是舊的 upgrade-v2.sql
         db.value = db.value.copy(dbSchema = RemoteRepository.MOODS_SCHEMA)
         compose.onNodeWithText("我更新好了，重新檢查").performScrollTo().performClick()
         idleUntil { messages.size == 3 }
-        assertEquals("資料庫更新好了，更多心情和安撫、GIPHY 貼圖都有了 🎉", messages.last())
+        assertEquals("還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次", messages.last())
+
+        db.value = db.value.copy(dbSchema = RemoteRepository.TEMP_SCHEMA)
+        compose.onNodeWithText("我更新好了，重新檢查").performScrollTo().performClick()
+        idleUntil { messages.size == 4 }
+        assertEquals("資料庫更新好了，手機溫度、養小貓、更多心情和安撫、GIPHY 貼圖都有了 🎉", messages.last())
     }
 
     /** 「我的」選單的說明跟著列出再更新一次會多什麼 */
     @Test fun moreMenuListsWhatTheUpgradeAdds() {
         var st by mutableStateOf(s.copy(demo = false, dbSchema = 3))
         show { MoreScreen(st, vm) {} }
-        assertTrue(has("可以再更新一次資料庫（更多心情和安撫、GIPHY 貼圖）📱"))
+        assertTrue(has("可以再更新一次資料庫（手機溫度、養小貓、更多心情和安撫、GIPHY 貼圖）📱"))
         st = st.copy(dbSchema = 2)
         compose.waitForIdle()
-        assertTrue(has("可以再更新一次資料庫（更多心情和安撫、GIPHY 貼圖、手機名稱、電信）📱"))
+        assertTrue(has("可以再更新一次資料庫（手機溫度、養小貓、更多心情和安撫、GIPHY 貼圖、手機名稱、電信）📱"))
         st = st.copy(dbSchema = 4)
         compose.waitForIdle()
-        assertTrue(has("可以再更新一次資料庫（更多心情和安撫）📱"))
+        assertTrue(has("可以再更新一次資料庫（手機溫度、養小貓、更多心情和安撫）📱"))
         st = st.copy(dbSchema = 5)
         compose.waitForIdle()
-        assertTrue(has("可以再更新一次資料庫（更多安撫）📱"))
+        assertTrue(has("可以再更新一次資料庫（手機溫度、養小貓、更多安撫）📱"))
         st = st.copy(dbSchema = 6)
+        compose.waitForIdle()
+        assertTrue(has("可以再更新一次資料庫（手機溫度、養小貓）📱"))
+        st = st.copy(dbSchema = 7)
+        compose.waitForIdle()
+        assertTrue(has("可以再更新一次資料庫（手機溫度）📱"))
+        st = st.copy(dbSchema = 8)
         compose.waitForIdle()
         assertTrue(has("連線、邀請另一半、GIPHY 貼圖、改密碼、登出"))
     }

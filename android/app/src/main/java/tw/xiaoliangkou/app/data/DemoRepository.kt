@@ -219,10 +219,10 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         ).sortedByDescending { it.time }
 
         return AppState(
-            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.PET_SCHEMA,
+            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.TEMP_SCHEMA,
             myDevice = DeviceStatus(
                 ME, 82, true, "wifi", "約 120 Mbps", false, 3_120, iso(), "samsung SM-S921B", iso(),
-                deviceName = "阿哲的 Galaxy S24", carrier = "台灣大哥大",
+                deviceName = "阿哲的 Galaxy S24", carrier = "台灣大哥大", batteryTemp = 31.5, thermal = 0,
             ),
             me = Profile(ME, "阿哲", email = "azhe@example.com", birthday = myBirthday.toString(), info = ProfileInfo.build(mapOf(
                 ProfileInfo.HEIGHT to "176", ProfileInfo.WEIGHT to "68", ProfileInfo.PHONE to "0987-654-321", ProfileInfo.BLOOD_TYPE to "A",
@@ -241,7 +241,8 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
             partnerSharing = Sharing(PARTNER, shareLocation = true, shareDevice = true, shareExpenses = true, shareMood = true, shareCycle = true),
             partnerOnline = true,
             partnerStatus = PartnerStatus(
-                DeviceStatus(PARTNER, 34, false, "wifi", "公司", true, 4286, iso(ago(3)), "Google Pixel 8", iso(), deviceName = "小雨的手機", carrier = "中華電信"),
+                DeviceStatus(PARTNER, 34, false, "wifi", "公司", true, 4286, iso(ago(3)), "Google Pixel 8", iso(), deviceName = "小雨的手機", carrier = "中華電信",
+                    batteryTemp = 34.2, thermal = 0),
                 LocationDto(PARTNER, lat, lng, 15.0, 0.0, "still", iso(), iso()),
             ),
             myLocation = MY_LOCATION,
@@ -406,6 +407,9 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
                         dwelling && (routeIndex == OFFICE || stop.name == "健身房"), steps.toInt(),
                         iso(if (moving && stop.metro) now() else now().minusSeconds(180)), "Google Pixel 8", iso(),
                         deviceName = "小雨的手機", carrier = "中華電信",
+                        // 充電、搭捷運滑手機時熱一點
+                        batteryTemp = 33.0 + (if (dwelling && stop.charge) 5.5 else 0.0) + (if (moving && stop.metro) 3.0 else 0.0) + (battery % 1.0),
+                        thermal = if (dwelling && stop.charge) 1 else 0,
                     ),
                     LocationDto(PARTNER, lat, lng, 15.0, if (moving) 1.3 else 0.0, if (!moving) "still" else if (stop.metro) "transit" else "walking", iso(), iso()),
                 )

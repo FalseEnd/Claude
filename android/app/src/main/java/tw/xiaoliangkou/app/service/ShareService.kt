@@ -296,6 +296,9 @@ class ShareService : LifecycleService() {
                 // 舊的資料庫不認得這兩個欄位，會直接忽略
                 r.deviceName?.let { put("deviceName", it) }
                 r.carrier?.let { put("carrier", it) }
+                // 手機溫度（schema 8 以前的資料庫一樣直接忽略）
+                r.batteryTemp?.let { put("batteryTemp", it) }
+                r.thermal?.let { put("thermal", it) }
             })
         }
     }

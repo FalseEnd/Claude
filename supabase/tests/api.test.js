@@ -219,7 +219,7 @@ test('健康檢查：還沒登入也能確認網址和金鑰', { skip }, async (
   const r = await ok(null, 'app_health');
   assert.equal(r.ok, true);
   assert.match(r.time, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?\+00:00$/);
-  assert.equal(r.schema, 7, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql（7 = 也有一起養的小貓）');
+  assert.equal(r.schema, 8, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql（8 = 也有手機溫度）');
   // 金鑰錯誤的 401 由雲端的 API gateway 檢查；本機的 Supabase CLI 不檢查 apikey，這裡測不到
 });
 
@@ -290,7 +290,7 @@ test('分享設定變更會通知對方；手機狀態依分享與暫停顯示',
 
   await ok(A, 'app_report_device', {
     batteryLevel: 60, isCharging: false, network: 'wifi', networkLabel: '公司', stepsToday: 3200, deviceModel: 'Google Pixel 8',
-    deviceName: '阿哲的 Pixel', carrier: 'x'.repeat(80),
+    deviceName: '阿哲的 Pixel', carrier: 'x'.repeat(80), batteryTemp: 38.26, thermal: 0,
   });
   await ok(A, 'app_report_location', { lat: 25.033, lng: 121.565, accuracyM: 12 });
   let st = await ok(B, 'app_partner_status');
@@ -298,6 +298,8 @@ test('分享設定變更會通知對方；手機狀態依分享與暫停顯示',
   assert.equal(st.device.deviceModel, 'Google Pixel 8');
   assert.equal(st.device.deviceName, '阿哲的 Pixel');
   assert.equal(st.device.carrier, 'x'.repeat(60), '電信名稱最多存 60 個字');
+  assert.equal(st.device.batteryTemp, 38.3, '手機溫度到小數點一位');
+  assert.equal(st.device.thermal, 0);
   assert.equal(st.location.lat, 25.033);
   assert.equal((await ok(B, 'app_me')).partnerOnline, true, '剛回報過手機狀態就算在線上');
 

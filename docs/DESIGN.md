@@ -119,6 +119,7 @@
 | 手機名稱、型號 | `Settings.Global.DEVICE_NAME`（設定 › 關於手機 › 裝置名稱；沒有的話用藍牙名稱）、`Build.MANUFACTURER + MODEL` | 標題下面「名稱 · 型號」；名稱就是型號時只寫一次 |
 | 電信 | `TelephonyManager` 上網那張 SIM 卡（MCC/MNC 對照中華電信、台灣大哥大、遠傳電信…，不需要權限） | 標題下面一行；連 Wi-Fi 時也看得到 |
 | 網速 | `NetworkCapabilities.linkDownstreamBandwidthKbps`（系統估計的下載速度） | 「約 30 Mbps」；Wi-Fi 在標點裡時改顯示標點名稱 |
+| 手機溫度 | 電池廣播的 `EXTRA_TEMPERATURE`（0.1°C）＋ `PowerManager.currentThermalStatus`（Android 10 以上，0～6） | 「36.5°C 正常 😊」；40° 以上或系統降速（MODERATE）「有點熱 🥵」、45° 以上或 SEVERE 以上「很燙 🔥」並說怎麼辦（對方的寫「提醒對方：…」）、5° 以下「有點冰 🥶」（`core/PhoneHeat.kt`）。資料庫 schema 8 起才存得進去，不合理的值當作沒有 |
 
 首頁的手機卡片上面可以切換「對方」和「我」：「我的手機」直接從這支手機讀（每 30 秒更新，不經過伺服器，沒分享、沒網路也看得到），下面寫對方看得到你的哪些項目。小卡排成兩欄，字放大時數值和說明也放得下。
 
@@ -192,6 +193,7 @@
 - 負面心情時對方首頁出現「要不要安撫一下？」，吉祥物也會跟著難過。
 - 29 種安撫，分四組：安慰（抱抱、摸摸頭、我在、加油、挺你、請你喝、聽你說、牽手、你最棒）、甜蜜（親親、愛你、想你、送花、早安、晚安、比心、蹭蹭、想約會）、關心（多喝水、吃飯沒、早點睡、穿暖、到家沒、路上小心）、逗你開心（冷笑話、扮鬼臉、送小貓、吃甜點、小禮物）＋悄悄話＋選填的 GIPHY 貼圖；送出時飄愛心。10 分鐘內最多 20 次。
 - **收到的安撫**：首頁在吉祥物下面放最近 3 天收到、還沒看過的最新一則（誰、哪一種、附的貼圖和悄悄話）。按「回抱 🤗」先標成看過、再回送一個抱抱（標不起來就不送，卡片不會留著讓人再抱一次），按「收到了」只標成看過；打開歷史紀錄時，收到的安撫全部標成看過（安安靜靜地做，不跳提示；馬上離開那一頁也會做完）。右上角鈴鐺的紅點就是還沒看過的安撫數：0.2.1 以前 App 從來沒有標過（`comforts.read_at` 一直是空的），紅點永遠不會消失，0.2.2 修好了。標的時候畫面先改（紅點馬上消失），再呼叫 `app_read_comfort`：一則是 `{"id": n}`，全部是 `{"all": true}`，一次標完自己收到的（schema 3 以前的資料庫不認得 `all`，App 改成一則一則標）；沒送到的改回來，下次再標。
+- **在通知上直接回覆**（0.3.0）：收到安撫、對方心情不好（「要不要安撫一下？」）的系統通知有兩個按鈕：「💬 回覆」用系統的 RemoteInput 在通知欄打一句話（送「我在 💬」的安撫，悄悄話就是打的字，最多 200 字），「🤗 回抱」直接回一個抱抱。兩個都會先把收到的那則安撫標成看過（首頁的卡片就收起來），送出後同一則通知換成「已回覆 小雨：…」，4 秒後自己消失；沒送出去（沒網路、還沒登入）就寫原因，按鈕留著可以再試。打字的那個 PendingIntent 要是 MUTABLE 系統才放得進字（只送到 App 自己的 receiver）。不用改資料庫；App 鎖不擋通知上的按鈕（和常駐通知的抱抱一樣）。
 - **以前收到的安撫**：0.2.1 以前收到的都還是「沒看過」。第一次執行 0.2.2 的 upgrade-v2.sql 時，一天以前收到的都標成看過（只有這一次：之後再執行，新收到、還沒看過的不會被標掉）；首頁也只拿最近 3 天的，所以還沒更新資料庫時，也不會把以前的安撫一則一則翻出來，或對很久以前的安撫「回抱」。
 
 ### 4.7 紀念日與約會
@@ -357,6 +359,7 @@ App 在前景時以卡片顯示，在背景時以系統通知顯示（分成「�
 - 5：再加上更多心情和安撫（`moods`、`comforts` 的 check、`mood_label`、`comfort_text` 和「需要抱抱」的清單，0.2.3）。App 的種類和文字要和資料庫一樣，`MoreMoodsTest` 會拿 `setup.sql` 比對；schema 4 以前只顯示原本的 9 種心情、6 種安撫，並寫一行「再執行一次 upgrade-v2.sql 就有更多心情可以選」
 - 6：再加上 0.2.6 的 14 種安撫（`comforts` 的 check 和 `comfort_text`）。Catalog 的 `Comfort.since` 記每一種要哪一版（0、5、6），`AppState.canPick(since)` 決定顯示哪些；送出時資料庫的 check 擋下來，就把 schema 記成 `since - 1`、說要再執行一次 upgrade-v2.sql
 - 7：再加上一起養的小貓（`pets`、`pet_events`、`app_pet*`、通知種類 `pet`、晚上的提醒，0.3.0；見 4.13.3）
+- 8：再加上手機溫度（`device_status.battery_temp`、`thermal`，`app_report_device` 多收 `batteryTemp`、`thermal`，0.3.0；見 4.2）
 
 小於 2 時，用到新功能的畫面會提醒「資料庫需要更新」；2 或 3 時新功能都能用，只在「我的 › Supabase 與帳號」溫和地提醒再執行一次 upgrade-v2.sql 會多出什麼（3 以前沒有 GIPHY 貼圖，2 也還沒有手機名稱和電信），記心情、送安撫的畫面也只寫一行「再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖」（見 4.15）。upgrade-v2.sql 包含 0.2 之後所有的資料庫變更、可以重複執行，所以不管跑過幾次，再跑一次就是最新的。「我的 › Supabase 與帳號」有一步一步的說明和「重新檢查」按鈕，回到 App 時也會自己再檢查一次。舊功能不受影響。
 
@@ -419,7 +422,7 @@ flowchart LR
 
 **背景執行**：登入後啟動前景服務（Android 14 以上用 `location`＋`remoteMessaging` 類型），保持 Realtime 連線並回報狀態。需要使用者把電池最佳化設為「不限制」，部分品牌另需允許自動啟動。
 
-**資料模型**：見 [`supabase/migrations/`](../supabase/migrations)，主要資料表為 profiles、couples、couple_members、pair_invites、sharing_settings、device_status、locations、places、place_events、expenses、expense_guesses、moods、comforts、anniversaries、events、cycle_settings、cycle_periods、cycle_logs、activity_log、notification_prefs、notification_outbox、realtime_events，0.2 加了 partner_notes、day_entries、memos 與 Storage 的 `media` 空間，0.2.2 在 moods、comforts 加了 `sticker`、couples 加了 `giphy_key`，0.3.0 加了 pets、pet_events。
+**資料模型**：見 [`supabase/migrations/`](../supabase/migrations)，主要資料表為 profiles、couples、couple_members、pair_invites、sharing_settings、device_status、locations、places、place_events、expenses、expense_guesses、moods、comforts、anniversaries、events、cycle_settings、cycle_periods、cycle_logs、activity_log、notification_prefs、notification_outbox、realtime_events，0.2 加了 partner_notes、day_entries、memos 與 Storage 的 `media` 空間，0.2.2 在 moods、comforts 加了 `sticker`、couples 加了 `giphy_key`，0.3.0 加了 pets、pet_events，device_status 加了 `battery_temp`、`thermal`。
 
 ---
 
