@@ -55,7 +55,7 @@ from unnest(array['happy', 'sweet', 'excited', 'laugh', 'calm', 'relaxed', 'miss
 \if :latest
 -- 0.3.0：關掉小貓的通知、養了一隻貓、回報了手機溫度
 select public.app_set_notification_prefs('{"pet": false, "memo": false}');
-select public.app_adopt_pet('{"name": "麻糬", "coat": "calico"}');
+select public.app_adopt_pet('{"name": "麻糬", "coat": "ragdoll"}');
 select public.app_pet_action('{"action": "pet"}');
 select public.app_report_device('{"batteryLevel": 50, "network": "wifi", "batteryTemp": 36.5, "thermal": 1}');
 \else
@@ -71,8 +71,8 @@ select pg_temp.login('c2');
 \if :latest
 select pg_temp.ok(public.app_notification_prefs()->'pet' = 'false' and public.app_notification_prefs()->'memo' = 'false',
                   'notification settings (including the cat) survive the upgrade');
-select pg_temp.ok(public.app_pet()->'pet'->>'name' = '麻糬' and (public.app_pet()->'pet'->>'xp')::int = 2,
-                  'the cat survives the upgrade');
+select pg_temp.ok(public.app_pet()->'pet'->>'name' = '麻糬' and public.app_pet()->'pet'->>'coat' = 'ragdoll'
+                  and (public.app_pet()->'pet'->>'xp')::int = 2, 'the cat (a newer breed) survives the upgrade');
 select pg_temp.ok((select battery_temp = 36.5 and thermal = 1 from public.device_status where user_id = '00000000-0000-0000-0000-0000000000c2'),
                   'the phone temperature survives the upgrade');
 \else

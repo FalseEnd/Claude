@@ -49,7 +49,7 @@ backlog() { quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -v 
 newest() { quiet psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -v step="$1" -f supabase/tests/newest_rows.sql; }
 smoke() { psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -q -o /dev/null -f supabase/tests/rls_smoke.sql 2>&1 | sed 's/^psql:[^ ]* NOTICE:  //'; }
 schema_is_latest() {
-  [ "$(psql "$DATABASE_URL" -X -tAc "select public.app_health()->>'schema'")" = 8 ] || { echo "app_health 沒有回傳 schema 8" >&2; exit 1; }
+  [ "$(psql "$DATABASE_URL" -X -tAc "select public.app_health()->>'schema'")" = 9 ] || { echo "app_health 沒有回傳 schema 9" >&2; exit 1; }
 }
 
 echo "== 舊版資料庫執行 upgrade-v2.sql（兩次）"

@@ -772,6 +772,19 @@ select test.ok(public.app_pet()->'pet'->>'name' = '小橘' and jsonb_array_lengt
                and (select count(*) from public.pet_events) > 10, 'the partner can see the cat and its care records');
 select test.ok(public.app_rename_pet('{"name": "大橘"}')->'pet'->>'name' = '大橘', 'the partner can rename the cat');
 select test.ok(test.error_of($$select public.app_rename_pet('{"name": " "}')$$) like 'P0001: invalid_input%', 'a cat needs a name');
+-- 換品種（20261029000012）：有改到的才寫紀錄；不認得的品種不行
+select public.app_update_pet('{"coat": "ragdoll"}') as restyled \gset
+select test.ok((:'restyled'::jsonb)->'pet'->>'coat' = 'ragdoll' and (:'restyled'::jsonb)->'pet'->>'name' = '大橘'
+               and (:'restyled'::jsonb)->'events'->0->>'action' = 'coat' and (:'restyled'::jsonb)->'events'->0->>'item' = 'ragdoll',
+               'the partner can change the breed');
+select test.ok(public.app_update_pet('{"name": "大橘", "coat": "ragdoll"}')->'events'->0->>'id' = (:'restyled'::jsonb)->'events'->0->>'id',
+               'nothing changed, nothing logged');
+select test.ok(test.error_of($$select public.app_update_pet('{"coat": "dog"}')$$) like 'P0001: invalid_input%'
+               and test.error_of($$select public.app_update_pet('{"name": "一二三四五六七八九十一二三"}')$$) like 'P0001: invalid_input%',
+               'unknown breeds and long names are rejected');
+select test.ok(public.app_update_pet('{"name": "小布", "coat": "siamese"}')->'pet' @> '{"name": "小布", "coat": "siamese"}',
+               'name and breed can change together');
+select public.app_update_pet('{"name": "大橘"}');
 select test.login(test.id('mia'));
 select test.ok((select count(*) from public.pets) = 0 and (select count(*) from public.pet_events) = 0, 'outsiders cannot see the cat');
 select test.ok(test.error_of($$select public.app_pet()$$) like 'P0001: not_paired%'
@@ -873,7 +886,7 @@ select test.ok(not exists (select 1 from pg_proc p where p.pronamespace = 'publi
                                              'expense_shown', 'tg_couple_member_deleted', 'tg_place_saved',
                                              'media_valid', 'media_summary', 'tg_media_valid', 'tg_day_entry_inserted',
                                              'tg_memo_inserted', 'tg_changed_memo', 'tg_mood_inserted', 'tg_comfort_inserted',
-                                             'pet_at', 'pet_stage', 'pet_zone', 'pet_today', 'pet_today_counts', 'pet_payload',
+                                             'pet_at', 'pet_stage', 'pet_zone', 'pet_today', 'pet_today_counts', 'pet_payload', 'pet_coats',
                                              'app_job_pet', 'app_job_pet_reminders')
                            and has_function_privilege('authenticated', p.oid, 'execute')),
                'jobs and internal helpers are not callable by clients');

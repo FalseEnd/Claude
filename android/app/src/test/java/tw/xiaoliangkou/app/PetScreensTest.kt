@@ -26,7 +26,6 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
-import com.github.takahirom.roborazzi.captureScreenRoboImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -268,7 +267,8 @@ class PetScreensTest {
         compose.onNodeWithContentDescription("改名字、換品種").performClick()
         compose.mainClock.advanceTimeBy(500)
         assertTrue(has("牠是哪一種貓"))
-        captureScreenRoboImage("build/screens/106_pet_edit.png")
+        compose.onNodeWithText("牠是哪一種貓").performScrollTo()
+        capture("106_pet_edit")
         compose.onNodeWithText("暹羅貓").performScrollTo().performClick()
         compose.onNodeWithText("好了").performClick()
         idleUntil { demo.state.value.pet!!.pet!!.coat == "siamese" }

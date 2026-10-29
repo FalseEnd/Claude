@@ -56,10 +56,15 @@ fun catFaceFor(prop: String?): CatFace? = when (prop) {
 /**
  * 一起養的小貓：[coat] 毛色（見 [Pet.coats]）、[stage] 0～4（小奶貓到大胖貓：越大越圓，還會戴上項圈、蝴蝶結、圍巾、皇冠）、[face] 表情。
  * 會呼吸、眨眼、甩尾巴、抖耳朵；[prop] 是正在做的照顧（碗、罐頭、小魚乾、逗貓棒、雷射筆、毛線球、泡泡、梳子），[bounce] 每加一就跳一下。
- * 貓坐在畫布的正中間、腳踩在畫布下緣
+ * 貓坐在畫布的正中間、腳踩在畫布下緣。[animated] 是 false 時不會動（一次列出很多隻的時候，例如選品種）
  */
 @Composable
-fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifier, prop: String? = null, bounce: Int = 0) {
+fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifier, prop: String? = null, bounce: Int = 0, animated: Boolean = true) {
+    if (!animated) {
+        val colors = coatColors(coat)
+        Canvas(modifier) { drawPet(colors, stage, face, prop, 0f, 0.25f, 1f, 0.25f, 0f, 0f) }
+        return
+    }
     val t = rememberInfiniteTransition(label = "pet")
     val breathe by t.animateFloat(0f, 1f, infiniteRepeatable(tween(if (face == CatFace.SLEEPING) 3400 else 2200, easing = LinearEasing)), label = "breathe")
     val blink by t.animateFloat(
@@ -82,32 +87,35 @@ fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifie
         }
     }
     val colors = coatColors(coat)
-    Canvas(modifier) {
-        val st = stage.coerceIn(0, 4)
-        // 左邊到頭和鬍鬚、右邊到尾巴：整隻放得進畫布，左右置中
-        val left = maxOf(1.22f, BODY_W[st] / 2)
-        val right = BODY_W[st] / 2 + 1.12f
-        val r = minOf(size.height * 0.335f * STAGE_SCALE[st], size.width * 0.96f / (left + right))
-        val cx = size.width / 2 + (left - right) / 2 * r
-        val floor = size.height * 0.97f
-        val jump = sin(hop.value * PI).toFloat() * r * 0.45f
-        val breath = sin(breathe * 2 * PI).toFloat()
-        val bodyH = BODY_H[st] * r
-        val c = Offset(cx, floor - r * 0.46f - bodyH - jump + breath * r * 0.02f)
-        // 地上的影子：跳起來時變小
-        val shadowW = r * BODY_W[st] * 1.25f * (1f - jump / (r * 1.2f))
-        drawOval(Color(0x22000000), Offset(cx - shadowW / 2, floor - r * 0.1f), Size(shadowW, r * 0.2f))
-        if (prop == "laser") laserDot(Offset(cx + sin(fast * 2 * PI).toFloat() * r * 1.6f, floor - r * 0.12f), r)
-        petKitty(c, r, st, colors, face, blink, sin(tail * 2 * PI).toFloat(), ear, breath, fast)
-        when (prop) {
-            "kibble", "can", "fish" -> bowl(prop, Offset(cx, floor), r, fast)
-            "wand" -> wand(Offset(cx, c.y), r, fast, size.width)
-            "yarn" -> yarn(Offset(maxOf(r * 0.34f, cx - r * BODY_W[st] * 0.5f - r * 0.3f) + sin(fast * 2 * PI).toFloat() * r * 0.18f, floor - r * 0.32f), r, fast)
-            "bath" -> bubbles(c, r, fast, floor)
-            "brush" -> brush(Offset(cx + r * BODY_W[st] * 0.42f, c.y + r * 0.42f + bodyH * 0.45f), r, fast)
-        }
-        if (face == CatFace.SLEEPING) zzz(Offset(c.x + r * 0.95f, c.y - r * 1.1f), r, breathe)
+    Canvas(modifier) { drawPet(colors, stage, face, prop, hop.value, breathe, blink, tail, ear, fast) }
+}
+
+/** 畫整個畫面：影子、照顧的東西、小貓、睡覺的 Z（動畫的值從外面給） */
+private fun DrawScope.drawPet(colors: CoatColors, stage: Int, face: CatFace, prop: String?, hop: Float, breathe: Float, blink: Float, tail: Float, ear: Float, fast: Float) {
+    val st = stage.coerceIn(0, 4)
+    // 左邊到頭和鬍鬚、右邊到尾巴：整隻放得進畫布，左右置中
+    val left = maxOf(1.22f, BODY_W[st] / 2)
+    val right = BODY_W[st] / 2 + 1.12f
+    val r = minOf(size.height * 0.335f * STAGE_SCALE[st], size.width * 0.96f / (left + right))
+    val cx = size.width / 2 + (left - right) / 2 * r
+    val floor = size.height * 0.97f
+    val jump = sin(hop * PI).toFloat() * r * 0.45f
+    val breath = sin(breathe * 2 * PI).toFloat()
+    val bodyH = BODY_H[st] * r
+    val c = Offset(cx, floor - r * 0.46f - bodyH - jump + breath * r * 0.02f)
+    // 地上的影子：跳起來時變小
+    val shadowW = r * BODY_W[st] * 1.25f * (1f - jump / (r * 1.2f))
+    drawOval(Color(0x22000000), Offset(cx - shadowW / 2, floor - r * 0.1f), Size(shadowW, r * 0.2f))
+    if (prop == "laser") laserDot(Offset(cx + sin(fast * 2 * PI).toFloat() * r * 1.6f, floor - r * 0.12f), r)
+    petKitty(c, r, st, colors, face, blink, sin(tail * 2 * PI).toFloat(), ear, breath, fast)
+    when (prop) {
+        "kibble", "can", "fish" -> bowl(prop, Offset(cx, floor), r, fast)
+        "wand" -> wand(Offset(cx, c.y), r, fast, size.width)
+        "yarn" -> yarn(Offset(maxOf(r * 0.34f, cx - r * BODY_W[st] * 0.5f - r * 0.3f) + sin(fast * 2 * PI).toFloat() * r * 0.18f, floor - r * 0.32f), r, fast)
+        "bath" -> bubbles(c, r, fast, floor)
+        "brush" -> brush(Offset(cx + r * BODY_W[st] * 0.42f, c.y + r * 0.42f + bodyH * 0.45f), r, fast)
     }
+    if (face == CatFace.SLEEPING) zzz(Offset(c.x + r * 0.95f, c.y - r * 1.1f), r, breathe)
 }
 
 /** 頭上、身上的一塊花色：位置和大小是相對頭（或身體）的外框，0～1 */

@@ -19,9 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
@@ -321,7 +319,8 @@ fun PetScreen(s: AppState, vm: AppViewModel, back: () -> Unit, open: (String) ->
                 pet == null -> item { AdoptCard(s, vm) }
                 else -> {
                     item { PetRoom(pet, s, prop, say, bounce, hearts) { care("pet", null) } }
-                    item { PetStatusCard(pet, s) { renaming = true } }
+                    // 按筆：名字和品種的卡片直接換成可以改的（不用對話框，15 種貓排得開）
+                    item { if (renaming) EditPetCard(s, pet, vm) { renaming = false } else PetStatusCard(pet, s) { renaming = true } }
                     item { CareCard(pet, bundle, picker, vm.busy, { picker = if (picker == it) null else it }, ::care) }
                     item { TasksCard(pet, bundle) }
                     item { PetHistoryCard(s, pet, bundle) }
@@ -331,7 +330,6 @@ fun PetScreen(s: AppState, vm: AppViewModel, back: () -> Unit, open: (String) ->
         }
         Confetti(confetti)
     }
-    if (renaming && pet != null) EditPetDialog(s, pet, vm) { renaming = false }
     grown?.let { stage ->
         val st = Pet.stages.firstOrNull { it.label == stage }
         AlertDialog(
@@ -620,31 +618,29 @@ private fun CoatChoice(c: Pet.Coat, selected: Boolean, stage: Int, locked: Boole
             .alpha(if (locked) 0.45f else 1f),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        PetCat(c.key, stage, if (selected) CatFace.HAPPY else CatFace.OK, Modifier.fillMaxWidth().height(size * 0.8f))
+        PetCat(c.key, stage, if (selected) CatFace.HAPPY else CatFace.OK, Modifier.fillMaxWidth().height(size * 0.8f), animated = false)
         Text(if (locked) "🔒 ${c.label}" else c.label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
-/** 改名字、換品種：預覽是牠現在的大小 */
+/** 改名字、換品種：上面預覽改好的樣子（牠現在的大小） */
 @Composable
-private fun EditPetDialog(s: AppState, pet: PetDto, vm: AppViewModel, close: () -> Unit) {
+private fun EditPetCard(s: AppState, pet: PetDto, vm: AppViewModel, close: () -> Unit) {
     var name by remember { mutableStateOf(pet.name) }
     var coat by remember { mutableStateOf(pet.coat) }
     val valid = Pet.cleanName(name) != null
     val stage = stageIndex(pet.xp)
-    AlertDialog(
-        onDismissRequest = close,
-        title = { Text("幫${pet.name}改名字、換品種") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                CuteField(name, { name = it }, "名字", supporting = "最多 ${Pet.NAME_MAX} 個字", isError = !valid)
-                Text("牠是哪一種貓", style = MaterialTheme.typography.titleSmall)
-                CoatGrid(s, vm, coat, stage) { coat = it }
-            }
-        },
-        confirmButton = {
-            TextButton({ vm.act("改好了 ✏️", onDone = close) { it.editPet(name, coat) } }, enabled = valid && !vm.busy) { Text("好了") }
-        },
-        dismissButton = { TextButton(close) { Text("取消") } },
-    )
+    CuteCard {
+        Text("幫${pet.name}改名字、換品種", style = MaterialTheme.typography.titleMedium)
+        Box(Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(22.dp)).background(Cute.colors.butter.copy(alpha = 0.25f))) {
+            PetCat(coat, stage, CatFace.HAPPY, Modifier.fillMaxSize().padding(top = 8.dp, bottom = 6.dp))
+        }
+        CuteField(name, { name = it }, "名字", supporting = "最多 ${Pet.NAME_MAX} 個字", isError = !valid)
+        Text("牠是哪一種貓", style = MaterialTheme.typography.titleSmall)
+        CoatGrid(s, vm, coat, stage) { coat = it }
+        ButtonRow {
+            SoftButton("取消", small = true) { close() }
+            CuteButton("好了", small = true, enabled = valid && !vm.busy) { vm.act("改好了 ✏️", onDone = close) { it.editPet(name, coat) } }
+        }
+    }
 }

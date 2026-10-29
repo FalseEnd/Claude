@@ -219,7 +219,7 @@ test('健康檢查：還沒登入也能確認網址和金鑰', { skip }, async (
   const r = await ok(null, 'app_health');
   assert.equal(r.ok, true);
   assert.match(r.time, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?\+00:00$/);
-  assert.equal(r.schema, 8, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql（8 = 也有手機溫度）');
+  assert.equal(r.schema, 9, 'App 用 schema 判斷有沒有執行 upgrade-v2.sql（9 = 也有更多貓咪）');
   // 金鑰錯誤的 401 由雲端的 API gateway 檢查；本機的 Supabase CLI 不檢查 apikey，這裡測不到
 });
 
@@ -447,6 +447,14 @@ test('一起養的小貓：領養、照顧、對方即時看到、規則在資�
   assert.equal(played.result.bonus, true, '今天的任務都做完了');
   assert.equal(played.pet.xp, 6 + 20, '摸摸 3 次 + 任務獎勵（88 分開心陪玩不加成長值）');
   assert.equal((await ok(A, 'app_pet')).pet.xp, 26);
+
+  // 換品種：對方即時看到
+  const restyled = await ok(B, 'app_update_pet', { coat: 'siamese' });
+  assert.equal(restyled.pet.coat, 'siamese');
+  assert.equal(restyled.events[0].action, 'coat');
+  await A.sock.next((m) => m.type === 'changed' && m.table === 'pets');
+  assert.equal((await ok(A, 'app_pet')).pet.coat, 'siamese');
+  assert.equal((await rpc(A, 'app_update_pet', { coat: 'dog' })).data.message, 'invalid_input');
 
   // 規則在資料庫裡：直接改資料表、或冒充別人的照顧紀錄都不行
   denied(await rest(A, 'PATCH', 'pets?xp=gte.0', { xp: 99999 }));

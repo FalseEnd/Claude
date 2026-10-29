@@ -159,7 +159,7 @@ class PetRemoteTest {
         rpc("app_adopt_pet") { payload(pet.replace("麻糬", "湯圓")) }
         rpc("app_rename_pet") { payload(pet.replace("麻糬", "大湯圓")) }
         rpc("app_update_pet") { payload(pet.replace("麻糬", "大湯圓").replace("\"coat\":\"orange\"", "\"coat\":\"siamese\"")) }
-        val r = repo(RemoteRepository.PET_SCHEMA)
+        val r = repo(RemoteRepository.CATS_SCHEMA)
         assertNull("還沒領養", r.state.value.pet!!.pet)
         fails("invalid_input") { r.adoptPet("一二三四五六七八九十一二三", "orange") }
         fails("invalid_input") { r.adoptPet("   ", "orange") }

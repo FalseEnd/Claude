@@ -924,6 +924,71 @@ create or replace function public.app_health(jsonb default '{}') returns jsonb
 language sql stable set search_path = public set timezone to 'UTC' as $$
   select jsonb_build_object('ok', true, 'time', now(), 'schema', 8)
 $$;
+notify pgrst, 'reload schema';create or replace function public.pet_coats() returns text[]
+language sql immutable parallel safe as $$
+  select array['orange', 'gray', 'white', 'black', 'calico', 'tuxedo',
+               'tabby', 'gingerwhite', 'cow', 'tortie', 'silver', 'british', 'fold', 'siamese', 'ragdoll']
+$$;
+alter table public.pets drop constraint if exists pets_coat_check,
+  add constraint pets_coat_check check (coat = any (public.pet_coats())) not valid;
+alter table public.pet_events drop constraint if exists pet_events_action_check,
+  add constraint pet_events_action_check check (action in ('adopt', 'feed', 'play', 'pet', 'bath', 'brush', 'bonus', 'streak', 'grow',
+    'rename', 'coat')) not valid;
+create or replace function public.app_adopt_pet(jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = public set timezone to 'UTC' as $$
+declare
+  v_me     uuid := auth.uid();
+  v_couple uuid := couple_of(auth.uid());
+  v_name   text := btrim(coalesce($1->>'name', ''));
+  v_coat   text := coalesce(nullif($1->>'coat', ''), 'orange');
+begin
+  if v_me is null then raise exception 'not_authenticated'; end if;
+  if v_couple is null then raise exception 'not_paired'; end if;
+  if v_name = '' then v_name := '咪咪'; end if;
+  if char_length(v_name) > 12 or not (v_coat = any (pet_coats())) then
+    raise exception 'invalid_input';
+  end if;
+  insert into pets (couple_id, name, coat, adopted_by) values (v_couple, v_name, v_coat, v_me)
+  on conflict (couple_id) do nothing;
+  if not found then raise exception 'pet_exists' using detail = '你們已經有一隻貓咪了'; end if;
+  insert into pet_events (couple_id, user_id, action, item) values (v_couple, v_me, 'adopt', v_coat);
+  perform enqueue_notification(partner_of(v_me), 'pet', display_name_of(v_me) || ' 領養了一隻小貓 🐱',
+    '牠叫「' || v_name || '」，快來跟牠打招呼', jsonb_build_object('pet', true));
+  return pet_payload(v_couple);
+end $$;
+create or replace function public.app_update_pet(jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = public set timezone to 'UTC' as $$
+declare
+  v_me     uuid := auth.uid();
+  v_couple uuid := couple_of(auth.uid());
+  v_name   text := btrim($1->>'name');
+  v_coat   text := nullif($1->>'coat', '');
+  p        pets;
+begin
+  if v_me is null then raise exception 'not_authenticated'; end if;
+  if v_couple is null then raise exception 'not_paired'; end if;
+  if (v_name is not null and (v_name = '' or char_length(v_name) > 12)) or (v_coat is not null and not (v_coat = any (pet_coats()))) then
+    raise exception 'invalid_input';
+  end if;
+  select * into p from pets where couple_id = v_couple for update;
+  if not found then raise exception 'not_found' using detail = '還沒有領養貓咪'; end if;
+  if v_name is not null and v_name <> p.name then
+    update pets set name = v_name where couple_id = v_couple;
+    insert into pet_events (couple_id, user_id, action, item) values (v_couple, v_me, 'rename', left(v_name, 20));
+  end if;
+  if v_coat is not null and v_coat <> p.coat then
+    update pets set coat = v_coat where couple_id = v_couple;
+    insert into pet_events (couple_id, user_id, action, item) values (v_couple, v_me, 'coat', v_coat);
+  end if;
+  return pet_payload(v_couple);
+end $$;
+revoke all on function public.pet_coats() from public, anon, authenticated;
+revoke all on function public.app_adopt_pet(jsonb), public.app_update_pet(jsonb) from public, anon;
+grant execute on function public.app_adopt_pet(jsonb), public.app_update_pet(jsonb) to authenticated;
+create or replace function public.app_health(jsonb default '{}') returns jsonb
+language sql stable set search_path = public set timezone to 'UTC' as $$
+  select jsonb_build_object('ok', true, 'time', now(), 'schema', 9)
+$$;
 notify pgrst, 'reload schema';
 select '更新完成 🎉' as "小倆口";
 commit;

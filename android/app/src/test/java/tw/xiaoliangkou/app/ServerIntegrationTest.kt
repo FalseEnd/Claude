@@ -108,7 +108,7 @@ class ServerIntegrationTest {
     /** 個人資料、只有自己看得到的備註、日曆紀錄、備忘錄、照片與語音 */
     private suspend fun v2Features(zhe: Client, yu: Client): V2Files {
         val health = apiCall { anon().api.health() }
-        assertEquals(RemoteRepository.TEMP_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
+        assertEquals(RemoteRepository.CATS_SCHEMA, (health["schema"] as JsonPrimitive).content.toInt())
         zhe.repo.refreshAll()
         assertFalse(zhe.repo.state.value.schemaOutdated)
         assertFalse(zhe.repo.state.value.deviceInfoOutdated)
@@ -401,7 +401,7 @@ class ServerIntegrationTest {
             assertNull(zhe.notes.last { it.kind == "comfort" }.data.sticker())
             // 打開歷史紀錄：收到的全部標成已讀（「晚上請你吃好料」那則也是），自己送出去的不算。
             // schema 4 以後一次標完（app_read_comfort 的 {"all": true}）
-            assertEquals(RemoteRepository.TEMP_SCHEMA, yu.repo.state.value.dbSchema)
+            assertEquals(RemoteRepository.CATS_SCHEMA, yu.repo.state.value.dbSchema)
             assertTrue(yu.repo.state.value.comforts.any { it.receiverId == yu.userId && it.readAt == null })
             yu.repo.markComfortsRead()
             assertTrue(yu.repo.state.value.comforts.none { it.receiverId == yu.userId && it.readAt == null })
@@ -421,7 +421,7 @@ class ServerIntegrationTest {
 
             // 一起養的小貓：阿哲領養，小雨即時看到、餵牠；吃飽了再餵被擋下來
             eventually("還沒有小貓") { zhe.repo.state.value.pet != null && zhe.repo.state.value.pet!!.pet == null }
-            zhe.repo.adoptPet("湯圓", "white")
+            zhe.repo.adoptPet("湯圓", "ragdoll")
             eventually("對方看到小貓") { yu.repo.state.value.pet?.pet?.name == "湯圓" }
             eventually("領養通知") { yu.notes.any { it.kind == "pet" && it.title == "阿哲 領養了一隻小貓 🐱" } }
             assertEquals("80 分不算餓，沒有成長值", 0, yu.repo.petAction("feed", "can").xp)
