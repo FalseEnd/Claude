@@ -108,6 +108,7 @@ GIPHY 貼圖在資料庫只存一小段 id，圖片直接從 GIPHY 載入，不�
 | App 說「金鑰不正確」 | 確認貼的是 Publishable key（或 anon key），前後沒有多餘的空白 |
 | App 說「資料庫還沒設定好」 | 第 2 步的 setup.sql 還沒執行，或執行時有錯誤 |
 | App 說「資料庫需要更新」 | 照上面「更新資料庫」那一節執行 upgrade-v2.sql |
+| 執行 upgrade-v2.sql 出現「check constraint "comforts_kind_check"（或 notification_prefs_kind_check）… is violated by some row」 | 用的是舊的 upgrade-v2.sql（送過 0.2.6 才有的安撫之後再執行就會這樣，整個沒有更新、資料也沒動到）。重新從 GitHub 複製最新的 upgrade-v2.sql 再執行一次 |
 | 首頁寫「再更新一次資料庫就能養了」 | 再執行一次最新的 upgrade-v2.sql（0.3.0 加了小貓），兩支手機都要更新到 0.3.0 |
 | 看不到對方的手機名稱、電信 | 再執行一次 upgrade-v2.sql（0.2.1 加了這兩個欄位），而且兩支手機都要更新到 0.2.1 |
 | 記心情、送安撫的畫面沒有「加一張 GIPHY 貼圖」的按鈕 | 執行最新的 upgrade-v2.sql（0.2.2 加了貼圖；App 寫著「再執行一次 upgrade-v2.sql 就能用 GIPHY 貼圖」或「執行 upgrade-v2.sql 就能用 GIPHY 貼圖」就是這個原因），而且兩支手機都要更新到 0.2.2 |

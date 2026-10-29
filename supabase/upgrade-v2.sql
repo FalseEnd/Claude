@@ -241,7 +241,7 @@ create policy "xlk media: uploader delete" on storage.objects for delete to auth
   bucket_id = 'media' and owner_id = auth.uid()::text);
 alter table public.notification_prefs drop constraint if exists notification_prefs_kind_check,
   add constraint notification_prefs_kind_check check (kind in ('pairing', 'place', 'mood', 'comfort', 'battery_low', 'guess',
-    'event', 'anniversary', 'cycle_care', 'sharing_changed', 'diary', 'memo'));
+    'event', 'anniversary', 'cycle_care', 'sharing_changed', 'diary', 'memo')) not valid;
 create or replace function public.notif_kinds() returns text[]
 language sql immutable parallel safe set search_path = public as $$
   select array['pairing', 'place', 'mood', 'comfort', 'battery_low', 'guess', 'event', 'anniversary', 'cycle_care', 'sharing_changed',
@@ -517,11 +517,11 @@ grant execute on function public.app_set_giphy_key(jsonb) to authenticated;
 notify pgrst, 'reload schema';alter table public.moods drop constraint if exists moods_mood_check, add constraint moods_mood_check check (mood in (
   'happy', 'sweet', 'excited', 'laugh', 'calm', 'relaxed',
   'missyou', 'shy', 'sleepy', 'hungry', 'bored', 'busy',
-  'tired', 'anxious', 'stressed', 'wronged', 'sad', 'angry', 'jealous', 'lonely', 'sick'));
+  'tired', 'anxious', 'stressed', 'wronged', 'sad', 'angry', 'jealous', 'lonely', 'sick')) not valid;
 alter table public.comforts drop constraint if exists comforts_kind_check, add constraint comforts_kind_check check (kind in (
   'hug', 'pat', 'here', 'cheer', 'support', 'treat',
   'kiss', 'love', 'missyou', 'flower', 'morning', 'night',
-  'water', 'meal', 'rest', 'custom'));
+  'water', 'meal', 'rest', 'custom')) not valid;
 create or replace function public.mood_label(p_mood text) returns text
 language sql immutable as $$
   select case p_mood
@@ -568,7 +568,7 @@ notify pgrst, 'reload schema';alter table public.comforts drop constraint if exi
   'hug', 'pat', 'here', 'cheer', 'support', 'treat', 'listen', 'holdhand', 'proud',
   'kiss', 'love', 'missyou', 'flower', 'morning', 'night', 'heart', 'cuddle', 'date',
   'water', 'meal', 'rest', 'warm', 'gethome', 'safe',
-  'joke', 'silly', 'kitty', 'dessert', 'gift', 'custom'));
+  'joke', 'silly', 'kitty', 'dessert', 'gift', 'custom')) not valid;
 create or replace function public.comfort_text(p_kind text) returns text
 language sql immutable as $$
   select case p_kind
@@ -633,7 +633,7 @@ create trigger realtime_pets after insert or update or delete on public.pets
   for each row execute function public.tg_changed();
 alter table public.notification_prefs drop constraint if exists notification_prefs_kind_check,
   add constraint notification_prefs_kind_check check (kind in ('pairing', 'place', 'mood', 'comfort', 'battery_low', 'guess',
-    'event', 'anniversary', 'cycle_care', 'sharing_changed', 'diary', 'memo', 'pet'));
+    'event', 'anniversary', 'cycle_care', 'sharing_changed', 'diary', 'memo', 'pet')) not valid;
 create or replace function public.notif_kinds() returns text[]
 language sql immutable parallel safe set search_path = public as $$
   select array['pairing', 'place', 'mood', 'comfort', 'battery_low', 'guess', 'event', 'anniversary', 'cycle_care', 'sharing_changed',

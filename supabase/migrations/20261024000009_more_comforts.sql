@@ -5,11 +5,13 @@
 -- 包在 upgrade-v2.sql 裡：已經跑過 upgrade-v2.sql 的人再跑一次就好，可以重複執行。
 -- =============================================================================
 
+-- not valid：已經存的資料不再檢查一次。upgrade-v2.sql 每次都從頭跑，後面的步驟會把清單換成更多種類；
+-- 資料表裡已經有後來才多的種類時（例如 0.2.6 的安撫、0.3.0 小貓的通知設定），這一步才不會失敗。新存的資料照樣檢查
 alter table public.comforts drop constraint if exists comforts_kind_check, add constraint comforts_kind_check check (kind in (
   'hug', 'pat', 'here', 'cheer', 'support', 'treat', 'listen', 'holdhand', 'proud',
   'kiss', 'love', 'missyou', 'flower', 'morning', 'night', 'heart', 'cuddle', 'date',
   'water', 'meal', 'rest', 'warm', 'gethome', 'safe',
-  'joke', 'silly', 'kitty', 'dessert', 'gift', 'custom'));
+  'joke', 'silly', 'kitty', 'dessert', 'gift', 'custom')) not valid;
 
 -- 通知用的文字，和 App 的 Catalog 一樣（Android 的 MoreMoodsTest 會比對）
 create or replace function public.comfort_text(p_kind text) returns text

@@ -336,9 +336,11 @@ create policy "xlk media: uploader delete" on storage.objects for delete to auth
 -- 通知種類：日曆紀錄（diary）、共同備忘錄（memo）
 -- -----------------------------------------------------------------------------
 
+-- not valid：已經存的資料不再檢查一次。upgrade-v2.sql 每次都從頭跑，後面的步驟會把清單換成更多種類；
+-- 資料表裡已經有後來才多的種類時（例如 0.2.6 的安撫、0.3.0 小貓的通知設定），這一步才不會失敗。新存的資料照樣檢查
 alter table public.notification_prefs drop constraint if exists notification_prefs_kind_check,
   add constraint notification_prefs_kind_check check (kind in ('pairing', 'place', 'mood', 'comfort', 'battery_low', 'guess',
-    'event', 'anniversary', 'cycle_care', 'sharing_changed', 'diary', 'memo'));
+    'event', 'anniversary', 'cycle_care', 'sharing_changed', 'diary', 'memo')) not valid;
 
 create or replace function public.notif_kinds() returns text[]
 language sql immutable parallel safe set search_path = public as $$

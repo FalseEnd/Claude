@@ -6,14 +6,16 @@
 -- =============================================================================
 
 -- 欄位上原本的 check 換成新的清單（名字是 Postgres 自動取的 moods_mood_check、comforts_kind_check）
+-- not valid：已經存的資料不再檢查一次。upgrade-v2.sql 每次都從頭跑，後面的步驟會把清單換成更多種類；
+-- 資料表裡已經有後來才多的種類時（例如 0.2.6 的安撫、0.3.0 小貓的通知設定），這一步才不會失敗。新存的資料照樣檢查
 alter table public.moods drop constraint if exists moods_mood_check, add constraint moods_mood_check check (mood in (
   'happy', 'sweet', 'excited', 'laugh', 'calm', 'relaxed',
   'missyou', 'shy', 'sleepy', 'hungry', 'bored', 'busy',
-  'tired', 'anxious', 'stressed', 'wronged', 'sad', 'angry', 'jealous', 'lonely', 'sick'));
+  'tired', 'anxious', 'stressed', 'wronged', 'sad', 'angry', 'jealous', 'lonely', 'sick')) not valid;
 alter table public.comforts drop constraint if exists comforts_kind_check, add constraint comforts_kind_check check (kind in (
   'hug', 'pat', 'here', 'cheer', 'support', 'treat',
   'kiss', 'love', 'missyou', 'flower', 'morning', 'night',
-  'water', 'meal', 'rest', 'custom'));
+  'water', 'meal', 'rest', 'custom')) not valid;
 
 -- 通知標題用的文字，和 App 的 Catalog 一樣（Android 的 CatalogSqlTest 會比對）
 create or replace function public.mood_label(p_mood text) returns text
