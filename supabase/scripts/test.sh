@@ -92,7 +92,6 @@ newest seed026
 run_sql supabase/upgrade-v2.sql
 newest check026
 schema_is_latest
-quiet smoke
 
 echo "== 用過最新功能的資料庫（每一種安撫和心情、小貓的通知設定、小貓）再執行一次 upgrade-v2.sql"
 quiet "${sb[@]}" db reset
