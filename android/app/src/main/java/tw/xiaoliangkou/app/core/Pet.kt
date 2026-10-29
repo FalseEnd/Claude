@@ -45,11 +45,18 @@ object Pet {
     fun stageOf(xp: Int): Stage = stages.last { xp >= it.xp }
     fun nextStage(xp: Int): Stage? = stages.firstOrNull { it.xp > xp }
 
-    data class Coat(val key: String, val label: String)
+    /** 一種貓：[since] 是資料庫要到哪一版才存得進去（0 是一開始就有的；和 supabase 的 pet_coats() 一樣） */
+    data class Coat(val key: String, val label: String, val since: Int = 0)
+
+    /** 0.3.1 多的品種要資料庫 schema 9 */
+    const val MORE_COATS = 9
 
     val coats = listOf(
         Coat("orange", "橘貓"), Coat("gray", "灰貓"), Coat("white", "白貓"),
         Coat("black", "黑貓"), Coat("calico", "三花貓"), Coat("tuxedo", "賓士貓"),
+        Coat("tabby", "虎斑貓", MORE_COATS), Coat("gingerwhite", "橘白貓", MORE_COATS), Coat("cow", "乳牛貓", MORE_COATS),
+        Coat("tortie", "玳瑁貓", MORE_COATS), Coat("silver", "美國短毛貓", MORE_COATS), Coat("british", "英國短毛貓", MORE_COATS),
+        Coat("fold", "摺耳貓", MORE_COATS), Coat("siamese", "暹羅貓", MORE_COATS), Coat("ragdoll", "布偶貓", MORE_COATS),
     )
 
     fun coat(key: String?) = coats.firstOrNull { it.key == key } ?: coats.first()

@@ -211,7 +211,8 @@ class RemoteRepository(
      */
     fun recheckSchema() {
         val st = _state.value
-        val behind = st.schemaOutdated || st.deviceInfoOutdated || st.stickersOutdated || st.moodsOutdated || st.petOutdated || st.tempOutdated
+        val behind = st.schemaOutdated || st.deviceInfoOutdated || st.stickersOutdated || st.moodsOutdated || st.petOutdated || st.tempOutdated ||
+            st.catsOutdated
         if (!behind || refreshing.get() > 0 || !rechecking.compareAndSet(false, true)) return
         scope.launch {
             try {
@@ -631,23 +632,44 @@ class RemoteRepository(
         if (st.couple == null) throw AppException(Errors.DB_MESSAGES.getValue("not_paired"), "not_paired")
     }
 
+    /** 0.3.1 多的品種：資料庫還存不了就先擋下來 */
+    private fun checkCoat(coat: String) {
+        if (!_state.value.canPickCoat(Pet.coat(coat))) throw AppException(Errors.CATS_OUTDATED, Errors.CATS_OUTDATED_CODE)
+    }
+
+    /** 還不知道資料庫的版本就選了新的品種，被舊的資料庫擋下來：記下資料庫還是舊的，說要更新 */
+    private fun catsBehind(e: AppException, coat: String): AppException {
+        if (Pet.coat(coat).since == 0 || (e.code != "invalid_input" && e.code != Errors.CATS_OUTDATED_CODE)) return e
+        _state.update { it.copy(dbSchema = (it.dbSchema ?: CATS_SCHEMA).coerceAtMost(CATS_SCHEMA - 1)) }
+        return AppException(Errors.CATS_OUTDATED, Errors.CATS_OUTDATED_CODE, e.status)
+    }
+
     override suspend fun adoptPet(name: String, coat: String) {
         val n = Pet.cleanName(name) ?: throw AppException(PET_NAME, "invalid_input")
         checkPet()
+        checkCoat(coat)
         val r = try {
             pet { api.adoptPet(buildJsonObject { put("name", n); put("coat", coat) }) }
         } catch (e: AppException) {
             // 對方剛好也領養了：顯示對方領養的那隻
             if (e.code == "pet_exists") reloadQuietly(::loadPet)
-            throw e
+            throw catsBehind(e, coat)
         }
         _state.update { it.copy(pet = r.copy(result = null)) }
     }
 
-    override suspend fun renamePet(name: String) {
+    override suspend fun editPet(name: String, coat: String) {
         val n = Pet.cleanName(name) ?: throw AppException(PET_NAME, "invalid_input")
         checkPet()
-        val r = pet { api.renamePet(buildJsonObject { put("name", n) }) }
+        val same = coat == _state.value.pet?.pet?.coat
+        if (!same) checkCoat(coat)
+        val r = try {
+            // 只改名字：schema 7 就有的 app_rename_pet；換品種要 schema 9 的 app_update_pet
+            if (same) pet { api.renamePet(buildJsonObject { put("name", n) }) }
+            else pet { api.updatePet(buildJsonObject { put("name", n); put("coat", coat) }) }
+        } catch (e: AppException) {
+            throw catsBehind(e, coat)
+        }
         _state.update { it.copy(pet = r.copy(result = null)) }
     }
 
@@ -708,6 +730,8 @@ class RemoteRepository(
         const val PET_SCHEMA = 7
         /** 存得了手機溫度的資料庫版本：沒有的話對方看不到溫度 */
         const val TEMP_SCHEMA = 8
+        /** 有 0.3.1 多的貓咪品種（和換品種）的資料庫版本 */
+        const val CATS_SCHEMA = Pet.MORE_COATS
         const val PET_NAME = "名字要 1～${Pet.NAME_MAX} 個字"
 
         const val STICKERS_OUTDATED_CODE = "stickers_outdated"

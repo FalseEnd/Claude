@@ -163,6 +163,17 @@ class PetTest {
         assertEquals(Mood.OK, Pet.mood(s(50.0, 60.0, 90.0), noon))
     }
 
+    /** 品種和資料庫的 pet_coats() 一樣（App 選得到的，資料庫都存得進去） */
+    @Test fun coatsMatchTheDatabase() {
+        val sql = java.io.File("../../supabase/setup.sql").readText()
+        val body = sql.substringAfterLast("create or replace function public.pet_coats()").substringAfter("array[").substringBefore("]")
+        val keys = Regex("'([^']*)'").findAll(body).map { it.groupValues[1] }.toList()
+        assertEquals(Pet.coats.map { it.key }, keys)
+        assertEquals(15, Pet.coats.size)
+        assertEquals(6, Pet.coats.count { it.since == 0 })
+        assertEquals(Pet.coats.size, Pet.coats.map { it.label }.toSet().size)
+    }
+
     @Test fun names() {
         assertEquals("小橘", Pet.cleanName("  小橘 "))
         assertEquals("一二三四五六七八九十一二", Pet.cleanName("一二三四五六七八九十一二"))

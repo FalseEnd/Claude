@@ -532,9 +532,10 @@ fun AccountScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.conta
 /**
  * 新功能都能用了，再執行一次 upgrade-v2.sql 還會多出來的：（短的名稱, 一行說明）。
  * 跑過舊版 upgrade-v2.sql 的資料庫：schema 2 沒有手機名稱與電信，schema 3 以前沒有 GIPHY 貼圖，schema 4 以前沒有更多心情和安撫，
- * schema 5 以前沒有 0.2.6 再多的安撫，schema 6 以前沒有一起養的小貓，schema 7 以前沒有手機溫度
+ * schema 5 以前沒有 0.2.6 再多的安撫，schema 6 以前沒有一起養的小貓，schema 7 以前沒有手機溫度，schema 8 以前沒有更多貓咪
  */
 internal fun upgradeGains(s: AppState): List<Pair<String, String>> = listOfNotNull(
+    ("更多貓咪" to "🐈 再多 9 種貓可以選：虎斑、暹羅、布偶、摺耳…，養了的也能換").takeIf { s.catsOutdated },
     ("手機溫度" to "🌡️ 看得到對方的手機溫度，太燙的時候提醒對方").takeIf { s.tempOutdated },
     ("養小貓" to "🐱 兩個人一起養一隻小貓，每天餵牠、陪牠玩，看牠長大").takeIf { s.petOutdated },
     when {
@@ -604,7 +605,7 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, gains: List
                 val st = r.state.value
                 // 現在的 upgrade-v2.sql 一次補齊：還缺最新的（一起養的小貓、更多心情和安撫）就是還沒跑成功
                 vm.toast(
-                    if (st.schemaOutdated || (minor && (st.moodsOutdated || st.petOutdated || st.tempOutdated))) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
+                    if (st.schemaOutdated || (minor && (st.moodsOutdated || st.petOutdated || st.tempOutdated || st.catsOutdated))) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
                     else if (minor) "資料庫更新好了，${gains.joinToString("、") { it.first }}都有了 🎉"
                     else "資料庫更新好了，新功能都可以用了 🎉",
                 )

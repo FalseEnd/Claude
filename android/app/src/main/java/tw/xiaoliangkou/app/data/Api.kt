@@ -114,6 +114,8 @@ class Api(private val rest: RestService, private val storage: StorageService? = 
     suspend fun pet(): PetResponse = call("app_pet")
     suspend fun adoptPet(body: JsonObject): PetResponse = call("app_adopt_pet", body)
     suspend fun renamePet(body: JsonObject): PetResponse = call("app_rename_pet", body)
+    /** 改名字和品種（schema 9 起才有） */
+    suspend fun updatePet(body: JsonObject): PetResponse = call("app_update_pet", body)
     suspend fun petAction(body: JsonObject): PetResponse = call("app_pet_action", body)
 
     /** 上傳到 media bucket（檔名都是新的 uuid，不覆寫） */
@@ -192,6 +194,8 @@ object Errors {
     const val SCHEMA_OUTDATED_CODE = "schema_outdated"
     const val PET_OUTDATED = "資料庫還沒有小貓：請到 Supabase 的 SQL Editor 再執行一次 upgrade-v2.sql（說明在「我的 › Supabase 與帳號」）"
     const val PET_OUTDATED_CODE = "pet_outdated"
+    const val CATS_OUTDATED = "資料庫還沒有新的貓咪品種：請到 Supabase 的 SQL Editor 再執行一次 upgrade-v2.sql（說明在「我的 › Supabase 與帳號」）"
+    const val CATS_OUTDATED_CODE = "cats_outdated"
 
     /** 2026-10 新增的函式：找不到代表還沒執行 upgrade-v2.sql，不是整個 setup.sql 沒跑 */
     val V2_FUNCTIONS = setOf(
@@ -254,6 +258,9 @@ object Errors {
             code in INVALID_INPUT -> AppException("輸入的資料格式不正確", "invalid_input", status)
             code == "PGRST202" && FUNCTION_NAME.find(message.orEmpty())?.groupValues?.get(1) in PET_FUNCTIONS ->
                 AppException(PET_OUTDATED, PET_OUTDATED_CODE, status)
+            // 0.3.1 多的品種（app_update_pet）：還有小貓，只是要再更新一次資料庫才能換品種
+            code == "PGRST202" && FUNCTION_NAME.find(message.orEmpty())?.groupValues?.get(1) == "app_update_pet" ->
+                AppException(CATS_OUTDATED, CATS_OUTDATED_CODE, status)
             // 找不到新功能的函式：還沒執行 upgrade-v2.sql
             code == "PGRST202" && FUNCTION_NAME.find(message.orEmpty())?.groupValues?.get(1) in V2_FUNCTIONS ->
                 AppException(SCHEMA_OUTDATED, SCHEMA_OUTDATED_CODE, status)

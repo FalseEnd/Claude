@@ -22,9 +22,11 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -126,13 +128,15 @@ class PetScreensTest {
     }
 
     /** 六種毛色、五個階段、每種表情和照顧的樣子 */
-    @Config(qualifiers = "w400dp-h1300dp-xhdpi")
+    @Config(qualifiers = "w400dp-h1600dp-xhdpi")
     @Test fun catGallery() {
         show(afternoon) {
             Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("毛色（小奶貓／大胖貓）")
-                Row { Pet.coats.forEach { c -> PetCat(c.key, 0, CatFace.OK, Modifier.weight(1f).height(80.dp)) } }
-                Row { Pet.coats.forEach { c -> PetCat(c.key, 4, CatFace.HAPPY, Modifier.weight(1f).height(80.dp)) } }
+                Pet.coats.chunked(5).forEach { row ->
+                    Row { row.forEach { c -> PetCat(c.key, 0, CatFace.OK, Modifier.weight(1f).height(72.dp)) } }
+                    Row { row.forEach { c -> PetCat(c.key, 4, CatFace.HAPPY, Modifier.weight(1f).height(72.dp)) } }
+                }
                 Text("長大")
                 Row { (0..4).forEach { st -> PetCat("gray", st, CatFace.OK, Modifier.weight(1f).height(110.dp)) } }
                 Text("表情")
@@ -235,6 +239,50 @@ class PetScreensTest {
         assertEquals("black", p.coat)
         assertEquals(0, p.xp)
         assertEquals("adopt", demo.state.value.pet!!.events.single().action)
+    }
+
+    /** 15 種貓、成貓的樣子（品種的特徵：重點色、摺耳、圓臉、花色） */
+    @Config(qualifiers = "w400dp-h1000dp-xhdpi")
+    @Test fun breeds() {
+        show(afternoon) {
+            Column(Modifier.fillMaxSize().padding(8.dp)) {
+                Pet.coats.chunked(3).forEach { row ->
+                    Row {
+                        row.forEach { c ->
+                            Column(Modifier.weight(1f), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                PetCat(c.key, 3, CatFace.OK, Modifier.fillMaxWidth().height(150.dp))
+                                Text(c.label)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        capture("105_pet_breeds")
+    }
+
+    /** 換品種：選暹羅貓，示範模式的麻糬就變成暹羅貓，紀錄寫誰換的 */
+    @Test fun changingTheBreed() {
+        setRepo(demo)
+        show(afternoon) { PetScreen(demo.state.collectAsStateValue(), vm, back = {}, open = {}) }
+        compose.onNodeWithContentDescription("改名字、換品種").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        assertTrue(has("牠是哪一種貓"))
+        captureScreenRoboImage("build/screens/106_pet_edit.png")
+        compose.onNodeWithText("暹羅貓").performScrollTo().performClick()
+        compose.onNodeWithText("好了").performClick()
+        idleUntil { demo.state.value.pet!!.pet!!.coat == "siamese" }
+        assertEquals("coat", demo.state.value.pet!!.events.first().action)
+        idleUntil { has("阿哲 把牠換成暹羅貓 ✨") }
+    }
+
+    /** 資料庫還沒有新的品種：鎖起來，點了說要更新，原本的 6 種照樣能選 */
+    @Test fun newBreedsAreLockedOnAnOldDatabase() {
+        show(afternoon) { PetScreen(state(p = null).copy(dbSchema = RemoteRepository.TEMP_SCHEMA), vm, back = {}, open = {}) }
+        assertTrue(has("🔒 暹羅貓"))
+        assertTrue(has("🔒 的品種要再執行一次 upgrade-v2.sql 才能選"))
+        assertTrue(compose.onAllNodesWithText("三花貓").fetchSemanticsNodes().isNotEmpty())
+        capture("107_pet_adopt_locked")
     }
 
     @Test fun outdatedDatabase() {

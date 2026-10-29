@@ -70,6 +70,10 @@ data class AppState(
     val tempOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.TEMP_SCHEMA
     /** 資料庫還沒有小貓（schema 7 以前）：其他功能照樣能用，再跑一次 upgrade-v2.sql 就好 */
     val petOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.PET_SCHEMA
+    /** 資料庫還沒有 0.3.1 多的品種（schema 9 以前）：原本的 6 種照樣能選 */
+    val catsOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.CATS_SCHEMA
+    /** 這種貓選得了嗎（資料庫存得進去）；還不知道版本時先當作可以，存不進去會再說 */
+    fun canPickCoat(c: tw.xiaoliangkou.app.core.Pet.Coat) = c.since == 0 || (!schemaOutdated && (dbSchema ?: c.since) >= c.since)
     /** 可以養小貓；還不知道版本時先當作可以，載入失敗會再說 */
     val petReady get() = !schemaOutdated && (dbSchema ?: RemoteRepository.PET_SCHEMA) >= RemoteRepository.PET_SCHEMA
     /** 兩個人共用的 GIPHY API key，還沒設定是 null */
@@ -239,7 +243,8 @@ interface CoupleRepository {
     // 一起養的小貓（一對情侶一隻，兩個人都能照顧）
     /** 領養：[coat] 是 [tw.xiaoliangkou.app.core.Pet.coats] 的 key */
     suspend fun adoptPet(name: String, coat: String)
-    suspend fun renamePet(name: String)
+    /** 改名字、換品種（[coat] 和原本一樣就只改名字） */
+    suspend fun editPet(name: String, coat: String)
     /** 照顧一次：[action] 是 feed、play、pet、bath、brush，餵食、陪玩要選 [item]；回傳得到的成長值、獎勵、有沒有長大 */
     suspend fun petAction(action: String, item: String?): PetResult
 

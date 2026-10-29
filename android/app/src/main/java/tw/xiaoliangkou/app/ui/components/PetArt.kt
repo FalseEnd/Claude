@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import tw.xiaoliangkou.app.core.Pet
 import kotlin.math.PI
 import kotlin.math.abs
@@ -109,17 +110,40 @@ fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifie
     }
 }
 
-/** 毛色：[line] 是嘴巴、鬍鬚、閉著的眼睛的顏色；深色的貓用淺色的線和黃綠色的眼睛 */
+/** 頭上、身上的一塊花色：位置和大小是相對頭（或身體）的外框，0～1 */
+private class Spot(val color: Color, val onHead: Boolean, val x: Float, val y: Float, val w: Float, val h: Float)
+
+/**
+ * 一種貓的樣子：
+ * - [body] 毛色、[light] 胸前、嘴邊、腳掌的淺色、[outline] 淺色的貓描一圈邊（不然在淺色的底上看不清楚）
+ * - [stripe] 虎斑的顏色、[stripes] 身上一邊幾條
+ * - [spots] 一塊一塊的花色（三花、玳瑁、乳牛）、[leftEar]、[rightEar] 耳朵另外的顏色、[tail] 尾巴的顏色
+ * - [points] 重點色（暹羅、布偶）：臉中間、耳朵、腳和尾巴深一點
+ * - [blaze] 額頭一道白、嘴巴整片白（賓士、橘白）
+ * - [iris] 眼睛的顏色：null 是深色的大眼睛；深色的貓（[dark]）用淺色的線
+ * - [fold] 摺耳、[ruff] 胸前蓬蓬的毛、[round] 圓圓的大臉頰
+ */
 private class CoatColors(
     val body: Color,
     val stripe: Color?,
     val light: Color,
     val outline: Color?,
     val dark: Boolean = false,
-    val patchA: Color? = null,
-    val patchB: Color? = null,
+    val spots: List<Spot> = emptyList(),
+    val leftEar: Color? = null,
+    val rightEar: Color? = null,
+    val tail: Color? = null,
+    val points: Color? = null,
+    val blaze: Boolean = false,
+    val iris: Color? = if (dark) IRIS else null,
+    val stripes: Int = 2,
+    val fold: Boolean = false,
+    val ruff: Boolean = false,
+    val round: Boolean = false,
 ) {
-    val line get() = if (dark) Color(0xFFF4E9EF) else INK
+    /** 臉的中間是深色的（暹羅）：嘴巴、鬍鬚也要用淺色的線才看得到 */
+    private val darkMask get() = points != null && points.luminance() < 0.25f
+    val line get() = if (dark || darkMask) Color(0xFFF4E9EF) else INK
 }
 
 private val INK = Color(0xFF4A2B39)
@@ -128,13 +152,59 @@ private val NOSE = Color(0xFFFF7FA0)
 private val TONGUE = Color(0xFFE5607F)
 private val IRIS = Color(0xFFE8D66A)
 
+private val ORANGE = Color(0xFFF2A65A)
+private val CHARCOAL = Color(0xFF4D4450)
+private val BLUE_EYE = Color(0xFF6DB5F2)
+private val COPPER_EYE = Color(0xFFF0A63C)
+
 private fun coatColors(key: String) = when (key) {
     "gray" -> CoatColors(Color(0xFFAAB4C2), Color(0xFF808B9C), Color(0xFFF0F3F7), null)
     "white" -> CoatColors(Color(0xFFFFFCF9), null, Color(0xFFFFFFFF), Color(0xFFE6D7CF))
     "black" -> CoatColors(Color(0xFF3F3A47), null, Color(0xFF575060), null, dark = true)
-    "calico" -> CoatColors(Color(0xFFFFF8F0), null, Color(0xFFFFFFFF), Color(0xFFE9DCCF), patchA = Color(0xFFF2A65A), patchB = Color(0xFF4D4450))
-    "tuxedo" -> CoatColors(Color(0xFF3F3A47), null, Color(0xFFFFFFFF), null, dark = true)
+    "calico" -> CoatColors(
+        Color(0xFFFFF8F0), null, Color(0xFFFFFFFF), Color(0xFFE9DCCF), leftEar = ORANGE, rightEar = CHARCOAL, tail = ORANGE,
+        spots = listOf(
+            Spot(ORANGE, true, -0.1f, -0.1f, 0.5f, 0.58f), Spot(CHARCOAL, true, 0.67f, -0.08f, 0.43f, 0.47f),
+            Spot(ORANGE, false, -0.12f, 0.2f, 0.45f, 0.6f), Spot(CHARCOAL, false, 0.72f, 0.05f, 0.4f, 0.45f),
+        ),
+    )
+    "tuxedo" -> CoatColors(Color(0xFF3F3A47), null, Color(0xFFFFFFFF), null, dark = true, blaze = true)
+    // 虎斑貓：咖啡色、深色的條紋多一點
+    "tabby" -> CoatColors(Color(0xFFB8875A), Color(0xFF6E4A2E), Color(0xFFF3E1CC), null, stripes = 3)
+    // 美國短毛貓：銀白色、黑色的粗條紋
+    "silver" -> CoatColors(Color(0xFFD9DDE3), Color(0xFF4A4F5A), Color(0xFFF7F8FA), Color(0xFFC3C8D0), stripes = 3, iris = Color(0xFF7CC47F))
+    // 暹羅貓：奶油色，臉、耳朵、腳、尾巴是深咖啡色，藍眼睛
+    "siamese" -> CoatColors(Color(0xFFF5E6CF), null, Color(0xFFFBF3E7), Color(0xFFE6D3B8), points = Color(0xFF5C4033), iris = BLUE_EYE)
+    // 布偶貓：白色長毛、淡淡的灰咖啡色重點、胸前蓬蓬的，藍眼睛
+    "ragdoll" -> CoatColors(Color(0xFFFBF7F2), null, Color(0xFFFFFFFF), Color(0xFFE8DED4), points = Color(0xFF9C8676), iris = BLUE_EYE, ruff = true)
+    // 英國短毛貓：藍灰色、大圓臉、橘色眼睛
+    "british" -> CoatColors(Color(0xFF8E9AAB), null, Color(0xFFA9B4C3), null, iris = COPPER_EYE, round = true)
+    // 摺耳貓：奶油色虎斑、耳朵摺下來、圓臉
+    "fold" -> CoatColors(Color(0xFFF1D9B5), Color(0xFFD4A574), Color(0xFFFBF1E2), Color(0xFFE5CBA6), fold = true, round = true, iris = COPPER_EYE)
+    // 玳瑁貓：黑色和橘色混在一起
+    "tortie" -> CoatColors(
+        Color(0xFF3F3A47), null, Color(0xFF5A4A44), null, dark = true, leftEar = Color(0xFFD9893F), tail = Color(0xFF3F3A47),
+        spots = listOf(
+            Spot(Color(0xFFD9893F), true, -0.05f, 0.0f, 0.42f, 0.5f), Spot(Color(0xFFB8682E), true, 0.62f, 0.45f, 0.3f, 0.35f),
+            Spot(Color(0xFFD9893F), false, 0.55f, 0.15f, 0.42f, 0.45f), Spot(Color(0xFFB8682E), false, 0.0f, 0.5f, 0.35f, 0.4f),
+        ),
+    )
+    // 乳牛貓：白底、大塊的黑色
+    "cow" -> CoatColors(
+        Color(0xFFFFFCF9), null, Color(0xFFFFFFFF), Color(0xFFE6D7CF), rightEar = CHARCOAL, tail = CHARCOAL,
+        spots = listOf(
+            Spot(CHARCOAL, true, 0.6f, -0.15f, 0.5f, 0.6f), Spot(CHARCOAL, true, 0.05f, 0.05f, 0.22f, 0.22f),
+            Spot(CHARCOAL, false, -0.1f, 0.05f, 0.42f, 0.5f), Spot(CHARCOAL, false, 0.7f, 0.5f, 0.38f, 0.42f),
+        ),
+    )
+    // 橘白貓：橘色、額頭到嘴巴和胸前是白的
+    "gingerwhite" -> CoatColors(Color(0xFFF7A85C), Color(0xFFE07F33), Color(0xFFFFFFFF), null, blaze = true)
     else -> CoatColors(Color(0xFFF7A85C), Color(0xFFE07F33), Color(0xFFFFE6CC), null)
+}
+
+/** 花色畫在 [clip]（頭或身體）裡面 */
+private fun DrawScope.spots(k: CoatColors, head: Boolean, left: Float, top: Float, w: Float, h: Float) {
+    k.spots.filter { it.onHead == head }.forEach { s -> drawOval(s.color, Offset(left + s.x * w, top + s.y * h), Size(s.w * w, s.h * h)) }
 }
 
 /** 小奶貓到大胖貓：整隻的大小、身體的寬和高（以頭的半徑為單位） */
@@ -158,7 +228,7 @@ private fun DrawScope.petKitty(c: Offset, r: Float, stage: Int, k: CoatColors, f
         )
     }
     if (k.outline != null) drawPath(tailPath, k.outline, style = Stroke(width = r * 0.34f, cap = StrokeCap.Round))
-    drawPath(tailPath, if (k.patchA != null) k.patchA else k.body, style = Stroke(width = r * 0.27f, cap = StrokeCap.Round))
+    drawPath(tailPath, k.points ?: k.tail ?: k.body, style = Stroke(width = r * 0.27f, cap = StrokeCap.Round))
     if (k.stripe != null) {
         // 尾巴尖深一點
         val tip = Offset(c.x + bodyW * 0.5f + r * (0.75f + swish * 0.28f), bodyTop + bodyH * 0.08f)
@@ -170,15 +240,22 @@ private fun DrawScope.petKitty(c: Offset, r: Float, stage: Int, k: CoatColors, f
     val bodyPath = Path().apply { addOval(androidx.compose.ui.geometry.Rect(bodyRect, Size(bw, bodyH))) }
     drawPath(bodyPath, k.body)
     clipPath(bodyPath) {
-        if (k.patchA != null) drawOval(k.patchA, Offset(c.x - bw * 0.62f, bodyTop + bodyH * 0.2f), Size(bw * 0.45f, bodyH * 0.6f))
-        if (k.patchB != null) drawOval(k.patchB, Offset(c.x + bw * 0.22f, bodyTop + bodyH * 0.05f), Size(bw * 0.4f, bodyH * 0.45f))
+        spots(k, head = false, c.x - bw / 2, bodyTop, bw, bodyH)
         if (k.stripe != null) listOf(-1f, 1f).forEach { side ->
-            listOf(0.3f, 0.5f).forEach { y ->
+            (0 until k.stripes).map { 0.25f + it * 0.2f }.forEach { y ->
                 drawLine(k.stripe, Offset(c.x + side * bw * 0.5f, bodyTop + bodyH * y), Offset(c.x + side * bw * 0.36f, bodyTop + bodyH * (y + 0.06f)), r * 0.07f, StrokeCap.Round)
             }
         }
-        // 胸前白白的一塊
-        drawOval(k.light, Offset(c.x - bw * 0.24f, bodyTop + bodyH * 0.12f), Size(bw * 0.48f, bodyH * 0.72f))
+        // 胸前白白的一塊（橘白、賓士的大一點）
+        val chestW = if (k.blaze) 0.6f else 0.48f
+        drawOval(k.light, Offset(c.x - bw * chestW / 2, bodyTop + bodyH * 0.1f), Size(bw * chestW, bodyH * 0.76f))
+    }
+    // 布偶貓：胸前蓬蓬的毛（一圈小半圓）
+    if (k.ruff) {
+        for (i in 0 until 5) {
+            val x = c.x + (i - 2) * r * 0.2f
+            drawCircle(k.light, r * 0.16f, Offset(x, bodyTop + r * (0.08f + (if (i % 2 == 0) 0.04f else 0f))))
+        }
     }
     if (outline != null) drawPath(bodyPath, k.outline!!, style = outline)
     if (face == CatFace.DIRTY) dirt(Offset(c.x, bodyTop), bw, bodyH, r)
@@ -186,15 +263,17 @@ private fun DrawScope.petKitty(c: Offset, r: Float, stage: Int, k: CoatColors, f
     listOf(-1f, 1f).forEach { side ->
         val px = c.x + side * bw * 0.2f
         val pawTop = bodyTop + bodyH - r * 0.23f
-        drawOval(k.light, Offset(px - r * 0.22f, pawTop), Size(r * 0.44f, r * 0.27f))
+        val paw = k.points?.let { lerp(it, k.body, 0.35f) } ?: k.light
+        drawOval(paw, Offset(px - r * 0.22f, pawTop), Size(r * 0.44f, r * 0.27f))
         if (outline != null) drawOval(k.outline!!, Offset(px - r * 0.22f, pawTop), Size(r * 0.44f, r * 0.27f), style = outline)
-        val toe = if (k.dark && k.light != Color.White) k.line.copy(alpha = 0.5f) else lerp(k.light, INK, 0.25f)
+        val toe = if ((k.dark && k.light != Color.White) || k.points != null) Color.White.copy(alpha = 0.45f) else lerp(k.light, INK, 0.25f)
         drawLine(toe, Offset(px - r * 0.05f, pawTop + r * 0.06f), Offset(px - r * 0.05f, pawTop + r * 0.18f), r * 0.03f, StrokeCap.Round)
         drawLine(toe, Offset(px + r * 0.06f, pawTop + r * 0.06f), Offset(px + r * 0.06f, pawTop + r * 0.18f), r * 0.03f, StrokeCap.Round)
     }
     // 耳朵：小奶貓的耳朵小一點；右耳偶爾抖一下
     val earSize = if (stage == 0) 0.85f else 1f
-    listOf(-1f, 1f).forEach { side ->
+    if (k.fold) foldedEars(c, r, k, ear)
+    else listOf(-1f, 1f).forEach { side ->
         val twitch = if (side > 0) ear * r * 0.12f else 0f
         val outer = Path().apply {
             moveTo(c.x + side * r * 0.9f, c.y - r * 0.3f)
@@ -202,11 +281,7 @@ private fun DrawScope.petKitty(c: Offset, r: Float, stage: Int, k: CoatColors, f
             lineTo(c.x + side * r * 0.22f, c.y - r * 0.8f)
             close()
         }
-        val earColor = when {
-            side < 0 && k.patchA != null -> k.patchA
-            side > 0 && k.patchB != null -> k.patchB
-            else -> k.body
-        }
+        val earColor = (if (side < 0) k.leftEar else k.rightEar) ?: k.points ?: k.body
         if (k.outline != null) drawPath(outer, k.outline, style = Stroke(width = r * 0.2f, join = StrokeJoin.Round))
         drawPath(outer, earColor)
         drawPath(outer, earColor, style = Stroke(width = r * 0.14f, join = StrokeJoin.Round))
@@ -219,14 +294,20 @@ private fun DrawScope.petKitty(c: Offset, r: Float, stage: Int, k: CoatColors, f
         drawPath(inner, CHEEK)
     }
     // 大頭
-    val headPath = Path().apply { addOval(androidx.compose.ui.geometry.Rect(Offset(c.x - r * 1.05f, c.y - r * 0.86f), Size(r * 2.1f, r * 1.72f))) }
+    // 英國短毛、摺耳：臉頰圓一點、寬一點
+    val hw = if (k.round) 1.14f else 1.05f
+    val hh = if (k.round) 0.9f else 0.86f
+    val headPath = Path().apply { addOval(androidx.compose.ui.geometry.Rect(Offset(c.x - r * hw, c.y - r * hh), Size(r * hw * 2, r * (hh + 0.86f)))) }
     if (k.outline != null) drawPath(headPath, k.outline, style = Stroke(width = r * 0.09f))
     drawPath(headPath, k.body)
     clipPath(headPath) {
-        if (k.patchA != null) drawOval(k.patchA, Offset(c.x - r * 1.25f, c.y - r * 1.05f), Size(r * 1.05f, r * 1.0f))
-        if (k.patchB != null) drawOval(k.patchB, Offset(c.x + r * 0.35f, c.y - r * 1.0f), Size(r * 0.9f, r * 0.8f))
-        // 賓士貓：額頭一道白、嘴巴整片白
-        if (k.dark && k.light == Color.White) {
+        spots(k, head = true, c.x - r * hw, c.y - r * hh, r * hw * 2, r * (hh + 0.86f))
+        // 暹羅、布偶：臉中間深一點（從眼睛到嘴巴）
+        k.points?.let { p ->
+            drawOval(p.copy(alpha = 0.85f), Offset(c.x - r * 0.62f, c.y - r * 0.3f), Size(r * 1.24f, r * 0.95f))
+        }
+        // 賓士、橘白：額頭一道白、嘴巴整片白
+        if (k.blaze) {
             val blaze = Path().apply {
                 moveTo(c.x - r * 0.12f, c.y - r * 0.9f); lineTo(c.x + r * 0.12f, c.y - r * 0.9f)
                 lineTo(c.x + r * 0.32f, c.y + r * 0.2f); lineTo(c.x - r * 0.32f, c.y + r * 0.2f); close()
@@ -246,8 +327,8 @@ private fun DrawScope.petKitty(c: Offset, r: Float, stage: Int, k: CoatColors, f
         }
         drawPath(curl, k.outline ?: lerp(k.body, INK, 0.15f), style = Stroke(width = r * 0.07f, cap = StrokeCap.Round))
     }
-    // 嘴巴旁邊白白的一塊
-    drawOval(k.light, Offset(c.x - r * 0.42f, c.y + r * 0.08f), Size(r * 0.84f, r * 0.5f))
+    // 嘴巴旁邊白白的一塊（重點色的貓是臉上的深色）
+    drawOval(k.points?.let { lerp(it, k.body, 0.2f) } ?: k.light, Offset(c.x - r * 0.42f, c.y + r * 0.08f), Size(r * 0.84f, r * 0.5f))
     eyes(c, r, k, face, blink, fast)
     val blush = when (face) { CatFace.HAPPY, CatFace.PURRING, CatFace.EATING -> 0.9f; CatFace.SAD, CatFace.DIRTY -> 0.35f; else -> 0.6f }
     listOf(-1f, 1f).forEach { side ->
@@ -273,7 +354,24 @@ private fun DrawScope.petKitty(c: Offset, r: Float, stage: Int, k: CoatColors, f
     accessories(c, r, stage, bodyTop, bw)
 }
 
-/** 眼睛：張開的（深色的貓是黃綠色的）、開心瞇起來的 ^ ^、睡著的 ︶ ︶ */
+/** 摺耳貓：小小的耳朵往前摺，貼在頭上 */
+private fun DrawScope.foldedEars(c: Offset, r: Float, k: CoatColors, ear: Float) {
+    listOf(-1f, 1f).forEach { side ->
+        val lift = if (side > 0) ear * r * 0.05f else 0f
+        val flap = Path().apply {
+            moveTo(c.x + side * r * 0.25f, c.y - r * 0.78f)
+            quadraticTo(c.x + side * r * 0.62f, c.y - r * 1.12f - lift, c.x + side * r * 0.9f, c.y - r * 0.62f)
+            quadraticTo(c.x + side * r * 0.62f, c.y - r * 0.7f, c.x + side * r * 0.25f, c.y - r * 0.78f)
+            close()
+        }
+        if (k.outline != null) drawPath(flap, k.outline, style = Stroke(width = r * 0.12f, join = StrokeJoin.Round))
+        drawPath(flap, (if (side < 0) k.leftEar else k.rightEar) ?: k.points ?: k.body)
+        // 摺下來的耳尖
+        drawLine(lerp(k.body, INK, 0.25f), Offset(c.x + side * r * 0.42f, c.y - r * 0.86f - lift * 0.5f), Offset(c.x + side * r * 0.78f, c.y - r * 0.68f), r * 0.035f, StrokeCap.Round)
+    }
+}
+
+/** 眼睛：張開的（深色的貓是黃綠色的，暹羅、布偶是藍色的）、開心瞇起來的 ^ ^、睡著的 ︶ ︶ */
 private fun DrawScope.eyes(c: Offset, r: Float, k: CoatColors, face: CatFace, blink: Float, fast: Float) {
     val eyeY = c.y - r * 0.02f
     listOf(-1f, 1f).forEach { side ->
@@ -298,8 +396,8 @@ private fun DrawScope.eyes(c: Offset, r: Float, k: CoatColors, face: CatFace, bl
                 val w = r * (if (big) 0.31f else 0.26f)
                 val h = r * (if (big) 0.37f else 0.32f) * blink
                 val top = Offset(ex - w / 2, eyeY - h / 2)
-                if (k.dark) {
-                    drawOval(IRIS, top, Size(w, h.coerceAtLeast(r * 0.03f)))
+                if (k.iris != null) {
+                    drawOval(k.iris, top, Size(w, h.coerceAtLeast(r * 0.03f)))
                     drawOval(Color(0xFF2A2430), Offset(ex - w * 0.22f, eyeY - h * 0.42f), Size(w * 0.44f, (h * 0.84f).coerceAtLeast(r * 0.02f)))
                 } else {
                     drawOval(INK, top, Size(w, h.coerceAtLeast(r * 0.03f)))

@@ -14,6 +14,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tw.xiaoliangkou.app.core.Pet
 import tw.xiaoliangkou.app.data.Api
 import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.Errors
@@ -157,6 +158,7 @@ class PetRemoteTest {
         rpc("app_pet") { payload(null) }
         rpc("app_adopt_pet") { payload(pet.replace("麻糬", "湯圓")) }
         rpc("app_rename_pet") { payload(pet.replace("麻糬", "大湯圓")) }
+        rpc("app_update_pet") { payload(pet.replace("麻糬", "大湯圓").replace("\"coat\":\"orange\"", "\"coat\":\"siamese\"")) }
         val r = repo(RemoteRepository.PET_SCHEMA)
         assertNull("還沒領養", r.state.value.pet!!.pet)
         fails("invalid_input") { r.adoptPet("一二三四五六七八九十一二三", "orange") }
@@ -165,8 +167,14 @@ class PetRemoteTest {
         r.adoptPet(" 湯圓 ", "white")
         assertEquals("""{"name":"湯圓","coat":"white"}""", calls("app_adopt_pet").single().json.toString())
         assertEquals("湯圓", r.state.value.pet!!.pet!!.name)
-        r.renamePet("大湯圓")
+        // 只改名字：schema 7 就有的 app_rename_pet
+        r.editPet("大湯圓", r.state.value.pet!!.pet!!.coat)
+        assertEquals("""{"name":"大湯圓"}""", calls("app_rename_pet").single().json.toString())
         assertEquals("大湯圓", r.state.value.pet!!.pet!!.name)
+        // 換品種：app_update_pet
+        r.editPet("大湯圓", "siamese")
+        assertEquals("""{"name":"大湯圓","coat":"siamese"}""", calls("app_update_pet").single().json.toString())
+        assertEquals("siamese", r.state.value.pet!!.pet!!.coat)
     }
 
     @Test fun partnerAdoptedFirst() = runBlocking<Unit> {
@@ -196,6 +204,32 @@ class PetRemoteTest {
         rpc("app_set_notification_prefs") { """{"ok":true}""" }
         fails(Errors.PET_OUTDATED_CODE) { r.setNotifPref("pet", false) }
         assertFalse(r.state.value.schemaOutdated)
+    }
+
+    /** 跑過 0.3.0 的 upgrade-v2.sql（schema 8）：原本的 6 種照樣能選，新的品種先擋下來 */
+    @Test fun newBreedsNeedTheUpgrade() = runBlocking<Unit> {
+        rpc("app_pet") { payload(null) }
+        rpc("app_adopt_pet") { payload(pet.replace("\"coat\":\"orange\"", "\"coat\":\"black\"")) }
+        val r = repo(RemoteRepository.TEMP_SCHEMA)
+        assertTrue(r.state.value.catsOutdated)
+        assertTrue(r.state.value.canPickCoat(Pet.coat("calico")))
+        assertFalse(r.state.value.canPickCoat(Pet.coat("ragdoll")))
+        fails(Errors.CATS_OUTDATED_CODE) { r.adoptPet("湯圓", "ragdoll") }
+        assertTrue(calls("app_adopt_pet").isEmpty())
+        r.adoptPet("湯圓", "black")
+        fails(Errors.CATS_OUTDATED_CODE) { r.editPet("湯圓", "siamese") }
+        assertTrue(calls("app_update_pet").isEmpty())
+    }
+
+    /** 還不知道資料庫的版本就選了新的品種，被舊的資料庫擋下來：記下來是舊的，說要更新 */
+    @Test fun oldDatabaseRejectsANewBreed() = runBlocking<Unit> {
+        rpc("app_pet") { payload(null) }
+        rpc("app_adopt_pet", 400) { """{"code":"P0001","message":"invalid_input","details":null,"hint":null}""" }
+        val r = repo(RemoteRepository.CATS_SCHEMA)
+        val e = fails(Errors.CATS_OUTDATED_CODE) { r.adoptPet("湯圓", "tabby") }
+        assertEquals(Errors.CATS_OUTDATED, e.message)
+        assertEquals(RemoteRepository.CATS_SCHEMA - 1, r.state.value.dbSchema)
+        assertEquals(Errors.CATS_OUTDATED_CODE, Errors.from(404, """{"code":"PGRST202","message":"Could not find the function public.app_update_pet(jsonb) in the schema cache"}""").code)
     }
 
     @Test fun notificationsOpenTheCat() {

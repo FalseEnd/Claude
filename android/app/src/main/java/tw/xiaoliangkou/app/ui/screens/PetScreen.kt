@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
@@ -145,6 +147,7 @@ internal fun petEventText(e: PetEvent, who: String, petName: String): String = w
     "streak" -> "連續照顧 ${e.item} 天 🔥"
     "grow" -> "長大成${e.item}了！🎉"
     "rename" -> "$who 幫牠改名叫「${e.item}」✏️"
+    "coat" -> "$who 把牠換成${Pet.coat(e.item).label} ✨"
     else -> "$who 照顧了牠"
 }
 
@@ -328,7 +331,7 @@ fun PetScreen(s: AppState, vm: AppViewModel, back: () -> Unit, open: (String) ->
         }
         Confetti(confetti)
     }
-    if (renaming && pet != null) RenameDialog(pet.name, vm) { renaming = false }
+    if (renaming && pet != null) EditPetDialog(s, pet, vm) { renaming = false }
     grown?.let { stage ->
         val st = Pet.stages.firstOrNull { it.label == stage }
         AlertDialog(
@@ -428,7 +431,7 @@ private fun PetStatusCard(pet: PetDto, s: AppState, rename: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(rename) { Icon(Icons.Rounded.Edit, "幫牠改名") }
+            IconButton(rename) { Icon(Icons.Rounded.Edit, "改名字、換品種") }
         }
         ButtonRow(spacing = 6.dp) {
             Pill("${stage.label} ${stage.emoji}", Cute.colors.butter.copy(alpha = 0.35f))
@@ -583,9 +586,7 @@ private fun AdoptCard(s: AppState, vm: AppViewModel) {
         Text("領養一隻小貓 🐾", style = MaterialTheme.typography.titleLarge)
         TidyText("你和 ${s.partnerName} 一起養，兩個人都能餵牠、陪牠玩。每天都要有人來看牠，牠會從小奶貓慢慢長成大胖貓。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("選一隻", style = MaterialTheme.typography.titleSmall)
-        ButtonRow(maxPerRow = 3, spacing = 8.dp) {
-            Pet.coats.forEach { c -> CoatChoice(c, coat == c.key) { coat = c.key } }
-        }
+        CoatGrid(s, vm, coat) { coat = it }
         CuteField(name, { name = it }, "幫牠取名字", placeholder = "例如：麻糬、湯圓（沒填就叫咪咪）", supporting = "最多 ${Pet.NAME_MAX} 個字，之後也可以改", isError = !valid)
         CuteButton("🐾 領養${Pet.coat(coat).label}", Modifier.fillMaxWidth(), enabled = valid && !vm.busy) {
             vm.act("歡迎回家！🎉", hearts = true) { it.adoptPet(name.ifBlank { "咪咪" }, coat) }
@@ -593,29 +594,57 @@ private fun AdoptCard(s: AppState, vm: AppViewModel) {
     }
 }
 
+/** 選哪一種貓：一排三隻；資料庫還存不了的品種（schema 9 以前）鎖起來，點了說要更新 */
 @Composable
-private fun CoatChoice(c: Pet.Coat, selected: Boolean, size: Dp = 84.dp, onClick: () -> Unit) {
-    Column(
-        Modifier.clip(RoundedCornerShape(20.dp))
-            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp)) else Modifier)
-            .bouncyClick(onClick = onClick).padding(6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        PetCat(c.key, 0, if (selected) CatFace.HAPPY else CatFace.OK, Modifier.fillMaxWidth().height(size * 0.8f))
-        Text(c.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+private fun CoatGrid(s: AppState, vm: AppViewModel, selected: String, stage: Int = 0, onSelect: (String) -> Unit) {
+    ButtonRow(maxPerRow = 3, spacing = 8.dp) {
+        Pet.coats.forEach { c ->
+            val ready = s.canPickCoat(c)
+            CoatChoice(c, selected == c.key, stage, locked = !ready) {
+                if (ready) onSelect(c.key) else vm.toast("再更新一次資料庫就能選${c.label}了（我的 › Supabase 與帳號）")
+            }
+        }
+    }
+    if (Pet.coats.any { !s.canPickCoat(it) }) {
+        TidyText("🔒 的品種要再執行一次 upgrade-v2.sql 才能選", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun RenameDialog(current: String, vm: AppViewModel, close: () -> Unit) {
-    var name by remember { mutableStateOf(current) }
+private fun CoatChoice(c: Pet.Coat, selected: Boolean, stage: Int, locked: Boolean, size: Dp = 84.dp, onClick: () -> Unit) {
+    Column(
+        Modifier.clip(RoundedCornerShape(20.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp)) else Modifier)
+            .bouncyClick(onClick = onClick).padding(6.dp)
+            .alpha(if (locked) 0.45f else 1f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        PetCat(c.key, stage, if (selected) CatFace.HAPPY else CatFace.OK, Modifier.fillMaxWidth().height(size * 0.8f))
+        Text(if (locked) "🔒 ${c.label}" else c.label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** 改名字、換品種：預覽是牠現在的大小 */
+@Composable
+private fun EditPetDialog(s: AppState, pet: PetDto, vm: AppViewModel, close: () -> Unit) {
+    var name by remember { mutableStateOf(pet.name) }
+    var coat by remember { mutableStateOf(pet.coat) }
     val valid = Pet.cleanName(name) != null
+    val stage = stageIndex(pet.xp)
     AlertDialog(
         onDismissRequest = close,
-        title = { Text("幫牠改名字") },
-        text = { CuteField(name, { name = it }, "名字", supporting = "最多 ${Pet.NAME_MAX} 個字", isError = !valid) },
-        confirmButton = { TextButton({ vm.act("改好了 ✏️", onDone = close) { it.renamePet(name) } }, enabled = valid && !vm.busy) { Text("改名") } },
+        title = { Text("幫${pet.name}改名字、換品種") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                CuteField(name, { name = it }, "名字", supporting = "最多 ${Pet.NAME_MAX} 個字", isError = !valid)
+                Text("牠是哪一種貓", style = MaterialTheme.typography.titleSmall)
+                CoatGrid(s, vm, coat, stage) { coat = it }
+            }
+        },
+        confirmButton = {
+            TextButton({ vm.act("改好了 ✏️", onDone = close) { it.editPet(name, coat) } }, enabled = valid && !vm.busy) { Text("好了") }
+        },
         dismissButton = { TextButton(close) { Text("取消") } },
     )
 }

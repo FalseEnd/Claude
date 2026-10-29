@@ -219,7 +219,7 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         ).sortedByDescending { it.time }
 
         return AppState(
-            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.TEMP_SCHEMA,
+            loaded = true, demo = true, connected = true, memosLoaded = true, dbSchema = RemoteRepository.CATS_SCHEMA,
             myDevice = DeviceStatus(
                 ME, 82, true, "wifi", "約 120 Mbps", false, 3_120, iso(), "samsung SM-S921B", iso(),
                 deviceName = "阿哲的 Galaxy S24", carrier = "台灣大哥大", batteryTemp = 31.5, thermal = 0,
@@ -771,11 +771,13 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         _state.update { it.copy(pet = petPayload(PetDto(name = n, coat = Pet.coat(coat).key, adoptedBy = ME, adoptedAt = iso()).with(born))) }
     }
 
-    override suspend fun renamePet(name: String) {
+    override suspend fun editPet(name: String, coat: String) {
         val n = Pet.cleanName(name) ?: throw AppException(RemoteRepository.PET_NAME, "invalid_input")
         val cur = _state.value.pet?.pet ?: throw notFound()
-        petLog.add(0, PetEvent(id(), ME, "rename", n, 0, iso()))
-        _state.update { it.copy(pet = petPayload(cur.copy(name = n))) }
+        val c = Pet.coat(coat).key
+        if (n != cur.name) petLog.add(0, PetEvent(id(), ME, "rename", n, 0, iso()))
+        if (c != cur.coat) petLog.add(0, PetEvent(id(), ME, "coat", c, 0, iso()))
+        _state.update { it.copy(pet = petPayload(cur.copy(name = n, coat = c))) }
     }
 
     override suspend fun petAction(action: String, item: String?): PetResult = care(ME, action, item)
