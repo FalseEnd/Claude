@@ -84,7 +84,7 @@ class StatusActionReceiver : BroadcastReceiver() {
         const val EXTRA_TITLE = "title"
         const val EXTRA_TEXT = "text"
         /** 打字回覆送「我在 💬」的安撫，悄悄話就是打的字 */
-        const val REPLY_KIND = "here"
+        const val REPLY_KIND = Catalog.REPLY_KIND
 
         fun reply(context: Context, notification: Long, comfortId: Long?, title: String, text: Boolean): PendingIntent {
             val i = Intent(context, StatusActionReceiver::class.java).setAction(REPLY)
@@ -118,7 +118,7 @@ class StatusActionReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra(StatusActionReceiver.EXTRA_TITLE).orEmpty()
         val comfortId = intent.getLongExtra(StatusActionReceiver.EXTRA_COMFORT, -1).takeIf { it >= 0 }
         val typing = intent.getBooleanExtra(StatusActionReceiver.EXTRA_TEXT, false)
-        val typed = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(StatusActionReceiver.KEY_REPLY)?.toString()?.trim()?.take(200)
+        val typed = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(StatusActionReceiver.KEY_REPLY)?.toString()?.trim()?.take(Catalog.MESSAGE_MAX)
         val c = context.applicationContext.container
         // 打字回覆卻沒打字：當作抱抱
         val text = typed?.ifEmpty { null }.takeIf { typing }

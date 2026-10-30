@@ -242,7 +242,7 @@ fun ComfortSheet(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.contai
         }
         if (Catalog.comforts.any { !s.canPick(it.since) }) MoreChoicesHint(s, "安撫")
         StickerChoice(s, vm, sticker, Catalog.comfort(pick)?.let { it.label to it.giphyQuery }, giphy) { sticker = it }
-        CuteField(message, { message = it.take(200) }, "悄悄話（選填）", placeholder = "辛苦了，晚上帶你去吃好吃的", singleLine = false)
+        CuteField(message, { message = it.take(Catalog.MESSAGE_MAX) }, "悄悄話（選填）", placeholder = "辛苦了，晚上帶你去吃好吃的", singleLine = false)
         CuteButton("送出${Catalog.comfort(pick)?.label}", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Send, enabled = !vm.busy) {
             val label = Catalog.comfort(pick)?.label
             vm.act("已送出$label，${s.partnerName} 收到通知了 💗", hearts = true, onDone = close) { it.sendComfort(pick, message.trim(), sticker.takeIf { s.stickersReady }) }

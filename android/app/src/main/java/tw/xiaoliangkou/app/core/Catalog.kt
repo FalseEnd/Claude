@@ -2,6 +2,11 @@ package tw.xiaoliangkou.app.core
 
 /** 心情、安撫、消費類別、來源的文字與表情符號 */
 object Catalog {
+    /** 安撫的悄悄話最多幾個字（和資料庫 comforts.message 的 check 一樣） */
+    const val MESSAGE_MAX = 200
+    /** 直接回一句話（首頁收到的安撫、通知上的「💬 回覆」）時送的安撫：「我在 💬」，悄悄話就是打的字 */
+    const val REPLY_KIND = "here"
+
     /** 畫面上的一組選項（心情分成三組、安撫分成四組，選項多了比較好找） */
     data class Group<T>(val title: String, val items: List<T>)
 

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.DoNotDisturbOn
 import androidx.compose.material.icons.rounded.LocationOn
@@ -88,6 +89,7 @@ import tw.xiaoliangkou.app.ui.components.CountUpText
 import tw.xiaoliangkou.app.ui.components.CoupleCats
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.CuteCard
+import tw.xiaoliangkou.app.ui.components.CuteField
 import tw.xiaoliangkou.app.ui.components.EmojiBubble
 import tw.xiaoliangkou.app.ui.components.HeartBeat
 import tw.xiaoliangkou.app.ui.components.Pill
@@ -127,7 +129,7 @@ fun HomeScreen(s: AppState, vm: AppViewModel, open: (String) -> Unit, sheet: (Sh
     }
 }
 
-/** 對方傳來的安撫：誰、說了什麼、附的貼圖和悄悄話；回抱一下或「收到了」就收起來 */
+/** 對方傳來的安撫：誰、說了什麼、附的貼圖和悄悄話；回一句話、回抱一下或「收到了」就收起來 */
 @Composable
 private fun ReceivedComfort(s: AppState, vm: AppViewModel, c: Comfort) {
     val kind = Catalog.comfort(c.kind)
@@ -145,6 +147,18 @@ private fun ReceivedComfort(s: AppState, vm: AppViewModel, c: Comfort) {
         if (message != null) TidyText(
             message, Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Cute.colors.card.copy(alpha = 0.8f)).padding(horizontal = 14.dp, vertical = 10.dp),
             style = MaterialTheme.typography.bodyMedium,
+        )
+        // 直接回一句話（和通知上的「💬 回覆」一樣）：先標成看過、再送「我在 💬」的安撫，悄悄話就是打的字
+        var reply by rememberSaveable(c.id) { mutableStateOf("") }
+        val text = reply.trim()
+        CuteField(
+            reply, { reply = it.take(Catalog.MESSAGE_MAX) }, "回一句悄悄話", placeholder = "例如：我也想你 💕",
+            trailing = {
+                IconButton({ vm.act("已回覆 ${s.partnerName} 💬", hearts = true) { it.readComfort(c.id); it.sendComfort(Catalog.REPLY_KIND, text) } },
+                    enabled = text.isNotEmpty() && !vm.busy) {
+                    Icon(Icons.AutoMirrored.Rounded.Send, "送出回覆", tint = if (text.isNotEmpty()) Cute.colors.partner else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
         )
         ButtonRow {
             CuteButton("回抱 🤗", small = true, enabled = !vm.busy) {

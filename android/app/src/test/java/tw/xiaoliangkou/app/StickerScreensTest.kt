@@ -23,6 +23,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
@@ -64,6 +66,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowLooper
+import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.data.AppException
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.Comfort
@@ -305,6 +308,23 @@ class StickerScreensTest {
         compose.onNodeWithText("回抱 🤗").performClick()
         idleUntil { done.size == 3 && !vm.busy }
         assertEquals(listOf("read ${c.id}", "read ${c.id}", "send hug null null"), done)
+    }
+
+    /** 首頁收到的安撫：直接回一句話（和通知上的「💬 回覆」一樣：先標成看過，再送「我在」的安撫，悄悄話是打的字） */
+    @Test fun replyingFromTheHomeCard() {
+        val done = mutableListOf<String>()
+        setRepo(object : CoupleRepository by demo {
+            override suspend fun readComfort(id: Long) { done += "read $id" }
+            override suspend fun sendComfort(kind: String, message: String?, sticker: String?) { done += "send $kind $message $sticker" }
+        })
+        val c = s.comforts.first { it.receiverId == s.myId && it.readAt == null }
+        show { HomeScreen(s, vm, {}, {}) }
+        compose.onNodeWithContentDescription("送出回覆").assertIsNotEnabled()
+        compose.onNodeWithText("回一句悄悄話").performTextInput("  我也想你 💕 ")
+        capture("38c_home_received_comfort_reply")
+        compose.onNodeWithContentDescription("送出回覆").assertIsEnabled().performClick()
+        idleUntil { done.size == 2 && !vm.busy }
+        assertEquals(listOf("read ${c.id}", "send ${Catalog.REPLY_KIND} 我也想你 💕 null"), done)
     }
 
     /** 標不起來（網路不穩）就不抱：卡片還在，不會變成抱了卻又跳出來、再抱一次 */
