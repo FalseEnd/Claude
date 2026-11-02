@@ -40,6 +40,46 @@ class CursorService : Service() {
             devices = description
             updateNotification()
         }
+
+        override fun onPosition(x: Float, y: Float, pressed: Int) {
+            CursorHub.onServicePosition(x, y, pressed)
+        }
+    }
+
+    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    private val controller = object : CursorHub.Controller {
+        override fun setScreen(w: Int, h: Int) { runCatching { reader?.setScreen(w, h) } }
+        override fun setPosition(x: Float, y: Float) { runCatching { reader?.setPosition(x, y) } }
+        override fun setMotion(type: Int, systemSpeed: Int, sensitivity: Float) {
+            runCatching { reader?.setMotion(type, systemSpeed, sensitivity) }
+        }
+    }
+
+    /** 依設定開/關接管模式（在背景執行，服務端最多等 1.5 秒確認獨佔結果） */
+    private fun applyTakeover() {
+        val prefs = Prefs(this)
+        worker.execute {
+            val r = reader ?: return@execute
+            val want = prefs.takeover
+            val err = try {
+                if (want) {
+                    CursorHub.pushMotion()
+                    CursorHub.pushState()
+                }
+                r.setTakeover(want, prefs.clickMode)
+            } catch (e: Exception) {
+                e.toString()
+            }
+            CursorHub.takeoverActive = want && err.isEmpty()
+            takeoverError = err
+            status = when {
+                CursorHub.takeoverActive -> "接管中（游標 = 點擊位置）"
+                want -> "估算模式（接管失敗）"
+                else -> "估算模式"
+            }
+            updateNotification()
+        }
     }
 
     private val connection = object : ServiceConnection {
@@ -50,6 +90,8 @@ class CursorService : Service() {
             try {
                 devices = r.start(callback)
                 status = "執行中（uid ${r.uid()}）"
+                CursorHub.controller = controller
+                applyTakeover()
             } catch (e: Exception) {
                 status = "啟動失敗：$e"
             }
@@ -58,6 +100,8 @@ class CursorService : Service() {
 
         override fun onServiceDisconnected(name: ComponentName?) {
             reader = null
+            CursorHub.controller = null
+            CursorHub.takeoverActive = false
             status = "Shizuku 連線中斷"
             updateNotification()
         }
@@ -66,6 +110,8 @@ class CursorService : Service() {
     private val binderDead = Shizuku.OnBinderDeadListener {
         status = "Shizuku 已停止（手機重開機後要重新啟動 Shizuku）"
         reader = null
+        CursorHub.controller = null
+        CursorHub.takeoverActive = false
         bound = false
         updateNotification()
     }
@@ -90,6 +136,7 @@ class CursorService : Service() {
         when (intent?.action) {
             ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
             ACTION_RECENTER -> CursorHub.recenter()
+            ACTION_APPLY_TAKEOVER -> { if (reader != null) applyTakeover() }
             ACTION_TOGGLE -> {
                 if (CursorHub.isShowing) CursorHub.release(TAG_HUB) else CursorHub.acquire(TAG_HUB)
             }
@@ -120,6 +167,9 @@ class CursorService : Service() {
     override fun onDestroy() {
         running = false
         Shizuku.removeBinderDeadListener(binderDead)
+        CursorHub.controller = null
+        CursorHub.takeoverActive = false
+        worker.shutdownNow()
         runCatching { reader?.stop() }
         runCatching { if (bound) Shizuku.unbindUserService(userServiceArgs, connection, true) }
         reader = null
@@ -174,10 +224,18 @@ class CursorService : Service() {
         const val ACTION_STOP = "stop"
         const val ACTION_RECENTER = "recenter"
         const val ACTION_TOGGLE = "toggle"
+        const val ACTION_APPLY_TAKEOVER = "applyTakeover"
 
         @Volatile var running = false
         @Volatile var status = "未啟動"
         @Volatile var devices = ""
+        @Volatile var takeoverError = ""
+
+        /** 設定改變後呼叫，讓服務重新套用接管模式 */
+        fun applyTakeover(context: Context) {
+            if (!running) return
+            context.startService(Intent(context, CursorService::class.java).setAction(ACTION_APPLY_TAKEOVER))
+        }
 
         fun start(context: Context) {
             val i = Intent(context, CursorService::class.java)

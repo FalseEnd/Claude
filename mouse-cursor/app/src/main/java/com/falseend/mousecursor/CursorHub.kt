@@ -55,6 +55,15 @@ object CursorHub {
     @Volatile private var framePending = false
     @Volatile private var pendingClick = 0
 
+    /** 接管模式下由 Shizuku 服務負責位置與注入；這裡只負責把設定/旋轉同步過去 */
+    interface Controller {
+        fun setScreen(w: Int, h: Int)
+        fun setPosition(x: Float, y: Float)
+        fun setMotion(type: Int, systemSpeed: Int, sensitivity: Float)
+    }
+    @Volatile var controller: Controller? = null
+    @Volatile var takeoverActive = false
+
     /** 校準用：原始位移 (counts) 與核心時間戳 */
     @Volatile var rawListener: ((Int, Int, Long) -> Unit)? = null
     /** UI 顯示用：最近事件來源 */
@@ -75,7 +84,19 @@ object CursorHub {
         model.sensitivity = prefs.sensitivity100 / 100f
         model.systemSpeed = systemPointerSpeed()
         model.type = resolveModelType()
+        pushMotion()
         main.post { applyStyle() }
+    }
+
+    fun pushMotion() {
+        controller?.setMotion(model.type.ordinal, model.systemSpeed, model.sensitivity)
+    }
+
+    /** 把目前位置與螢幕大小交給服務（開啟接管前、旋轉後） */
+    fun pushState() {
+        val c = controller ?: return
+        c.setScreen(screenW.toInt(), screenH.toInt())
+        c.setPosition(x, y)
     }
 
     fun systemPointerSpeed(): Int = runCatching {
@@ -249,6 +270,7 @@ object CursorHub {
                 screenW = w; screenH = h
                 x = w / 2; y = h / 2
                 model.reset()
+                pushState()
                 return
             }
             if (newRot != rotation) {
@@ -263,6 +285,7 @@ object CursorHub {
             x = x.coerceIn(0f, screenW - 1)
             y = y.coerceIn(0f, screenH - 1)
         }
+        pushState()
     }
 
     /** Shizuku 執行緒呼叫 */
@@ -284,6 +307,14 @@ object CursorHub {
         scheduleFrame()
     }
 
+    /** 接管模式：服務算好的位置（= 實際注入點擊的位置） */
+    fun onServicePosition(px: Float, py: Float, pressed: Int) {
+        synchronized(lock) { x = px; y = py }
+        lastSource = "接管"
+        if (pressed != 0) pendingClick = pressed
+        scheduleFrame()
+    }
+
     /** 真實座標（App 內 hover） */
     fun setAbsolute(ax: Float, ay: Float, source: String, buttonsPressed: Int = 0) {
         synchronized(lock) {
@@ -296,6 +327,7 @@ object CursorHub {
 
     fun recenter() {
         setAbsolute(screenW / 2, screenH / 2, "重設")
+        controller?.setPosition(screenW / 2, screenH / 2)
     }
 
     private val frameCallback = Choreographer.FrameCallback {

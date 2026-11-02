@@ -35,7 +35,15 @@
         <Button android:id="@+id/btnOverlay" style="@style/Btn" android:text="允許懸浮窗" />
         <Button android:id="@+id/btnA11y" style="@style/Btn" android:text="開啟無障礙服務（游標 100% 不透明）" />
 
-        <TextView style="@style/Section" android:text="③ 啟動" />
+        <TextView style="@style/Section" android:text="③ 模式" />
+        <CheckBox android:id="@+id/takeover" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="接管滑鼠（推薦）" />
+        <TextView style="@style/Hint"
+            android:text="開啟後由本 App 獨佔滑鼠、自己決定游標位置並送出點擊：畫出來的游標就是實際點擊的位置，移動再快、切換 App 都不會跑掉。只會獨佔滑鼠，鍵盤照常給遊戲。關閉則為「估算模式」（系統處理滑鼠，App 推算位置，可能有誤差）。" />
+        <TextView style="@style/Label" android:text="點擊送出方式（接管模式）" />
+        <Spinner android:id="@+id/clickMode" android:layout_width="match_parent" android:layout_height="wrap_content" />
+
+        <TextView style="@style/Section" android:text="④ 啟動" />
         <Button android:id="@+id/btnStart" style="@style/Btn" android:text="啟動游標（Shizuku）" />
         <Button android:id="@+id/btnRecenter" style="@style/Btn" android:text="游標置中" />
 
@@ -49,10 +57,10 @@
         <TextView android:id="@+id/idleLabel" style="@style/Label" />
         <SeekBar android:id="@+id/idle" android:layout_width="match_parent" android:layout_height="wrap_content" />
 
-        <TextView style="@style/Section" android:text="移動（Shizuku 模式）" />
+        <TextView style="@style/Section" android:text="移動速度" />
         <TextView style="@style/Hint"
-            android:text="Shizuku 讀到的是滑鼠原始位移，App 會照 Android 的游標加速公式換算成螢幕距離。第一次使用請按「自動校準」：它會比對真實游標，自動選出你手機用的加速曲線和倍率。把游標推到螢幕角落也能立刻重新對齊。" />
-        <Button android:id="@+id/btnCalibrate" style="@style/Btn" android:text="自動校準（建議）" />
+            android:text="接管模式：直接用下面的曲線與靈敏度調成你順手的速度即可，不需要校準。估算模式：請按「自動校準」讓推算位置貼近系統游標。" />
+        <Button android:id="@+id/btnCalibrate" style="@style/Btn" android:text="自動校準（估算模式用）" />
         <TextView style="@style/Label" android:text="加速曲線" />
         <Spinner android:id="@+id/model" android:layout_width="match_parent" android:layout_height="wrap_content" />
         <TextView android:id="@+id/sensLabel" style="@style/Label" />

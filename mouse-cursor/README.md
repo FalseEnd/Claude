@@ -5,19 +5,26 @@
 ## 為什麼一般 App 做不到？
 
 遊戲用 `PointerIcon.TYPE_NULL`（或 Pointer Capture）把游標藏起來後，滑鼠事件只會送給遊戲本身，
-一般 App 完全拿不到滑鼠座標。本 App 透過 **Shizuku** 以 `shell` 身分直接讀 `/dev/input/eventX`
-的滑鼠原始位移，再照 AOSP 的公式自己算出游標位置：
+一般 App 完全拿不到滑鼠座標。本 App 透過 **Shizuku** 以 `shell` 身分（免 root）直接讀 `/dev/input/eventX`。
 
-- **加速曲線**：實作了 Android 14 以前的 `SimpleVelocityControl`、Android 16 的 `CurvedVelocityControl`
-  （800 CPI、四段曲線）與關閉加速時的固定倍率；速度估計同樣用 LSQ2（100ms 視窗二次擬合）。
-- **自動校準**：在本 App 畫面中系統游標看得到，把同一段移動同時餵給三種模型，
-  以最小平方法求倍率並挑誤差最小者（Android 15 兩種曲線都有可能，靠這步判斷）。
-- **螢幕旋轉**：照 `MouseCursorController::setDisplayViewport()` 把游標換算到同一個實體位置，
-  所以從直向的桌面切回橫向的遊戲，游標不會跑掉。
-- **邊緣對齊**：游標撞到螢幕邊緣會被夾住，和系統游標一樣，推到角落就能完全重新對齊。
+### 接管模式（預設，推薦）
 
-> 曾嘗試 Android 14+ 無障礙「觀察滑鼠事件」，但它需要 `ACCESSIBILITY_MOTION_EVENT_OBSERVING`
-> （signature 權限），一般 App 拿不到，沒有權限時滑鼠反而會被吃掉，因此不採用。
+思路參考 [KeySync](https://github.com/aka-munan/keysync)：**不去猜系統游標在哪，而是自己當游標。**
+
+1. 對滑鼠裝置下 `EVIOCGRAB` 獨佔，系統收不到這支滑鼠的事件。
+2. 由 Shizuku 服務自己累加位移、算出游標位置。
+3. 用 `IInputManager.injectInputEvent`（shell 有 `INJECT_EVENTS` 權限）在該位置注入滑鼠事件
+   （左/右/中鍵、滾輪、懸停，順序與 InputReader 相同；側鍵轉成返回/前進），或選「觸控」送出手指點擊。
+4. 懸浮層畫的游標就是注入點擊的座標，**移動再快、切換 App、旋轉螢幕都不會跑掉**。
+
+和 KeySync 的差異：KeySync 用 Pointer Capture，需要讓懸浮窗取得焦點，鍵盤也會被搶走；
+本 App 只獨佔滑鼠裝置，**鍵盤照常送給遊戲**。鍵鼠一體（同一個 event 節點）的接收器會被偵測出來並拒絕接管，避免鍵盤失效。
+
+安全機制：先試注入成功才獨佔；App 或 Shizuku 一結束，fd 關閉即自動解除獨佔，滑鼠立刻還給系統。
+
+### 估算模式（接管失敗時的備案）
+
+滑鼠照常由系統處理，App 只讀原始位移並照 AOSP 公式推算位置：
 
 顯示用的懸浮層：
 - 開了本 App 的**無障礙服務** → `TYPE_ACCESSIBILITY_OVERLAY`，100% 不透明、蓋在遊戲全螢幕之上。
@@ -32,10 +39,10 @@
    1. 「授權 Shizuku」
    2. 「允許懸浮窗」，建議也「開啟無障礙服務」（游標更清楚）
    3. 「啟動游標（Shizuku）」
-3. 第一次使用務必按「自動校準」，在畫面中間大範圍、忽快忽慢地移動滑鼠 8 秒（不要碰到邊緣）。
-   完成後會顯示三種曲線的誤差，自動選最準的。
+3. 預設是接管模式，啟動後狀態列會顯示「接管中」與「［已接管］」的滑鼠；用「移動速度」調成順手的速度。
+   若遊戲對滑鼠點擊沒反應，把「點擊送出方式」改成「觸控」。
 4. 進入 MapleStory Worlds，就能看到游標。通知列有「置中 / 顯示隱藏 / 停止」快捷鍵。
-5. 若玩久了有一點偏移，把滑鼠往任一角落推一下就會重新對齊。
+5. 若接管失敗（狀態列會顯示原因），會自動退回估算模式；請按「自動校準」，偏移時把滑鼠推到角落即可重新對齊。
 
 > 手機重開機後 Shizuku 會停止，要在 Shizuku 裡再按一次啟動。
 
@@ -52,7 +59,8 @@ gradle assembleRelease   # 產出 app/build/outputs/apk/release/app-release.apk
 
 | 檔案 | 作用 |
 |---|---|
-| `MouseReaderService.kt` | 在 Shizuku（shell uid）裡執行，掃描並讀取所有滑鼠裝置，支援熱插拔／藍牙 |
+| `MouseReaderService.kt` | 在 Shizuku（shell uid）裡執行：掃描/讀取滑鼠、EVIOCGRAB 接管、計算位置，支援熱插拔／藍牙 |
+| `Injector.kt` | 在 Shizuku 裡注入滑鼠 / 觸控 / 按鍵事件 |
 | `CursorService.kt` | 前景服務，綁定上面的服務並把位移送給游標 |
 | `PointerModel.kt` | AOSP 游標加速模型（讀系統 `pointer_speed`） |
 | `Geometry.kt` | 螢幕旋轉時的游標座標換算 |
@@ -60,4 +68,4 @@ gradle assembleRelease   # 產出 app/build/outputs/apk/release/app-release.apk
 | `CursorAccessibilityService.kt` | 無障礙懸浮層（只畫游標，不讀畫面、不攔截輸入） |
 | `MainActivity.kt` | 設定畫面、自動校準 |
 
-單元測試：`gradle testDebugUnitTest`（旋轉換算、加速模型）
+單元測試：`gradle testDebugUnitTest`（旋轉換算、加速模型、裝置偵測）

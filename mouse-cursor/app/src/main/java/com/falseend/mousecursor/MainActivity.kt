@@ -154,6 +154,9 @@ class MainActivity : Activity() {
         sb.append("懸浮窗權限：").append(if (Settings.canDrawOverlays(this)) "已允許 ✔" else "未允許").append('\n')
         sb.append("無障礙服務：").append(if (a11y != null) "已開啟 ✔" else "未開啟（選用，開了游標 100% 不透明）").append('\n')
         sb.append("游標服務：").append(CursorService.status).append('\n')
+        if (CursorService.running && prefs.takeover && !CursorHub.takeoverActive &&
+            CursorService.takeoverError.isNotEmpty()
+        ) sb.append("接管失敗原因：").append(CursorService.takeoverError).append('\n')
         sb.append("顯示方式：").append(CursorHub.overlayDescription()).append('\n')
         sb.append("加速曲線：").append(Prefs.MODEL_NAMES[CursorHub.resolveModelType().ordinal + 1])
             .append("，系統游標速度 ").append(CursorHub.systemPointerSpeed()).append('\n')
@@ -199,6 +202,20 @@ class MainActivity : Activity() {
             CursorHub.reloadSettings()
         })
 
+        val takeover = findViewById<CheckBox>(R.id.takeover)
+        takeover.isChecked = prefs.takeover
+        takeover.setOnCheckedChangeListener { _, b ->
+            prefs.takeover = b
+            CursorService.applyTakeover(this)
+            main.postDelayed({ refresh() }, 1800)
+        }
+        val clickMode = findViewById<Spinner>(R.id.clickMode)
+        clickMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, Prefs.CLICK_MODES)
+        clickMode.setSelection(prefs.clickMode)
+        clickMode.onItemSelectedListener = itemSelected {
+            if (prefs.clickMode != it) { prefs.clickMode = it; CursorService.applyTakeover(this) }
+        }
+
         val click = findViewById<CheckBox>(R.id.click)
         click.isChecked = prefs.clickEffect
         click.setOnCheckedChangeListener { _, b -> prefs.clickEffect = b }
@@ -238,6 +255,9 @@ class MainActivity : Activity() {
      */
     private fun startCalibration() {
         if (!CursorService.running) { toast("請先啟動游標（Shizuku）"); return }
+        if (CursorHub.takeoverActive) {
+            toast("接管模式下游標就是點擊位置，不需要校準；直接調整靈敏度即可"); return
+        }
         if (calibration != null) return
         val cal = Calibration(CursorHub.systemPointerSpeed())
         calibration = cal
@@ -353,7 +373,9 @@ class MainActivity : Activity() {
                 it.onHover(ev, p.x, p.y)
             }
             // 在本 App 內時，把懸浮游標對齊到真實游標
-            if (CursorService.running && ev.actionMasked != MotionEvent.ACTION_HOVER_EXIT) {
+            if (CursorService.running && !CursorHub.takeoverActive &&
+                ev.actionMasked != MotionEvent.ACTION_HOVER_EXIT
+            ) {
                 CursorHub.setAbsolute(ev.rawX, ev.rawY, "App 同步")
             }
         }

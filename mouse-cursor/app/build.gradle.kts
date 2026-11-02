@@ -11,8 +11,8 @@ android {
         applicationId = "com.falseend.mousecursor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     buildTypes {
@@ -39,5 +39,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
     testImplementation("junit:junit:4.13.2")
 }

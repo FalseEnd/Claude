@@ -36,7 +36,19 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("click", true)
         set(v) = sp.edit().putBoolean("click", v).apply()
 
+    /** 接管模式：獨佔滑鼠、自己注入點擊，游標永遠與點擊位置一致 */
+    var takeover: Boolean
+        get() = sp.getBoolean("takeover", true)
+        set(v) = sp.edit().putBoolean("takeover", v).apply()
+
+    /** 接管時點擊的送出方式：0 滑鼠事件，1 觸控 */
+    var clickMode: Int
+        get() = sp.getInt("clickMode", 0)
+        set(v) = sp.edit().putInt("clickMode", v).apply()
+
     companion object {
+        val CLICK_MODES = listOf("滑鼠事件（左/右/中鍵、滾輪、懸停）", "觸控（左鍵 = 手指點擊）")
+
         val MODEL_NAMES = listOf(
             "自動（依系統版本）",
             "舊版加速（Android 14 以前）",
