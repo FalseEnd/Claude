@@ -1,0 +1,30 @@
+name: 滑鼠游標 APK
+
+on:
+  push:
+    paths:
+      - "mouse-cursor/**"
+      - ".github/workflows/mouse-cursor.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mouse-cursor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+      - run: gradle assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mouse-cursor-apk
+          path: mouse-cursor/app/build/outputs/apk/release/*.apk

@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">滑鼠游標</string>
+    <string name="a11y_label">滑鼠游標（懸浮層）</string>
+    <string name="a11y_desc">在遊戲隱藏系統游標時，於畫面最上層畫出滑鼠游標。本服務不讀取任何畫面內容或文字，只用來顯示游標（Android 14+ 可選擇觀察滑鼠座標）。</string>
+</resources>

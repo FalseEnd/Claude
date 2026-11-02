@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="滑鼠游標"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#22888888"
+            android:padding="12dp"
+            android:textIsSelectable="true" />
+
+        <TextView style="@style/Section" android:text="① 必要：Shizuku（免 root 讀取滑鼠）" />
+        <TextView style="@style/Hint"
+            android:text="安裝 Shizuku → 開發者選項開啟「無線偵錯」→ 在 Shizuku 用配對碼啟動。手機重開機後需要在 Shizuku 重新按一次啟動。" />
+        <Button android:id="@+id/btnShizuku" style="@style/Btn" android:text="授權 Shizuku" />
+
+        <TextView style="@style/Section" android:text="② 顯示權限（二選一，建議兩個都開）" />
+        <Button android:id="@+id/btnOverlay" style="@style/Btn" android:text="允許懸浮窗" />
+        <Button android:id="@+id/btnA11y" style="@style/Btn" android:text="開啟無障礙服務（游標 100% 不透明）" />
+
+        <TextView style="@style/Section" android:text="③ 啟動" />
+        <Button android:id="@+id/btnStart" style="@style/Btn" android:text="啟動游標（Shizuku）" />
+        <Button android:id="@+id/btnRecenter" style="@style/Btn" android:text="游標置中" />
+
+        <TextView style="@style/Section" android:text="外觀" />
+        <TextView android:id="@+id/sizeLabel" style="@style/Label" />
+        <SeekBar android:id="@+id/size" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <TextView style="@style/Label" android:text="顏色" />
+        <Spinner android:id="@+id/color" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <CheckBox android:id="@+id/click" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="點擊時顯示波紋（左藍 / 右橘 / 中綠）" />
+        <TextView android:id="@+id/idleLabel" style="@style/Label" />
+        <SeekBar android:id="@+id/idle" android:layout_width="match_parent" android:layout_height="wrap_content" />
+
+        <TextView style="@style/Section" android:text="移動（Shizuku 模式）" />
+        <TextView style="@style/Hint"
+            android:text="Shizuku 讀到的是滑鼠原始位移，需要換算成螢幕距離。若懸浮游標和實際點擊位置有落差，按「自動校準」；把游標推到螢幕角落也能立刻重新對齊。" />
+        <TextView android:id="@+id/sensLabel" style="@style/Label" />
+        <SeekBar android:id="@+id/sens" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <CheckBox android:id="@+id/accel" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="模擬系統游標加速" />
+        <Button android:id="@+id/btnCalibrate" style="@style/Btn" android:text="自動校準靈敏度" />
+
+        <TextView style="@style/Section" android:text="進階：直接追蹤（免 Shizuku、零誤差）" />
+        <TextView style="@style/Hint"
+            android:text="Android 14 以上部分手機支援讓無障礙服務「旁觀」滑鼠座標。按下測試後在下方區域移動滑鼠，成功就會常駐開啟；失敗會自動還原。" />
+        <Button android:id="@+id/btnTrackTest" style="@style/Btn" android:text="測試直接追蹤" />
+
+        <TextView
+            android:id="@+id/pad"
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:layout_marginTop="8dp"
+            android:background="#33888888"
+            android:gravity="center"
+            android:padding="16dp"
+            android:text="校準 / 測試區：在這裡移動滑鼠" />
+    </LinearLayout>
+</ScrollView>
