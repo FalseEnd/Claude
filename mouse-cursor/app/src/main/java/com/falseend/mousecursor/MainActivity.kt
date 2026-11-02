@@ -4,11 +4,13 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Point
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -21,7 +23,6 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import rikka.shizuku.Shizuku
-import kotlin.math.hypot
 
 class MainActivity : Activity() {
 
@@ -31,19 +32,11 @@ class MainActivity : Activity() {
     private lateinit var tvStatus: TextView
     private lateinit var tvPad: TextView
     private lateinit var btnStart: Button
-    private lateinit var btnTrackTest: Button
     private lateinit var tvSens: TextView
     private lateinit var seekSens: SeekBar
+    private lateinit var spModel: Spinner
 
-    // 校準 / 測試狀態
-    private var calibrating = false
-    private var realPath = 0.0
-    private var modelPath = 0.0
-    private var lastRealX = Float.NaN
-    private var lastRealY = Float.NaN
-    private var testing = false
-    private var appHoverCount = 0
-    private var a11yCountAtTestStart = 0L
+    private var calibration: Calibration? = null
 
     private val shizukuPermListener = Shizuku.OnRequestPermissionResultListener { _, result ->
         if (result == PackageManager.PERMISSION_GRANTED) toast("Shizuku 已授權")
@@ -59,9 +52,9 @@ class MainActivity : Activity() {
         tvStatus = findViewById(R.id.status)
         tvPad = findViewById(R.id.pad)
         btnStart = findViewById(R.id.btnStart)
-        btnTrackTest = findViewById(R.id.btnTrackTest)
         tvSens = findViewById(R.id.sensLabel)
         seekSens = findViewById(R.id.sens)
+        spModel = findViewById(R.id.model)
 
         Shizuku.addRequestPermissionResultListener(shizukuPermListener)
 
@@ -79,7 +72,6 @@ class MainActivity : Activity() {
         }
         findViewById<Button>(R.id.btnRecenter).setOnClickListener { CursorHub.recenter() }
         findViewById<Button>(R.id.btnCalibrate).setOnClickListener { startCalibration() }
-        btnTrackTest.setOnClickListener { toggleTracking() }
 
         setupStyle()
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -101,7 +93,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         Shizuku.removeRequestPermissionResultListener(shizukuPermListener)
-        CursorHub.modelDeltaListener = null
+        CursorHub.rawListener = null
         super.onDestroy()
     }
 
@@ -161,20 +153,16 @@ class MainActivity : Activity() {
         sb.append("Shizuku：").append(shizukuState()).append('\n')
         sb.append("懸浮窗權限：").append(if (Settings.canDrawOverlays(this)) "已允許 ✔" else "未允許").append('\n')
         sb.append("無障礙服務：").append(if (a11y != null) "已開啟 ✔" else "未開啟（選用，開了游標 100% 不透明）").append('\n')
-        sb.append("直接追蹤：").append(when {
-            a11y?.isTracking == true -> "開啟中（收到 ${CursorHub.a11yEventCount} 筆）"
-            Build.VERSION.SDK_INT < 34 -> "需要 Android 14 以上"
-            else -> "關閉"
-        }).append('\n')
         sb.append("游標服務：").append(CursorService.status).append('\n')
         sb.append("顯示方式：").append(CursorHub.overlayDescription()).append('\n')
+        sb.append("加速曲線：").append(Prefs.MODEL_NAMES[CursorHub.resolveModelType().ordinal + 1])
+            .append("，系統游標速度 ").append(CursorHub.systemPointerSpeed()).append('\n')
         if (CursorService.devices.isNotEmpty()) sb.append("滑鼠：\n").append(CursorService.devices)
         tvStatus.text = sb.toString()
         btnStart.text = if (CursorService.running) "停止游標" else "啟動游標（Shizuku）"
-        btnTrackTest.text = if (a11y?.isTracking == true) "關閉直接追蹤" else "測試直接追蹤（Android 14+ 實驗）"
     }
 
-    // ------------------------------------------------------------ 外觀設定
+    // ------------------------------------------------------------ 設定
 
     private fun setupStyle() {
         val size = findViewById<SeekBar>(R.id.size)
@@ -192,11 +180,14 @@ class MainActivity : Activity() {
         color.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
             Prefs.COLORS.map { it.first })
         color.setSelection(prefs.colorIndex)
-        color.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p: AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
-                prefs.colorIndex = pos; CursorHub.reloadSettings()
+        color.onItemSelectedListener = itemSelected { prefs.colorIndex = it; CursorHub.reloadSettings() }
+
+        spModel.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, Prefs.MODEL_NAMES)
+        spModel.setSelection(prefs.modelType + 1)
+        spModel.onItemSelectedListener = itemSelected {
+            if (prefs.modelType != it - 1) {
+                prefs.modelType = it - 1; CursorHub.reloadSettings(); refresh()
             }
-            override fun onNothingSelected(p: AdapterView<*>?) {}
         }
 
         seekSens.max = 400 - 10
@@ -207,10 +198,6 @@ class MainActivity : Activity() {
             updateSensLabel()
             CursorHub.reloadSettings()
         })
-
-        val accel = findViewById<CheckBox>(R.id.accel)
-        accel.isChecked = prefs.acceleration
-        accel.setOnCheckedChangeListener { _, b -> prefs.acceleration = b; CursorHub.reloadSettings() }
 
         val click = findViewById<CheckBox>(R.id.click)
         click.isChecked = prefs.clickEffect
@@ -228,7 +215,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateSensLabel() {
-        tvSens.text = "靈敏度：×%.2f".format(prefs.sensitivity100 / 100f)
+        tvSens.text = "靈敏度微調：×%.2f".format(prefs.sensitivity100 / 100f)
     }
 
     private fun simpleSeek(onChange: (Int) -> Unit) = object : SeekBar.OnSeekBarChangeListener {
@@ -237,89 +224,146 @@ class MainActivity : Activity() {
         override fun onStopTrackingTouch(s: SeekBar?) {}
     }
 
+    private fun itemSelected(f: (Int) -> Unit) = object : AdapterView.OnItemSelectedListener {
+        override fun onItemSelected(p: AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) = f(pos)
+        override fun onNothingSelected(p: AdapterView<*>?) {}
+    }
+
     // ------------------------------------------------------------ 校準
 
     /**
-     * 在本 App 畫面裡，系統游標是看得到的，hover 事件會告訴我們「真正」的位置。
-     * 比較真實移動距離與模型換算距離，自動算出靈敏度倍率。
+     * 在本 App 畫面裡系統游標看得到，hover 事件給的就是「真正」的位置。
+     * 把同一段時間的原始位移同時餵給三種加速模型，每 120ms 比較一次位移，
+     * 以最小平方法求出每個模型的倍率，挑誤差最小的那個。
      */
     private fun startCalibration() {
         if (!CursorService.running) { toast("請先啟動游標（Shizuku）"); return }
-        calibrating = true
-        realPath = 0.0; modelPath = 0.0
-        lastRealX = Float.NaN
-        CursorHub.modelDeltaListener = { dx, dy -> modelPath += hypot(dx.toDouble(), dy.toDouble()) }
-        tvPad.text = "校準中：請在這個畫面上用正常速度大範圍畫圈移動滑鼠 6 秒…"
-        main.postDelayed({ finishCalibration() }, 6000)
+        if (calibration != null) return
+        val cal = Calibration(CursorHub.systemPointerSpeed())
+        calibration = cal
+        CursorHub.rawListener = { dx, dy, t -> cal.onRaw(dx, dy, t) }
+        tvPad.text = "校準中（8 秒）：請在畫面中間大範圍畫圈、忽快忽慢地移動滑鼠，不要碰到螢幕邊緣…"
+        main.postDelayed({ finishCalibration() }, 8000)
     }
 
     private fun finishCalibration() {
-        calibrating = false
-        CursorHub.modelDeltaListener = null
-        if (modelPath < 200 || realPath < 200) {
-            tvPad.text = "校準失敗：移動量太少（真實 ${realPath.toInt()} px / 模型 ${modelPath.toInt()} px）"
+        val cal = calibration ?: return
+        calibration = null
+        CursorHub.rawListener = null
+        val results = cal.solve()
+        if (results == null) {
+            tvPad.text = "校準失敗：有效移動太少，請在畫面中間多移動一些再試一次。"
             return
         }
-        val ratio = realPath / modelPath
-        val newSens = (prefs.sensitivity100 * ratio).toInt().coerceIn(10, 400)
-        prefs.sensitivity100 = newSens
-        seekSens.progress = newSens - 10
+        val best = results.minBy { it.error }
+        prefs.modelType = best.type.ordinal
+        val sens = (best.scale * 100).toInt().coerceIn(10, 400)
+        prefs.sensitivity100 = sens
+        spModel.setSelection(prefs.modelType + 1)
+        seekSens.progress = sens - 10
         updateSensLabel()
         CursorHub.reloadSettings()
-        tvPad.text = "校準完成：比例 %.2f，靈敏度設為 ×%.2f\n（可以再做一次讓它更準）"
-            .format(ratio, newSens / 100f)
+        refresh()
+        val detail = results.joinToString("\n") {
+            "${if (it === best) "✔" else "　"} ${Prefs.MODEL_NAMES[it.type.ordinal + 1]}：誤差 %.1f%%，倍率 ×%.2f"
+                .format(it.error * 100, it.scale)
+        }
+        tvPad.text = "校準完成！\n$detail\n\n誤差越小越準；超過 15% 可以再做一次。"
     }
 
-    // ------------------------------------------------------------ 直接追蹤測試
-
-    private fun toggleTracking() {
-        val a11y = CursorAccessibilityService.instance
-        if (a11y == null) {
-            toast("請先在無障礙設定中開啟「滑鼠游標」服務")
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); return
+    private class Calibration(systemSpeed: Int) {
+        private val models = PointerModel.Type.entries.map { t ->
+            PointerModel().apply { type = t; this.systemSpeed = systemSpeed; sensitivity = 1f }
         }
-        if (a11y.isTracking) { a11y.stopTracking(); refresh(); return }
-        if (Build.VERSION.SDK_INT < 34) { toast("需要 Android 14 以上"); return }
-        appHoverCount = 0
-        a11yCountAtTestStart = CursorHub.a11yEventCount
-        if (!a11y.startTest(10)) { toast("此系統不支援直接追蹤，請使用 Shizuku 模式"); return }
-        testing = true
-        tvPad.text = "測試中：請在這個畫面上移動滑鼠 5 秒…\n（若滑鼠突然不能用，10 秒後會自動還原）"
-        main.postDelayed({ finishTrackingTest() }, 5000)
-        refresh()
-    }
-
-    private fun finishTrackingTest() {
-        testing = false
-        val a11y = CursorAccessibilityService.instance ?: return
-        val got = CursorHub.a11yEventCount - a11yCountAtTestStart
-        if (got > 20 && appHoverCount > 20) {
-            a11y.confirmTest()
-            tvPad.text = "✔ 直接追蹤可用！游標位置將完全精準（不需要 Shizuku 也能用）。"
-        } else {
-            a11y.stopTracking()
-            tvPad.text = "✘ 此手機不支援直接追蹤（服務收到 $got 筆、App 收到 $appHoverCount 筆）。\n請改用 Shizuku 模式。"
+        private class Bucket(n: Int) {
+            var rx = 0.0; var ry = 0.0
+            val mx = DoubleArray(n); val my = DoubleArray(n)
+            var valid = true
         }
-        refresh()
+        private val buckets = HashMap<Long, Bucket>()
+        private val lock = Any()
+        private var lastX = Float.NaN
+        private var lastY = Float.NaN
+
+        private fun bucket(): Bucket =
+            buckets.getOrPut(SystemClock.uptimeMillis() / BUCKET_MS) { Bucket(models.size) }
+
+        fun onRaw(dx: Int, dy: Int, t: Long) = synchronized(lock) {
+            val b = bucket()
+            models.forEachIndexed { i, m ->
+                val (x, y) = m.transform(dx, dy, t)
+                b.mx[i] += x; b.my[i] += y
+            }
+        }
+
+        fun onHover(ev: MotionEvent, screenW: Int, screenH: Int) = synchronized(lock) {
+            val b = bucket()
+            val x = ev.rawX; val y = ev.rawY
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_EXIT -> {
+                    b.valid = false; lastX = Float.NaN
+                }
+            }
+            // 碰到螢幕邊緣時真實游標被夾住、模型沒有，這段不採用
+            if (x < EDGE || y < EDGE || x > screenW - EDGE || y > screenH - EDGE) b.valid = false
+            if (!lastX.isNaN()) { b.rx += x - lastX; b.ry += y - lastY }
+            lastX = x; lastY = y
+        }
+
+        class Result(val type: PointerModel.Type, val scale: Double, val error: Double)
+
+        fun solve(): List<Result>? = synchronized(lock) {
+            // 只用前後相鄰也都有效的區段，減少延遲造成的邊界誤差
+            val keys = buckets.keys.sorted()
+            val use = keys.filter { k ->
+                buckets[k]!!.valid && buckets[k - 1]?.valid != false && buckets[k + 1]?.valid != false
+            }.map { buckets[it]!! }
+            val realPath = use.sumOf { kotlin.math.hypot(it.rx, it.ry) }
+            if (use.size < 15 || realPath < 1500) return null
+            models.indices.map { i ->
+                var rm = 0.0; var mm = 0.0; var rr = 0.0
+                for (b in use) {
+                    rm += b.rx * b.mx[i] + b.ry * b.my[i]
+                    mm += b.mx[i] * b.mx[i] + b.my[i] * b.my[i]
+                    rr += b.rx * b.rx + b.ry * b.ry
+                }
+                val k = if (mm > 0) rm / mm else 1.0
+                var res = 0.0
+                for (b in use) {
+                    val ex = b.rx - k * b.mx[i]; val ey = b.ry - k * b.my[i]
+                    res += ex * ex + ey * ey
+                }
+                Result(models[i].type, k, kotlin.math.sqrt(res / rr))
+            }
+        }
+
+        companion object {
+            const val BUCKET_MS = 120L
+            const val EDGE = 12
+        }
     }
 
     // ------------------------------------------------------------ 本畫面的真實滑鼠
 
     override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
-        if (ev.isFromSource(InputDevice.SOURCE_MOUSE) &&
-            (ev.actionMasked == MotionEvent.ACTION_HOVER_MOVE || ev.actionMasked == MotionEvent.ACTION_HOVER_ENTER)
-        ) {
-            if (testing) appHoverCount++
-            val rx = ev.rawX; val ry = ev.rawY
-            if (calibrating) {
-                if (!lastRealX.isNaN()) realPath += hypot((rx - lastRealX).toDouble(), (ry - lastRealY).toDouble())
-                lastRealX = rx; lastRealY = ry
+        if (ev.isFromSource(InputDevice.SOURCE_MOUSE) && ev.actionMasked in HOVER_ACTIONS) {
+            calibration?.let {
+                val p = Point()
+                @Suppress("DEPRECATION") windowManager.defaultDisplay.getRealSize(p)
+                it.onHover(ev, p.x, p.y)
             }
             // 在本 App 內時，把懸浮游標對齊到真實游標
-            if (CursorService.running) CursorHub.setAbsolute(rx, ry, "App 同步")
+            if (CursorService.running && ev.actionMasked != MotionEvent.ACTION_HOVER_EXIT) {
+                CursorHub.setAbsolute(ev.rawX, ev.rawY, "App 同步")
+            }
         }
         return super.dispatchGenericMotionEvent(ev)
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+
+    companion object {
+        private val HOVER_ACTIONS = setOf(
+            MotionEvent.ACTION_HOVER_MOVE, MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_EXIT)
+    }
 }

@@ -22,9 +22,10 @@ class Prefs(context: Context) {
         get() = sp.getInt("sens", 100)
         set(v) = sp.edit().putInt("sens", v).apply()
 
-    var acceleration: Boolean
-        get() = sp.getBoolean("accel", true)
-        set(v) = sp.edit().putBoolean("accel", v).apply()
+    /** 加速曲線：-1 = 自動，其餘為 [PointerModel.Type] 的 ordinal */
+    var modelType: Int
+        get() = sp.getInt("model", -1)
+        set(v) = sp.edit().putInt("model", v).apply()
 
     /** 閒置幾秒後隱藏，0 = 不隱藏 */
     var idleHideSec: Int
@@ -35,12 +36,14 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("click", true)
         set(v) = sp.edit().putBoolean("click", v).apply()
 
-    /** 無障礙「直接追蹤」模式（Android 14+ 實驗性，需先通過測試） */
-    var a11yTracking: Boolean
-        get() = sp.getBoolean("a11yTrack", false)
-        set(v) = sp.edit().putBoolean("a11yTrack", v).apply()
-
     companion object {
+        val MODEL_NAMES = listOf(
+            "自動（依系統版本）",
+            "舊版加速（Android 14 以前）",
+            "新版曲線（Android 16 / 部分 15）",
+            "無加速（Android 16 關閉游標加速）",
+        )
+
         /** 填色 to 外框 */
         val COLORS = listOf(
             "白色" to (0xFFFFFFFF.toInt() to 0xFF000000.toInt()),

@@ -51,17 +51,12 @@
 
         <TextView style="@style/Section" android:text="移動（Shizuku 模式）" />
         <TextView style="@style/Hint"
-            android:text="Shizuku 讀到的是滑鼠原始位移，需要換算成螢幕距離。若懸浮游標和實際點擊位置有落差，按「自動校準」；把游標推到螢幕角落也能立刻重新對齊。" />
+            android:text="Shizuku 讀到的是滑鼠原始位移，App 會照 Android 的游標加速公式換算成螢幕距離。第一次使用請按「自動校準」：它會比對真實游標，自動選出你手機用的加速曲線和倍率。把游標推到螢幕角落也能立刻重新對齊。" />
+        <Button android:id="@+id/btnCalibrate" style="@style/Btn" android:text="自動校準（建議）" />
+        <TextView style="@style/Label" android:text="加速曲線" />
+        <Spinner android:id="@+id/model" android:layout_width="match_parent" android:layout_height="wrap_content" />
         <TextView android:id="@+id/sensLabel" style="@style/Label" />
         <SeekBar android:id="@+id/sens" android:layout_width="match_parent" android:layout_height="wrap_content" />
-        <CheckBox android:id="@+id/accel" android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="模擬系統游標加速" />
-        <Button android:id="@+id/btnCalibrate" style="@style/Btn" android:text="自動校準靈敏度" />
-
-        <TextView style="@style/Section" android:text="進階：直接追蹤（免 Shizuku、零誤差）" />
-        <TextView style="@style/Hint"
-            android:text="Android 14 以上部分手機支援讓無障礙服務「旁觀」滑鼠座標。按下測試後在下方區域移動滑鼠，成功就會常駐開啟；失敗會自動還原。" />
-        <Button android:id="@+id/btnTrackTest" style="@style/Btn" android:text="測試直接追蹤" />
 
         <TextView
             android:id="@+id/pad"
@@ -71,6 +66,6 @@
             android:background="#33888888"
             android:gravity="center"
             android:padding="16dp"
-            android:text="校準 / 測試區：在這裡移動滑鼠" />
+            android:text="校準區：按「自動校準」後，在畫面中間大範圍、快慢交替地移動滑鼠（不要碰到螢幕邊緣）" />
     </LinearLayout>
 </ScrollView>
