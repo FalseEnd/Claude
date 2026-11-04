@@ -60,6 +60,8 @@ class RemoteRepository(
             realtime.events.collect { e ->
                 when (e) {
                     is RealtimeClient.Event.Notification -> {
+                        // 對方就在身邊時，標點的抵達、離開不用再跳通知（歷史紀錄裡還是有）
+                        if (e.kind == "place" && _state.value.partnerNearby) return@collect
                         onNotification(e)
                         _banners.emit(Banner(e.title, e.body.ifBlank { null }, e.kind, routeFor(e.kind, e.data)))
                     }
@@ -714,6 +716,8 @@ class RemoteRepository(
     }
 
     override fun setMyDevice(d: DeviceStatus) = _state.update { it.copy(myDevice = d) }
+
+    override fun setPartnerNearby(since: Instant?) = _state.update { it.copy(partnerNearSince = since) }
 
     override fun setMyLocation(lat: Double, lng: Double) = _state.update { it.copy(myLocation = LatLng(lat, lng)) }
 

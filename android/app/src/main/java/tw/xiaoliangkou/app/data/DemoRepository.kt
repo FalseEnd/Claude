@@ -501,6 +501,11 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
                     _state.update { it.copy(pet = petPayload(pet.with(later))) }
                     banner("${pet.name} 肚子餓了 🥺", "今天還沒有人餵牠，快來餵牠吃飯吧", "pet")
                 }
+                "nearby" -> {
+                    val near = _state.value.partnerNearby
+                    setPartnerNearby(if (near) null else now())
+                    if (!near) banner("小雨 就在你身邊 💞", "藍牙偵測到你們在一起", "nearby")
+                }
                 "petReset" -> {
                     petLog.clear()
                     _state.update { it.copy(pet = petPayload(null)) }
@@ -802,6 +807,8 @@ class DemoRepository(private val scope: CoroutineScope) : CoupleRepository {
         if (out.grewTo != null) banner("${cur.name} 長大了！🎉", "現在是${out.grewTo.label}了，謝謝你們的照顧", "pet")
         return PetResult(out.xp, out.bonus, out.streakBonus, out.grewTo?.label)
     }
+
+    override fun setPartnerNearby(since: Instant?) = _state.update { it.copy(partnerNearSince = since) }
 
     override suspend fun loadMoreHistory() = Unit
     override suspend fun setNotifPref(kind: String, enabled: Boolean) = _state.update { it.copy(notifPrefs = it.notifPrefs + (kind to enabled)) }

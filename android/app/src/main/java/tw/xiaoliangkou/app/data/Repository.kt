@@ -50,7 +50,12 @@ data class AppState(
     val myDevice: DeviceStatus? = null,
     /** 一起養的小貓：還沒載入（或沒配對、資料庫還沒有）是 null；載入了但還沒領養是 pet == null */
     val pet: PetResponse? = null,
+    /** 藍牙偵測到對方就在身邊：這次從什麼時候開始（只在這支手機，不上傳；不在身邊是 null） */
+    val partnerNearSince: java.time.Instant? = null,
 ) {
+    /** 對方就在身邊（藍牙偵測到） */
+    val partnerNearby get() = partnerNearSince != null
+
     /** 新功能都能用，只是資料庫還沒有手機名稱與電信（跑過舊的 upgrade-v2.sql）：再跑一次就好，不急 */
     val deviceInfoOutdated get() = !schemaOutdated && dbSchema != null && dbSchema < RemoteRepository.DEVICE_SCHEMA
     /** 資料庫還存不了 GIPHY 貼圖（schema 3 以前）：心情、安撫照樣能送，只是不能附貼圖。再跑一次 upgrade-v2.sql 就好 */
@@ -263,6 +268,8 @@ interface CoupleRepository {
     fun setMyLocation(lat: Double, lng: Double) {}
     /** 首頁「我的手機」：只存在這支手機，不會上傳（要分享手機狀態才會用 [reportDevice] 回報） */
     fun setMyDevice(d: DeviceStatus) {}
+    /** 藍牙偵測到對方就在身邊（[since] 是從什麼時候開始，不在身邊是 null）：只存在這支手機 */
+    fun setPartnerNearby(since: java.time.Instant?) {}
     suspend fun reportPlaceEvent(placeId: String, arrive: Boolean) {}
     /** 回傳新記帳的 id；同一筆已經記過就是 null */
     suspend fun addAutoExpense(parsed: PaymentParser.Parsed, dedupeKey: String): String? = null

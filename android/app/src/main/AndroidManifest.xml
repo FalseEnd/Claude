@@ -17,6 +17,12 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <!-- 藍牙偵測「就在身邊」：Android 12 起是「附近的裝置」（不拿來定位），以前的版本用舊的藍牙權限和位置 -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" tools:targetApi="31" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <!-- 日曆紀錄、備忘錄的語音 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 我的資料：沒有 Google 服務時，從 SIM 卡讀自己的電話號碼（使用者按了才問） -->

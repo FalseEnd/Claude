@@ -225,6 +225,7 @@ fun PrivacyScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                 if (s.cycleOwnerIsMe) ToggleRow("經期", sh?.shareCycle == true, "日期與預測，不含症狀", "🌸") { set("cycle", it) }
             }
         }
+        item { NearbyCard(s, vm) }
         item {
             CuteCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -647,7 +648,7 @@ fun DemoConsole(s: AppState, vm: AppViewModel, back: () -> Unit) {
                     listOf(
                         "sad" to "😢 心情不好", "happy" to "🥰 心情很好", "hug" to "🤗 給你抱抱", "battery" to "🔋 電量剩 19%",
                         "spend" to "💳 刷卡消費", "invite" to "💌 約你出去", "pause" to "🙈 暫停／恢復分享", "guess" to "💰 猜你的花費",
-                        "diary" to "📔 記錄今天的生活", "memo" to "📝 新增共同備忘錄",
+                        "diary" to "📔 記錄今天的生活", "memo" to "📝 新增共同備忘錄", "nearby" to "💞 走到你身邊／離開",
                     ).forEach { (k, l) -> SoftButton(l, small = true) { demo?.demoAction(k); vm.toast("${s.partnerName}：$l") } }
                 }
             }

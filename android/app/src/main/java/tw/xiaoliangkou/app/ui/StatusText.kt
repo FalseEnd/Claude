@@ -53,8 +53,11 @@ object StatusText {
         fun hm(i: Instant) = Fmt.time(i)
         val items = buildList {
             if (loc != null) {
-                val far = Derived.distanceToPartner(s)?.let { " · 相距 ${Fmt.distance(it)}" }.orEmpty()
+                val far = Derived.distanceText(s, "相距")?.let { " · $it" }.orEmpty()
                 add(Item(PLACE, "📍", Derived.partnerWhere(s) + far))
+            } else if (s.partnerNearby) {
+                // 沒分享位置，但藍牙偵測到就在身邊
+                add(Item(PLACE, "💞", "就在你身邊"))
             }
             d?.batteryLevel?.let { level ->
                 when {

@@ -209,8 +209,10 @@ private fun Hero(s: AppState) {
                 CountUpText(days, MaterialTheme.typography.displayLarge, prefix = "第 ", suffix = " 天", color = MaterialTheme.colorScheme.primary)
             }
         }
-        val loc = if (s.partnerSharing?.locationLive == true) {
-            listOfNotNull("${s.partnerName} ${Derived.partnerWhere(s)}", Derived.distanceToPartner(s)?.let { "相距 ${Fmt.distance(it)}" }).joinToString(" · ")
+        // 藍牙偵測到就在身邊：不管有沒有分享位置都寫（兩支手機就在一起，GPS 算的距離常常不準）
+        val loc = if (s.partnerNearby) "💞 ${s.partnerName} 就在你身邊"
+        else if (s.partnerSharing?.locationLive == true) {
+            listOfNotNull("${s.partnerName} ${Derived.partnerWhere(s)}", Derived.distanceText(s, "相距")).joinToString(" · ")
         } else if (s.partnerSharing?.paused == true) "${s.partnerName} 暫停分享到 ${Fmt.time(s.partnerSharing.pausedUntilInstant!!)}"
         else "${s.partnerName} 沒有分享位置"
         Text(loc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -297,7 +299,7 @@ private fun PartnerPhone(s: AppState, vm: AppViewModel) {
     val act = s.partnerStatus.location?.activity
     StatTile(
         "位置", if (ps.locationLive) Derived.partnerWhere(s) else "沒有分享位置", Modifier.fillMaxWidth(),
-        sub = Derived.distanceToPartner(s)?.let { "距離你 ${Fmt.distance(it)}" } ?: "—",
+        sub = Derived.distanceText(s, "距離你") ?: "—",
         labelIcon = { Icon(when (act) { "walking", "running" -> Icons.AutoMirrored.Rounded.DirectionsWalk; "transit" -> Icons.Rounded.Train; else -> Icons.Rounded.LocationOn }, null, tint = Cute.colors.partner, modifier = Modifier.size(14.dp)) },
     )
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

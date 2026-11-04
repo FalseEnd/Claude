@@ -252,6 +252,21 @@ class ServerIntegrationTest {
         return V2Files(photo, photoBytes, kept, secretBytes)
     }
 
+    /** 一起養的小貓：阿哲領養，小雨即時看到、餵牠；吃飽了再餵被擋下來（拆出來：整個流程寫在同一個函式裡，Kotlin 編譯時會 StackOverflow） */
+    private suspend fun pets(zhe: Client, yu: Client) {
+        eventually("還沒有小貓") { zhe.repo.state.value.pet != null && zhe.repo.state.value.pet!!.pet == null }
+        zhe.repo.adoptPet("湯圓", "ragdoll")
+        eventually("對方看到小貓") { yu.repo.state.value.pet?.pet?.name == "湯圓" }
+        eventually("領養通知") { yu.notes.any { it.kind == "pet" && it.title == "阿哲 領養了一隻小貓 🐱" } }
+        assertEquals("80 分不算餓，沒有成長值", 0, yu.repo.petAction("feed", "can").xp)
+        eventually("自己看到對方餵了") { zhe.repo.state.value.pet?.today?.feeds == 1 && zhe.repo.state.value.pet!!.events.first().userId == yu.userId }
+        eventually("餵食通知") { zhe.notes.any { it.kind == "pet" && it.title == "小雨 餵 湯圓 吃了罐罐 🥫" } }
+        failsWith("pet_full") { zhe.repo.petAction("feed", "kibble") }
+        repeat(3) { zhe.repo.petAction("pet", null) }
+        assertEquals(6, zhe.repo.state.value.pet!!.pet!!.xp)
+        eventually("對方看到成長值") { yu.repo.state.value.pet?.pet?.xp == 6 && yu.repo.state.value.pet?.today?.pets == 3 }
+    }
+
     /** 解除配對後：原本共用的檔案對方讀不到了，自己的私人檔案還在；沒配對不能寫日曆，備忘錄只能私人 */
     private suspend fun afterUnpair(zhe: Client, yu: Client, files: V2Files) {
         eventually("解除後看不到小貓") { yu.repo.state.value.pet == null && zhe.repo.state.value.pet == null }
@@ -419,18 +434,7 @@ class ServerIntegrationTest {
             // key 不會跟著歷史紀錄出去（通知的部分最後再檢查一次全部）
             listOf(zhe, yu).forEach { c -> assertTrue(apiCall { c.api.history(limit = 200) }.none { giphyKey in it.payload.toString() }) }
 
-            // 一起養的小貓：阿哲領養，小雨即時看到、餵牠；吃飽了再餵被擋下來
-            eventually("還沒有小貓") { zhe.repo.state.value.pet != null && zhe.repo.state.value.pet!!.pet == null }
-            zhe.repo.adoptPet("湯圓", "ragdoll")
-            eventually("對方看到小貓") { yu.repo.state.value.pet?.pet?.name == "湯圓" }
-            eventually("領養通知") { yu.notes.any { it.kind == "pet" && it.title == "阿哲 領養了一隻小貓 🐱" } }
-            assertEquals("80 分不算餓，沒有成長值", 0, yu.repo.petAction("feed", "can").xp)
-            eventually("自己看到對方餵了") { zhe.repo.state.value.pet?.today?.feeds == 1 && zhe.repo.state.value.pet!!.events.first().userId == yu.userId }
-            eventually("餵食通知") { zhe.notes.any { it.kind == "pet" && it.title == "小雨 餵 湯圓 吃了罐罐 🥫" } }
-            failsWith("pet_full") { zhe.repo.petAction("feed", "kibble") }
-            repeat(3) { zhe.repo.petAction("pet", null) }
-            assertEquals(6, zhe.repo.state.value.pet!!.pet!!.xp)
-            eventually("對方看到成長值") { yu.repo.state.value.pet?.pet?.xp == 6 && yu.repo.state.value.pet?.today?.pets == 3 }
+            pets(zhe, yu)
 
             // 地點與地理圍欄
             zhe.repo.savePlace(null, buildJsonObject {

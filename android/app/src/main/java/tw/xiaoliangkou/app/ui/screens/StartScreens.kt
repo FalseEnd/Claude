@@ -81,6 +81,7 @@ import kotlinx.serialization.json.put
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.data.InviteLink
 import tw.xiaoliangkou.app.data.Supabase
+import tw.xiaoliangkou.app.service.NearbyRadar
 import tw.xiaoliangkou.app.service.ShareService
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.components.CoupleCats
@@ -481,6 +482,7 @@ fun PermissionsScreen(vm: AppViewModel, back: (() -> Unit)?, done: (() -> Unit)?
     val location = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions(), refresh)
     val background = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission(), refresh)
     val activity = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission(), refresh)
+    val nearby = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions(), refresh)
 
     @Suppress("UNUSED_VARIABLE") val t = tick
     val hasNotif = Build.VERSION.SDK_INT < 33 || granted(context, Manifest.permission.POST_NOTIFICATIONS)
@@ -489,6 +491,7 @@ fun PermissionsScreen(vm: AppViewModel, back: (() -> Unit)?, done: (() -> Unit)?
     val hasBattery = context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) == true
     val hasListener = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
     val hasActivity = Build.VERSION.SDK_INT < 29 || granted(context, Manifest.permission.ACTIVITY_RECOGNITION)
+    val hasNearby = NearbyRadar.hasPermission(context)
 
     LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { ScreenHeader("權限與背景執行", onBack = back) }
@@ -520,6 +523,9 @@ fun PermissionsScreen(vm: AppViewModel, back: (() -> Unit)?, done: (() -> Unit)?
         }
         if (Build.VERSION.SDK_INT >= 29) item {
             Step("👣", "體能活動（選用）", "計算今天走了幾步", hasActivity) { activity.launch(Manifest.permission.ACTIVITY_RECOGNITION) }
+        }
+        if (Build.VERSION.SDK_INT >= 31) item {
+            Step("💞", "附近的裝置（選用）", "用藍牙偵測對方是不是就在身邊（不拿來定位）", hasNearby) { nearby.launch(NearbyRadar.permissions) }
         }
         item { Note("小米、OPPO、vivo、三星等手機，請另外在系統設定允許小倆口「自動啟動」或「背景活動」，不然可能收不到通知。", "📱") }
         if (done != null) item { CuteButton(if (hasNotif && hasLoc) "完成，開始使用 💞" else "先跳過，之後再說", Modifier.fillMaxWidth(), onClick = done) }

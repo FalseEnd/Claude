@@ -236,6 +236,7 @@ class AppContainer(private val app: Application) {
     suspend fun reloadPrefs() { _prefs.value = settings.load() }
 
     suspend fun setMorningWeather(on: Boolean, minutes: Int) { settings.setMorningWeather(on, minutes); reloadPrefs() }
+    suspend fun setNearbyBluetooth(on: Boolean) { settings.setNearbyBluetooth(on); reloadPrefs() }
 
     /** 「測試連線」：呼叫 app_health，成功才存起來 */
     suspend fun testConnection(rawUrl: String, rawKey: String) {

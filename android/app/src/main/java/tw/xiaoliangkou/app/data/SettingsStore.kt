@@ -39,6 +39,8 @@ class SettingsStore(private val context: Context) {
         /** 每天早上的天氣通知，和幾點送（從半夜算起的分鐘，預設 7:30） */
         val morningWeather: Boolean = true,
         val morningMinutes: Int = DEFAULT_MORNING,
+        /** 藍牙偵測「就在身邊」（還要有權限、藍牙打開才會真的偵測） */
+        val nearbyBluetooth: Boolean = true,
     ) {
         val configured get() = supabaseUrl.isNotEmpty() && supabaseKey.isNotEmpty()
     }
@@ -67,6 +69,7 @@ class SettingsStore(private val context: Context) {
         val recentStickers = stringPreferencesKey("recent_stickers")
         val morningWeather = booleanPreferencesKey("morning_weather")
         val morningMinutes = intPreferencesKey("morning_minutes")
+        val nearbyBluetooth = booleanPreferencesKey("nearby_bluetooth")
         // 舊版留下的設定，登出時順便清掉
         val legacy = listOf(stringPreferencesKey("server_url"), stringPreferencesKey("token"))
     }
@@ -92,6 +95,7 @@ class SettingsStore(private val context: Context) {
             recentStickers = stickers(p[K.recentStickers]),
             morningWeather = p[K.morningWeather] ?: true,
             morningMinutes = p[K.morningMinutes]?.takeIf { it in 0 until 24 * 60 } ?: DEFAULT_MORNING,
+            nearbyBluetooth = p[K.nearbyBluetooth] ?: true,
         )
     }
 
@@ -143,6 +147,7 @@ class SettingsStore(private val context: Context) {
     suspend fun setAutoBookkeeping(v: Boolean) = edit { it[K.autoBookkeeping] = v }
     suspend fun setStatusNotification(v: Boolean) = edit { it[K.statusNotification] = v }
     suspend fun setStatusItems(items: Set<String>) = edit { it[K.statusItems] = items }
+    suspend fun setNearbyBluetooth(on: Boolean) = edit { it[K.nearbyBluetooth] = on }
     suspend fun setMorningWeather(on: Boolean, minutes: Int) = edit {
         it[K.morningWeather] = on
         it[K.morningMinutes] = minutes.coerceIn(0, 24 * 60 - 1)

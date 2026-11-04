@@ -3,6 +3,7 @@ package tw.xiaoliangkou.app.service
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationManager
+import android.bluetooth.BluetoothAdapter
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -59,6 +60,7 @@ import java.util.UUID
  * - 保持即時連線（Supabase Realtime），讓 App 在背景也收得到抱抱、抵達通知；連不上時每 3 分鐘用 RPC 補抓
  * - 分享位置時回報位置，並在手機上判斷是否進出標點
  * - 回報電量、充電、網路、螢幕、勿擾、步數
+ * - 藍牙偵測對方是不是就在身邊（[NearbyRadar]）
  */
 class ShareService : LifecycleService() {
     companion object {
@@ -110,6 +112,17 @@ class ShareService : LifecycleService() {
         override fun onReceive(context: Context, intent: Intent) = scheduleDeviceReport(5_000)
     }
 
+    /** 藍牙偵測「就在身邊」：結果放進資料來源（只在這支手機） */
+    private val radar by lazy { NearbyRadar(this, lifecycleScope) { since -> container.repo.value?.setPartnerNearby(since) } }
+
+    /** 藍牙打開或關掉：偵測重新開始（或停下來） */
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)
+            if (state == BluetoothAdapter.STATE_ON || state == BluetoothAdapter.STATE_OFF) radar.refresh()
+        }
+    }
+
     private val stepListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             val first = stepTotal == null
@@ -136,7 +149,7 @@ class ShareService : LifecycleService() {
 
         lifecycleScope.launch {
             container.repo.collectLatest { repo ->
-                if (repo !is RemoteRepository) { stopLocation(); return@collectLatest }
+                if (repo !is RemoteRepository) { stopLocation(); radar.stop(); return@collectLatest }
                 coroutineScope {
                     // 連線狀態與分享設定改變時，開關定位、回報手機狀態
                     launch {
@@ -147,6 +160,19 @@ class ShareService : LifecycleService() {
                                 if (sharingLocation) startLocation() else stopLocation()
                                 if (connected) scheduleDeviceReport(1_000)
                             }
+                    }
+                    // 藍牙偵測「就在身邊」：設定打開、有配對才開；暫停分享時只聽不廣播（每分鐘看一下暫停結束了沒）
+                    launch {
+                        val everyMinute = flow { while (true) { emit(Unit); delay(60_000L) } }
+                        combine(repo.state, container.prefs.filterNotNull(), everyMinute) { st, p, _ ->
+                            val couple = st.couple?.id
+                            val me = st.myId
+                            val partner = st.partner?.id
+                            if (!p.nearbyBluetooth || couple == null || me == null || partner == null) null
+                            else NearbyRadar.Config(couple, me, partner, advertise = st.mySharing?.paused != true)
+                        }
+                            .distinctUntilChanged()
+                            .collect { radar.update(it) }
                     }
                     // 常駐通知：對方的狀態有變（或設定改了）就更新；每分鐘再看一次，「正在用手機」才會自己變回「休息中」
                     launch {
@@ -186,8 +212,9 @@ class ShareService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         goForeground(null)
-        // 剛允許定位、體能活動權限時會再呼叫一次 start：這時才開始定位、計步
+        // 剛允許定位、體能活動、附近的裝置權限時會再呼叫一次 start：這時才開始定位、計步、偵測在身邊
         if (wantLocation) startLocation()
+        radar.refresh()
         if (receiversRegistered) registerSteps()
         return START_STICKY
     }
@@ -228,6 +255,7 @@ class ShareService : LifecycleService() {
             if (Build.VERSION.SDK_INT >= 23) addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
         }
         ContextCompat.registerReceiver(this, changeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(this, bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
         getSystemService(ConnectivityManager::class.java)?.registerDefaultNetworkCallback(networkCallback)
         registerSteps()
     }
@@ -378,8 +406,10 @@ class ShareService : LifecycleService() {
 
     override fun onDestroy() {
         stopLocation()
+        radar.stop()
         if (receiversRegistered) {
             runCatching { unregisterReceiver(changeReceiver) }
+            runCatching { unregisterReceiver(bluetoothReceiver) }
             runCatching { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(networkCallback) }
             if (stepsRegistered) runCatching { getSystemService(SensorManager::class.java)?.unregisterListener(stepListener) }
         }

@@ -449,7 +449,7 @@ private fun PartnerLine(s: AppState, vm: AppViewModel) {
                     if (s.partnerSharing?.locationLive == true) {
                         TidyText("${s.partnerName} ${Derived.partnerWhere(s)}", style = MaterialTheme.typography.titleMedium)
                         TidyText(
-                            listOfNotNull(Derived.distanceToPartner(s)?.let { "距離你 ${Fmt.distance(it)}" }, "更新於 ${Fmt.rel(s.partnerStatus.location?.let { it.recordedAt ?: it.updatedAt }?.toInstantOrNull())}").joinToString(" · "),
+                            listOfNotNull(Derived.distanceText(s, "距離你"), "更新於 ${Fmt.rel(s.partnerStatus.location?.let { it.recordedAt ?: it.updatedAt }?.toInstantOrNull())}").joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
