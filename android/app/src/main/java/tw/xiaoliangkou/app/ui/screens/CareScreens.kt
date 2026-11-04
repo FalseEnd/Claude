@@ -1,5 +1,6 @@
 package tw.xiaoliangkou.app.ui.screens
 
+import tw.xiaoliangkou.app.ui.components.IllustratedIcon
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -107,7 +108,7 @@ fun MoodScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.containe
                 CuteField(note, { note = it.take(100) }, "想多說一點（選填）", placeholder = "例如：今天被誇獎了")
                 CuteButton("更新心情", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Send, enabled = pick != null && !vm.busy) {
                     val m = pick ?: return@CuteButton
-                    vm.act(if (s.mySharing?.shareMood == true) "已更新，${s.partnerName} 收到通知了 ${Catalog.mood(m)?.emoji}" else "已更新（沒有分享給對方）", hearts = Catalog.mood(m)?.valence ?: 0 > 0, onDone = back) {
+                    vm.act(if (s.mySharing?.shareMood == true) "已更新，${s.partnerName} 收到通知了" else "已更新（沒有分享給對方）", hearts = Catalog.mood(m)?.valence ?: 0 > 0, onDone = back) {
                         it.postMood(m, note.trim(), sticker.takeIf { s.stickersReady })
                     }
                 }
@@ -132,7 +133,11 @@ fun MoodScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.containe
                         }
                         days.forEach { d ->
                             val m = if (id == s.partner?.id && s.partnerSharing?.shareMood != true) null else Derived.moodOn(s, id, d)
-                            Text(Catalog.mood(m?.mood)?.emoji ?: "·", Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.outline)
+                            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                val mood = Catalog.mood(m?.mood)
+                                if (mood != null) IllustratedIcon(mood.emoji, Modifier.size(28.dp), mood.label)
+                                else Text("·", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.outline)
+                            }
                         }
                     }
                 }
@@ -212,7 +217,7 @@ internal fun MoodBubble(emoji: String, label: String, selected: Boolean, modifie
             .bouncyClick(haptic = true, onClick = onClick).padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (selected) Wiggle(10f, 900) { Text(emoji, style = MaterialTheme.typography.headlineLarge) } else Text(emoji, style = MaterialTheme.typography.headlineLarge)
+        if (selected) Wiggle(10f, 900) { IllustratedIcon(emoji, Modifier.size(44.dp), label) } else IllustratedIcon(emoji, Modifier.size(44.dp), label)
         Text(label, style = MaterialTheme.typography.labelLarge)
     }
 }
@@ -231,10 +236,10 @@ fun ComfortSheet(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.contai
     }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         if (received != null) {
-            Text("回應 ${s.partnerName} 💌", style = MaterialTheme.typography.titleLarge)
+            Text("回應 ${s.partnerName}", style = MaterialTheme.typography.titleLarge)
             ReceivedQuote(s, received)
         } else {
-            Text("安撫 ${s.partnerName} 🤗", style = MaterialTheme.typography.titleLarge)
+            Text("安撫 ${s.partnerName}", style = MaterialTheme.typography.titleLarge)
             Text("${s.partnerName} 的手機會立刻跳出通知", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         GroupedChoices(Catalog.comfortGroups, { s.canPick(it.since) }) { c, modifier ->
@@ -245,7 +250,7 @@ fun ComfortSheet(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.contai
         CuteField(message, { message = it.take(Catalog.MESSAGE_MAX) }, "悄悄話（選填）", placeholder = "辛苦了，晚上帶你去吃好吃的", singleLine = false)
         CuteButton("送出${Catalog.comfort(pick)?.label}", Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Send, enabled = !vm.busy) {
             val label = Catalog.comfort(pick)?.label
-            vm.act("已送出$label，${s.partnerName} 收到通知了 💗", hearts = true, onDone = close) { it.sendComfort(pick, message.trim(), sticker.takeIf { s.stickersReady }) }
+            vm.act("已送出$label，${s.partnerName} 收到通知了", hearts = true, onDone = close) { it.sendComfort(pick, message.trim(), sticker.takeIf { s.stickersReady }) }
         }
     }
 }
@@ -261,7 +266,7 @@ private fun ReceivedQuote(s: AppState, c: Comfort) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Avatar(s.partnerName, Cute.colors.partner, 32.dp, image = s.partner?.avatarUrl)
             Column(Modifier.weight(1f)) {
-                TidyText("${s.partnerName} ${kind?.push ?: "安撫了你"} ${kind?.emoji ?: "🤗"}", style = MaterialTheme.typography.titleSmall)
+                TidyText("${s.partnerName} ${kind?.push ?: "安撫了你"}", style = MaterialTheme.typography.titleSmall)
                 Text(Fmt.rel(c.createdAt.toInstantOrNull()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -286,7 +291,7 @@ fun CycleScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
             item {
                 CuteCard {
                     EmptyState("還沒有經期資料。\n記錄自己的週期，或等 ${s.partnerName} 開啟分享。", "🌸")
-                    CuteButton("開始記錄我的週期", Modifier.fillMaxWidth()) { vm.act("開始記錄囉 🌸") { it.saveCycleSettings(buildJsonObject { put("careReminders", true) }) } }
+                    CuteButton("開始記錄我的週期", Modifier.fillMaxWidth()) { vm.act("開始記錄囉") { it.saveCycleSettings(buildJsonObject { put("careReminders", true) }) } }
                 }
             }
             item { Disclaimer() }
@@ -329,7 +334,7 @@ fun CycleScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
                     Text(
                         when {
                             pr.lateDays > 0 -> "經期已延遲 ${pr.lateDays} 天" + if (pr.lateDays >= 7) "，延遲超過一週可以考慮驗孕或諮詢醫師" else ""
-                            pr.today.phase == Cycle.Phase.PERIOD && !pr.today.predicted -> "經期第 ${pr.cycleDay} 天，好好休息 🍵"
+                            pr.today.phase == Cycle.Phase.PERIOD && !pr.today.predicted -> "經期第 ${pr.cycleDay} 天，好好休息"
                             else -> "距離下次經期 ${pr.daysUntilNext} 天（${Fmt.md(pr.nextStart)}）"
                         },
                         style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
@@ -349,7 +354,7 @@ fun CycleScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
                             if (inPeriod && last != null) CuteButton("經期結束了", Modifier.weight(1.5f), icon = Icons.Rounded.Check) {
                                 vm.act("已記錄經期結束") { it.updatePeriod(last.id, buildJsonObject { put("endDate", today.toString()) }) }
                             } else CuteButton("今天開始了", Modifier.weight(1.5f), icon = Icons.Rounded.WaterDrop) {
-                                vm.act("已記錄，預測更新了 🌸") { it.addPeriod(!mine, today.toString(), null) }
+                                vm.act("已記錄，預測更新了") { it.addPeriod(!mine, today.toString(), null) }
                             }
                             SoftButton("補記", Modifier.weight(1f)) { sheet(SheetSpec.PeriodEdit(!mine)) }
                         }
@@ -389,7 +394,7 @@ fun CycleScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(c.card).padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text("🌸", style = MaterialTheme.typography.titleLarge)
+                    IllustratedIcon("🌸", Modifier.size(28.dp))
                     Column(Modifier.weight(1f)) {
                         Text(Fmt.md(start) + (end?.let { "–${Fmt.md(it)}" } ?: " 開始"), style = MaterialTheme.typography.titleSmall)
                         Text(listOfNotNull(end?.let { "經期 ${java.time.temporal.ChronoUnit.DAYS.between(start, it) + 1} 天" } ?: "進行中", prev?.let { "週期 ${java.time.temporal.ChronoUnit.DAYS.between(it, start)} 天" }).joinToString(" · "),
@@ -418,17 +423,17 @@ private fun phaseLabel(d: Cycle.DayInfo) = when (d.phase) {
 @Composable
 private fun CareTips(pr: Cycle.Prediction) {
     val tips = when {
-        pr.today.phase == Cycle.Phase.PERIOD -> listOf("🍵 準備熱水袋或暖暖包", "🧊 少約冰品和冰飲", "🤍 經痛時陪著就好，不用急著給建議")
-        pr.daysUntilNext in 0..5 -> listOf("🌧️ 經前情緒起伏是正常的，多一點耐心", "🎒 包包裡幫忙備一片衛生棉", "🎬 約會可以改成在家看電影")
-        else -> listOf("☀️ 這段時間通常精神比較好，適合安排出遊", "🔔 經期前兩天 App 會再提醒你")
+        pr.today.phase == Cycle.Phase.PERIOD -> listOf("🍵" to "準備熱水袋或暖暖包", "🧊" to "少約冰品和冰飲", "🤍" to "經痛時陪著就好，不用急著給建議")
+        pr.daysUntilNext in 0..5 -> listOf("🌧️" to "經前情緒起伏是正常的，多一點耐心", "🎒" to "包包裡幫忙備一片衛生棉", "🎬" to "約會可以改成在家看電影")
+        else -> listOf("☀️" to "這段時間通常精神比較好，適合安排出遊", "🔔" to "經期前兩天 App 會再提醒你")
     }
     CuteCard(color = Cute.colors.partnerSoft) {
-        Text("貼心提醒 💗", style = MaterialTheme.typography.titleMedium)
-        // 表情符號單獨一欄：換行時第二行對齊文字，不會跑到表情底下
-        tips.forEach { tip ->
+        Text("貼心提醒", style = MaterialTheme.typography.titleMedium)
+        // 插圖與完整文案分開，換行時文字仍對齊。
+        tips.forEach { (symbol, tip) ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(tip.substringBefore(' '), style = MaterialTheme.typography.bodyMedium)
-                TidyText(tip.substringAfter(' '), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                IllustratedIcon(symbol, Modifier.size(22.dp))
+                TidyText(tip, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -445,7 +450,7 @@ private fun TodayBody(s: AppState, vm: AppViewModel) {
     CuteCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("今天的身體狀況", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Text("只有你看得到 🔒", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("只有你看得到", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Segmented(listOf("" to "無", "light" to "少", "medium" to "中", "heavy" to "多"), flow) { flow = it; save(it, symptoms) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -467,7 +472,7 @@ fun PeriodSheet(vm: AppViewModel, forPartner: Boolean, close: () -> Unit) {
     var start by remember { mutableStateOf(LocalDate.now().toString()) }
     var end by remember { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("記錄經期 🌸", style = MaterialTheme.typography.titleLarge)
+        Text("記錄經期", style = MaterialTheme.typography.titleLarge)
         DateField("開始", start) { start = it }
         DateField("結束（選填）", end ?: "") { end = it }
         val invalid = end != null && end!! < start

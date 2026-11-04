@@ -42,7 +42,7 @@ fun WidgetsScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     val context = LocalContext.current
     val snap = remember(s) { WidgetSnapshot.of(s) }
     fun pin(provider: Class<out AppWidgetProvider>) {
-        if (Widgets.pin(context, provider)) vm.toast("跟著畫面上的提示放到桌面就好了 ✨")
+        if (Widgets.pin(context, provider)) vm.toast("跟著畫面上的提示放到桌面就好了")
         else vm.toast("這個桌面不能直接加入，請長按桌面空白處 › 小工具 › 小倆口")
     }
     // 切換深色模式、調整字型大小時畫面不會重建：預覽的小工具要重畫，顏色和字才會跟著換
@@ -59,7 +59,7 @@ fun WidgetsScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
         }
         item {
             key(look) {
-                WidgetCard("${s.partnerName} 的狀態", "在哪、電量、心情，放得下多少放多少；按右邊的 🤗 就能直接抱抱 ${s.partnerName}", snap, Widgets.PARTNER_SIZE,
+                WidgetCard("${s.partnerName} 的狀態", "在哪、電量、心情，放得下多少放多少；按右邊的 就能直接抱抱 ${s.partnerName}", snap, Widgets.PARTNER_SIZE,
                     { Widgets.partner(context, snap, interactive = false, size = it) }) { pin(PartnerWidget::class.java) }
             }
         }

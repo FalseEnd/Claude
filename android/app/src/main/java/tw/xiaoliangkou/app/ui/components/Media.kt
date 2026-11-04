@@ -38,8 +38,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -201,7 +203,8 @@ fun VoiceChip(item: MediaItem, vm: AppViewModel) {
                 tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp),
             )
         }
-        Text("🎙️ $label", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
+        IllustratedIcon("🎙️", Modifier.size(20.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
     }
 }
 
@@ -369,7 +372,7 @@ fun MediaPickerRow(
             ok -> startRecording()
             // 拒絕過兩次，系統就不會再跳出詢問了：只能到設定裡打開
             activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO) -> micBlocked = true
-            else -> vm.toast("要允許使用麥克風才能錄音 🎙️")
+            else -> vm.toast("要允許使用麥克風才能錄音")
         }
     }
 
@@ -394,7 +397,7 @@ fun MediaPickerRow(
             if (e == Lifecycle.Event.ON_STOP && recording != null) {
                 val kept = recorder.elapsedMs >= VoiceRecorder.MIN_MS
                 stopRecording()
-                if (kept) vm.toast("離開 App 時錄音先停下來了，錄到的部分會加進來 🎙️")
+                if (kept) vm.toast("離開 App 時錄音先停下來了，錄到的部分會加進來")
             }
         }
         lifecycle.addObserver(observer)
@@ -417,7 +420,7 @@ fun MediaPickerRow(
         // 字放大時一排放不下就換到下一排，按鈕不會被擠成「取 / 消」
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // 錄音中不能選照片：先收起來，「停止」「取消」才放得下同一排
-            if (recording == null) SoftButton("📷 照片", small = true, enabled = idle) {
+            if (recording == null) SoftButton("照片", icon = Icons.Rounded.PhotoCamera, small = true, enabled = idle) {
                 val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 when {
                     left <= 0 -> vm.toast("照片和語音最多 ${Limits.MEDIA} 個")
@@ -430,7 +433,7 @@ fun MediaPickerRow(
                 SoftButton("取消", small = true) { cancelRecording() }
             } else {
                 // 還有一段沒傳上去的錄音：先處理那段
-                SoftButton("🎙️ 錄音", small = true, enabled = idle && unsent == null) {
+                SoftButton("錄音", icon = Icons.Rounded.Mic, small = true, enabled = idle && unsent == null) {
                     when {
                         left <= 0 -> vm.toast("照片和語音最多 ${Limits.MEDIA} 個")
                         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> startRecording()
@@ -454,7 +457,7 @@ fun MediaPickerRow(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    "🎙️ ${formatDuration(pending.durationMs)} 的錄音還沒傳上去，錄音還留著，網路好一點再重新上傳就好",
+                    "${formatDuration(pending.durationMs)} 的錄音還沒傳上去，錄音還留著，網路好一點再重新上傳就好",
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -530,8 +533,8 @@ private fun PhotoThumb(item: MediaItem, vm: AppViewModel, size: Dp, onClick: () 
     ) {
         when (pic) {
             is Pic.Ready -> Image(pic.image, "照片", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            Pic.Loading -> Text("📷", Modifier.alpha(0.45f), style = MaterialTheme.typography.titleLarge)
-            Pic.Missing -> Text("🖼️", Modifier.alpha(0.35f), style = MaterialTheme.typography.titleLarge)
+            Pic.Loading -> IllustratedIcon("📷", Modifier.alpha(0.45f))
+            Pic.Missing -> IllustratedIcon("🖼️", Modifier.alpha(0.35f))
         }
     }
 }
@@ -548,7 +551,7 @@ private fun PhotoViewer(photos: List<MediaItem>, start: Int, vm: AppViewModel, c
                     when (pic) {
                         is Pic.Ready -> Image(pic.image, "照片 ${page + 1}", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                         Pic.Loading -> CircularProgressIndicator(color = Color.White)
-                        Pic.Missing -> Text("這張照片讀不到 😢", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                        Pic.Missing -> Text("這張照片讀不到", color = Color.White, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }

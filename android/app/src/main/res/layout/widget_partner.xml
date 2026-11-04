@@ -73,7 +73,7 @@
             android:fontFamily="@font/huninn"
             android:includeFontPadding="false"
             android:maxLines="1"
-            android:text="📍 公司 · 🔋 85% · 😊 開心"
+            android:text="公司 · 85% · 開心"
             android:textColor="@color/widget_text"
             android:textSize="12sp" />
     </LinearLayout>
@@ -88,6 +88,6 @@
         android:contentDescription="抱抱"
         android:gravity="center"
         android:includeFontPadding="false"
-        android:text="🤗"
+        android:text=""
         android:textSize="18sp" />
 </LinearLayout>

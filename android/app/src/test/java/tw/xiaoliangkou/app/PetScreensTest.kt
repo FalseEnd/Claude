@@ -153,29 +153,29 @@ class PetScreensTest {
     @Test fun petRoomInTheAfternoon() {
         show(afternoon) { PetScreen(state(), vm, back = {}, open = {}) }
         assertTrue(has("麻糬"))
-        assertTrue(has("幼貓 🐾"))
-        assertTrue(has("🔥 連續照顧 12 天"))
+        assertTrue(has("幼貓"))
+        assertTrue(has("連續照顧 12 天"))
         assertTrue("小雨領養的第 12 天", has("橘貓 · 小雨 領養的 · 第 12 天"))
-        assertTrue(has("再 232 長成少年貓 🎀"))
+        assertTrue(has("再 232 長成少年貓"))
         assertTrue(has("今天的任務"))
         assertTrue(has("2/3"))
-        assertTrue("連續的摸摸合成一行", has("阿哲 摸摸牠 🤚 ×2"))
-        assertTrue(has("小雨 餵了罐罐 🥫"))
-        assertTrue(has("長大成幼貓了！🎉"))
-        assertTrue(has("今天也很乖 😺"))
+        assertTrue("連續的摸摸合成一行", has("阿哲 摸摸牠 ×2"))
+        assertTrue(has("小雨 餵了罐罐"))
+        assertTrue(has("長大成幼貓了！"))
+        assertTrue(has("今天也很乖"))
         capture("101_pet_room")
     }
 
     @Test fun petRoomAtNightAndHungry() {
         // 晚上肚子餓了：餓了半夜也會叫
         show(night) { PetScreen(state(night, pet(night, fullness = 12.0, happiness = 20.0, cleanliness = 18.0), PetToday()), vm, back = {}, open = {}) }
-        assertTrue(has("肚子好餓… 🥺"))
+        assertTrue(has("肚子好餓…"))
         capture("102_pet_room_night")
     }
 
     @Test fun sleepingAtNight() {
         show(night) { PetScreen(state(night), vm, back = {}, open = {}) }
-        assertTrue(has("呼嚕呼嚕…睡著了 💤"))
+        assertTrue(has("呼嚕呼嚕…睡著了"))
     }
 
     @Test fun feedingTheCat() {
@@ -209,10 +209,10 @@ class PetScreensTest {
                 HomePetCard(state().copy(dbSchema = RemoteRepository.PET_SCHEMA - 1), vm, open = {})
             }
         }
-        assertTrue(has("今天 ✅ 餵飯 ⬜ 陪玩 ⬜ 摸摸 2/3"))
+        assertTrue(has("今天 ✓ 餵飯 · 陪玩 · 摸摸 2/3"))
         assertTrue(has("今天還沒有人餵麻糬"))
-        assertTrue(has("🍚 去餵牠"))
-        assertTrue(has("領養一隻小貓吧 🐾"))
+        assertTrue(has("去餵牠"))
+        assertTrue(has("領養一隻小貓吧"))
         assertTrue(has("再更新一次資料庫就能養了"))
         capture("103_pet_home")
     }
@@ -227,11 +227,11 @@ class PetScreensTest {
         demo.demoAction("petReset")
         idleUntil { demo.state.value.pet?.pet == null }
         show(afternoon) { PetScreen(demo.state.collectAsStateValue(), vm, back = {}, open = {}) }
-        assertTrue(has("領養一隻小貓 🐾"))
+        assertTrue(has("領養一隻小貓"))
         capture("104_pet_adopt")
         compose.onNodeWithText("黑貓").performClick()
         compose.onNodeWithText("幫牠取名字").performTextInput("煤球")
-        compose.onNodeWithText("🐾 領養黑貓").performClick()
+        compose.onNodeWithText("領養黑貓").performClick()
         idleUntil { demo.state.value.pet?.pet != null }
         val p = demo.state.value.pet!!.pet!!
         assertEquals("煤球", p.name)
@@ -273,14 +273,14 @@ class PetScreensTest {
         compose.onNodeWithText("好了").performClick()
         idleUntil { demo.state.value.pet!!.pet!!.coat == "siamese" }
         assertEquals("coat", demo.state.value.pet!!.events.first().action)
-        idleUntil { has("阿哲 把牠換成暹羅貓 ✨") }
+        idleUntil { has("阿哲 把牠換成暹羅貓") }
     }
 
     /** 資料庫還沒有新的品種：鎖起來，點了說要更新，原本的 6 種照樣能選 */
     @Test fun newBreedsAreLockedOnAnOldDatabase() {
         show(afternoon) { PetScreen(state(p = null).copy(dbSchema = RemoteRepository.TEMP_SCHEMA), vm, back = {}, open = {}) }
-        assertTrue(has("🔒 暹羅貓"))
-        assertTrue(has("🔒 的品種要再執行一次 upgrade-v2.sql 才能選"))
+        assertTrue(has("暹羅貓（未開放）"))
+        assertTrue(has("尚未開放的品種要再執行一次 upgrade-v2.sql 才能選"))
         assertTrue(compose.onAllNodesWithText("三花貓").fetchSemanticsNodes().isNotEmpty())
         capture("107_pet_adopt_locked")
     }

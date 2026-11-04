@@ -48,7 +48,7 @@ private enum class Phase { LOADING, READY, FAILED }
 
 /**
  * 選好的 GIPHY 貼圖（資料庫只存 id）：每個畫面都用這一個顯示，載好了放在淺粉紅的底上（[STICKER_CELL]）。
- * id 不對就是安靜的 🖼️，不會當掉、也不會去載；載入中是淡淡的圓角方塊，載不到是 🖼️。
+ * id 不對或載不到時顯示插畫佔位圖，不會當掉；載入中是淡淡的圓角方塊。
  * 載好了才有 [contentDescription]（測試等的就是它，跟照片一樣）
  */
 @Composable
@@ -78,7 +78,7 @@ fun StickerImage(id: String?, modifier: Modifier = Modifier, contentDescription:
                 },
             )
         }
-        if (phase == Phase.FAILED) Text("🖼️", Modifier.alpha(0.35f), style = MaterialTheme.typography.titleLarge)
+        if (phase == Phase.FAILED) IllustratedIcon("🖼️", Modifier.alpha(0.35f), "貼圖載入失敗")
     }
 }
 

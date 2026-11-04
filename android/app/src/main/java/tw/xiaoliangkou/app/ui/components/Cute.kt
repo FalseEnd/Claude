@@ -130,7 +130,7 @@ fun IconBubble(icon: ImageVector, tint: Color, background: Color, size: Dp = 40.
 @Composable
 fun EmojiBubble(emoji: String, background: Color, size: Dp = 40.dp) {
     Box(Modifier.size(size).clip(RoundedCornerShape(size * 0.38f)).background(background), contentAlignment = Alignment.Center) {
-        Text(emoji, fontSize = MaterialTheme.typography.titleLarge.fontSize * (size / 40.dp))
+        IllustratedIcon(emoji, Modifier.size(size * 0.78f))
     }
 }
 
@@ -147,7 +147,7 @@ fun Avatar(name: String, color: Color, size: Dp = 36.dp, ring: Boolean = false, 
     ) {
         when {
             photo != null -> Image(photo, name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            emoji != null -> Text(emoji, style = MaterialTheme.typography.titleMedium.copy(fontSize = MaterialTheme.typography.titleMedium.fontSize * scale * 1.15f))
+            emoji != null -> IllustratedIcon(emoji, Modifier.size(size * 0.9f), contentDescription = name)
             else -> Text(Avatars.initial(name), color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontSize = MaterialTheme.typography.titleMedium.fontSize * scale))
         }
     }
@@ -299,7 +299,7 @@ fun ChoiceChip(text: String, selected: Boolean, emoji: String? = null, onClick: 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (emoji != null) Text(emoji)
+        if (emoji != null) IllustratedIcon(emoji, Modifier.size(22.dp))
         // 一行就好：膠囊放不下時整顆換到下一行（請放在 FlowRow 裡），不會被擠成一字一行的細長條；比整行還長的字才會出現「…」
         Text(text, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -334,7 +334,7 @@ fun ToggleRow(title: String, checked: Boolean, subtitle: String? = null, emoji: 
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         // 表情不跟著字放大，寬度留給說明文字
-        if (emoji != null) Text(emoji, style = MaterialTheme.typography.titleLarge.unscaled())
+        if (emoji != null) IllustratedIcon(emoji, Modifier.size(28.dp))
         Column(Modifier.weight(1f)) {
             TidyText(title, style = MaterialTheme.typography.titleSmall)
             if (subtitle != null) TidyText(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -433,7 +433,7 @@ fun BannerCard(visible: Boolean, emoji: String, title: String, body: String?, on
 @Composable
 fun EmptyState(text: String, emoji: String = "🐣", modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Wiggle { Text(emoji, style = MaterialTheme.typography.displayMedium) }
+        Wiggle { IllustratedIcon(emoji, Modifier.size(64.dp)) }
         TidyText(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
 }
@@ -444,7 +444,7 @@ fun Note(text: String, emoji: String = "💡", color: Color = MaterialTheme.colo
         Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(color).padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(emoji)
+        IllustratedIcon(emoji, Modifier.size(24.dp))
         TidyText(text, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

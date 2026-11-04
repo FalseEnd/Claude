@@ -109,6 +109,7 @@ import tw.xiaoliangkou.app.core.Omikuji
 import tw.xiaoliangkou.app.data.AppState
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Fmt
+import tw.xiaoliangkou.app.ui.components.IllustratedIcon
 import tw.xiaoliangkou.app.ui.components.Avatar
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.CuteCard
@@ -194,7 +195,7 @@ internal fun FortuneContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         ScreenHeader("星座運勢與御神籤", onBack = back)
-        Segmented(listOf(FortuneTab.HOROSCOPE to "🔮 星座運勢", FortuneTab.OMIKUJI to "⛩️ 御神籤"), current) {
+        Segmented(listOf(FortuneTab.HOROSCOPE to "星座運勢", FortuneTab.OMIKUJI to "御神籤"), current) {
             current = it
             store.tab = it
         }
@@ -302,7 +303,7 @@ private fun SignTile(
             Avatar(name, color, 22.dp, image = image)
             Text(name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(sign?.emoji ?: "❔", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 4.dp))
+        IllustratedIcon(sign?.emoji ?: "❔", Modifier.padding(top = 4.dp).size(36.dp), contentDescription = sign?.name ?: "選擇星座")
         Text(sign?.name ?: "還不知道", style = MaterialTheme.typography.titleSmall)
         // 放不下一行時在「·」後面換行（「11/23–12/21 · / 火象」），不會把「火象」切成「火」
         TidyText(
@@ -345,7 +346,7 @@ private fun SignPicker(title: String, selected: Horoscope.Sign?, onClose: (() ->
                             .padding(horizontal = 4.dp, vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text(sg.emoji, style = MaterialTheme.typography.titleLarge)
+                        IllustratedIcon(sg.emoji, Modifier.size(28.dp), contentDescription = sg.name)
                         Text(sg.name, style = MaterialTheme.typography.labelLarge)
                         // 日期不留字距，窄的格子也放得下；真的放不下時在「–」後面換行，不會把一個日期拆開
                         TidyText(
@@ -369,7 +370,7 @@ private fun DailyCard(daily: Horoscope.Daily, name: String, dayWord: String, onM
                 // 兩個人同星座時也分得出是誰的
                 Text("$name · ${sign.name}的${if (dayWord == "今天") "今日" else "明日"}運勢", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "${Fmt.md(daily.date)}（${Fmt.weekday(daily.date).substring(1)}）· ${sign.element.emoji} ${sign.element.label} · ${sign.trait}",
+                    "${Fmt.md(daily.date)}（${Fmt.weekday(daily.date).substring(1)}）· ${sign.element.label} · ${sign.trait}",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
@@ -380,7 +381,8 @@ private fun DailyCard(daily: Horoscope.Daily, name: String, dayWord: String, onM
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${daily.overall.emoji} 綜合運勢", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                IllustratedIcon(daily.overall.emoji, Modifier.size(24.dp))
+                Text("綜合運勢", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).padding(start = 6.dp))
                 Stars(daily.overall.stars, 22.dp)
             }
             Text(daily.overall.text, style = MaterialTheme.typography.bodyMedium)
@@ -393,13 +395,13 @@ private fun DailyCard(daily: Horoscope.Daily, name: String, dayWord: String, onM
                         .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
                 )
             })
-            StatTile("幸運數字", daily.luckyNumber.toString(), Modifier.weight(1f), icon = { Text("🎲", style = MaterialTheme.typography.titleSmall) })
+            StatTile("幸運數字", daily.luckyNumber.toString(), Modifier.weight(1f), icon = { IllustratedIcon("🎲", Modifier.size(22.dp)) })
         }
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Cute.colors.partnerSoft).padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("💌", style = MaterialTheme.typography.titleMedium)
+            IllustratedIcon("💌", Modifier.size(26.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("${dayWord}的一句話", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(daily.advice, style = MaterialTheme.typography.bodyMedium)
@@ -439,7 +441,7 @@ private fun Stars(n: Int, size: Dp) {
 private fun MatchCard(match: Horoscope.Match, myName: String, partnerName: String, dayWord: String) {
     CuteCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("💞 ${dayWord}的速配指數", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text("${dayWord}的速配指數", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Pill(match.label, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
@@ -454,7 +456,7 @@ private fun MatchCard(match: Horoscope.Match, myName: String, partnerName: Strin
 @Composable
 private fun MatchSide(name: String, sign: Horoscope.Sign, modifier: Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(sign.emoji, style = MaterialTheme.typography.headlineMedium)
+        IllustratedIcon(sign.emoji, Modifier.size(36.dp), contentDescription = sign.name)
         Text(sign.name, style = MaterialTheme.typography.titleSmall)
         Text(name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -536,7 +538,7 @@ private fun OmikujiTab(store: FortuneStore, shownState: MutableState<Int?>, cloc
     CuteCard(Modifier.bringIntoViewRequester(boxBring), padding = PaddingValues(20.dp)) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("東京淺草觀音寺一百籤", style = MaterialTheme.typography.titleLarge)
-            Text("心裡默念想問的事，再搖一搖籤筒 🙏", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            Text("心裡默念想問的事，再搖一搖籤筒", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         }
         OmikujiBox(
             rotation = { if (drawing != null) shake.value else sway.value },
@@ -547,7 +549,7 @@ private fun OmikujiTab(store: FortuneStore, shownState: MutableState<Int?>, cloc
         // 抽到之後「再抽一支」在籤詩卡上，這裡維持原本的字
         CuteButton(if (drawing != null) "搖呀搖…" else "搖一搖抽籤", Modifier.fillMaxWidth(), enabled = drawing == null, onClick = draw)
         if (hasSensor) Text(
-            "也可以直接搖手機 📳", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            "也可以直接搖手機", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally),
         )
     }
@@ -570,7 +572,7 @@ private fun OmikujiTab(store: FortuneStore, shownState: MutableState<Int?>, cloc
     val todays = draws.filter { it.at.toLocalDate() == today }
     CuteCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("📜 今天抽到的籤", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text("今天抽到的籤", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             if (todays.isNotEmpty()) Text("${todays.size} 支", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (todays.isEmpty()) Text("今天還沒抽籤，先搖一支試試看吧", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -678,7 +680,7 @@ private fun OmikujiSlip(lot: Omikuji.Lot, modifier: Modifier, onAgain: () -> Uni
                 }
             }
         }
-        if (lot.luck == "凶") Note("抽到凶別擔心～在淺草寺，大家會把籤綁在寺裡，把壞運留下再出發 🎀", "🍀", MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f))
+        if (lot.luck == "凶") Note("抽到凶別擔心～在淺草寺，大家會把籤綁在寺裡，把壞運留下再出發", "🍀", MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SoftButton("再抽一支", Modifier.weight(1f), enabled = again, onClick = onAgain)
             CuteButton("看完整解籤 ›", Modifier.weight(1f), onClick = onMore)
@@ -801,9 +803,9 @@ private fun OmikujiBox(rotation: () -> Float, stickOut: () -> Float, number: Int
             }
         }
         listOf(Triple(40, 30, 18f), Triple(108, 46, 14f)).forEach { (x, y, sz) ->
-            Text(
-                "✨", fontSize = fixedSp(sz),
-                modifier = Modifier.offset(x.dp, (y - BOX_TOP).dp).graphicsLayer { alpha = ((stickOut() - 0.6f) / 0.4f).coerceIn(0f, 1f) },
+            IllustratedIcon(
+                "✨",
+                Modifier.offset(x.dp, (y - BOX_TOP).dp).size(sz.dp).graphicsLayer { alpha = ((stickOut() - 0.6f) / 0.4f).coerceIn(0f, 1f) },
             )
         }
     }

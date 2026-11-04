@@ -1,5 +1,6 @@
 package tw.xiaoliangkou.app.ui.screens
 
+import tw.xiaoliangkou.app.ui.components.IllustratedIcon
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -116,6 +117,7 @@ import tw.xiaoliangkou.app.ui.components.ScreenHeader
 import tw.xiaoliangkou.app.ui.components.SectionTitle
 import tw.xiaoliangkou.app.ui.components.TidyText
 import tw.xiaoliangkou.app.ui.components.bouncyClick
+import tw.xiaoliangkou.app.ui.components.drawIllustratedSymbol
 import tw.xiaoliangkou.app.ui.components.findActivity
 import tw.xiaoliangkou.app.ui.components.openAppSettings
 import tw.xiaoliangkou.app.ui.theme.Cute
@@ -179,7 +181,7 @@ fun MapScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, searche
         when (Locator.status(context)) {
             Locator.Status.NO_PERMISSION -> if (!quiet) ask()
             Locator.Status.OFF -> if (!quiet) {
-                vm.toast("手機的「定位」沒有打開，打開後再按一次 📍")
+                vm.toast("手機的「定位」沒有打開，打開後再按一次")
                 runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
             }
             Locator.Status.OK -> {
@@ -282,7 +284,7 @@ fun MapScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, searche
                             if (loc != null) flyTo = FlyTo(loc.lat, loc.lng, 16.0) else vm.toast("${s.partnerName} 目前沒有分享位置")
                         },
                         containerColor = Cute.colors.card,
-                    ) { Text("💗") }
+                    ) { IllustratedIcon("💗", Modifier.size(24.dp), "查看對方的位置") }
                     SmallFloatingActionButton(
                         onClick = { locateMe(ask = requestLocation) },
                         containerColor = Cute.colors.card,
@@ -299,7 +301,7 @@ fun MapScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit, searche
                     ) { Icon(Icons.Rounded.Add, "新增標點", tint = MaterialTheme.colorScheme.onPrimary) }
                 }
                 Box(Modifier.align(Alignment.BottomStart).padding(start = 12.dp, end = 84.dp, bottom = 12.dp)) {
-                    Pill("長按地圖也能新增標點 📍", Cute.colors.card.copy(alpha = 0.92f), maxLines = 2)
+                    Pill("長按地圖也能新增標點", Cute.colors.card.copy(alpha = 0.92f), maxLines = 2)
                 }
                 // 搜尋框放最後，蓋在地圖和按鈕上面
                 Column(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp)) {
@@ -385,7 +387,7 @@ private fun SearchResults(hits: List<PlaceHit>, onPick: (PlaceHit) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("📍")
+                IllustratedIcon("📍", Modifier.size(24.dp))
                 Column(Modifier.weight(1f)) {
                     Text(h.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (h.subtitle.isNotEmpty()) {
@@ -405,7 +407,7 @@ private fun SearchMessage(text: String, onDismiss: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("🔍")
+        IllustratedIcon("🔍", Modifier.size(24.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }
@@ -418,7 +420,7 @@ private fun PinCard(pin: PlaceHit, onAdd: () -> Unit, onClose: () -> Unit) {
             .padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("📌", Modifier.padding(top = 2.dp))
+        IllustratedIcon("📌", Modifier.padding(top = 2.dp).size(24.dp))
         // 「新增標點」放在地址下面：名稱、地址用整個寬度，才認得出找到的是哪裡
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(pin.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -454,14 +456,14 @@ private fun PartnerLine(s: AppState, vm: AppViewModel) {
                         )
                     } else {
                         TidyText(s.partnerName, style = MaterialTheme.typography.titleMedium)
-                        TidyText(if (s.partnerSharing?.paused == true) "暫停分享中 🙈" else "沒有分享位置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TidyText(if (s.partnerSharing?.paused == true) "暫停分享中" else "沒有分享位置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (s.partnerSharing?.locationLive == true) {
                     Text(
                         "找找看", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1,
                         modifier = Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primaryContainer)
-                            .bouncyClick { vm.act { r -> vm.toast(if (r.locatePartner()) "已請對方的手機回報位置 📍" else "對方的手機目前不在線上") } }
+                            .bouncyClick { vm.act { r -> vm.toast(if (r.locatePartner()) "已請對方的手機回報位置" else "對方的手機目前不在線上") } }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
@@ -486,7 +488,7 @@ private fun PlaceRow(s: AppState, p: Place, onClick: () -> Unit) {
             // 「在這」跟在名稱後面（放不下就換到下一行），偵測誰、半徑、通知用整個寬度，放不下就換行
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(p.name, Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleSmall)
-                if (here) Pill("${s.partnerName} 在這 💗", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.align(Alignment.CenterVertically))
+                if (here) Pill("${s.partnerName} 在這", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.align(Alignment.CenterVertically))
             }
             TidyText(
                 "$watch · 半徑 ${p.radiusM} 公尺 · ${flags}通知", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -518,19 +520,21 @@ private fun avatarBitmap(context: Context, avatar: String?, name: String, color:
     return BitmapDrawable(context.resources, Avatars.circle(context, avatar, name, color, (sizeDp * d).toInt(), 3 * d))
 }
 
+/** 地點標記也使用手繪小圖，避免系統 emoji 字型改變地圖的樣子。 */
 private fun emojiBitmap(context: Context, emoji: String, bg: Int): BitmapDrawable {
     val d = context.resources.displayMetrics.density
-    val size = (26 * d).toInt()
+    val size = (34 * d).toInt()
     val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val c = Canvas(bmp)
-    val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     p.color = android.graphics.Color.WHITE
     c.drawCircle(size / 2f, size / 2f, size / 2f, p)
     p.color = bg
     c.drawCircle(size / 2f, size / 2f, size / 2f - 2 * d, p)
-    p.textSize = size * 0.5f
-    p.textAlign = Paint.Align.CENTER
-    c.drawText(emoji, size / 2f, size / 2f - (p.descent() + p.ascent()) / 2, p)
+    drawIllustratedSymbol(c, emoji, size * 0.18f, size * 0.18f, size * 0.64f)
     return BitmapDrawable(context.resources, bmp)
 }
 

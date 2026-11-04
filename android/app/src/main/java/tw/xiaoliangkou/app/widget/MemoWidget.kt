@@ -487,8 +487,8 @@ class MemoWidget : AppWidgetProvider() {
 
         /** 標題列「📝 備忘錄（示範）」：字大放不下時不寫（示範），不要變成「備忘…」 */
         private fun header(v: RemoteViews, snap: MemoWidgetSnapshot, widthDp: Float, fonts: Fonts) {
-            val full = "📝 備忘錄" + if (snap.demo) "（示範）" else ""
-            v.setTextViewText(R.id.memo_header_title, if (fonts.width(full, HEADER_SP) <= widthDp - 12f) full else "📝 備忘錄")
+            val full = "備忘錄" + if (snap.demo) "（示範）" else ""
+            v.setTextViewText(R.id.memo_header_title, if (fonts.width(full, HEADER_SP) <= widthDp - 12f) full else "備忘錄")
         }
 
         /** 還沒登入、沒有放在桌面的備忘錄：提示怎麼放。依大小和字型大小挑放得下的說法，不會被切掉 */
@@ -503,13 +503,13 @@ class MemoWidget : AppWidgetProvider() {
                 Triple(false, listOf("登入後，", "放在桌面的", "備忘錄會出現在這裡"), HINT_SP),
                 Triple(false, listOf("登入後", "就會出現"), HINT_SP),
                 Triple(false, listOf("登入後", "就會出現"), 10f),
-                Triple(false, listOf("🔑 登入"), 10f),
+                Triple(false, listOf("登入"), 10f),
             ) else listOf(
                 Triple(true, listOf("在備忘錄裡打開", "『放在桌面』"), HINT_SP),
-                Triple(false, listOf("📌 在備忘錄裡打開", "『放在桌面』"), HINT_SP),
-                Triple(false, listOf("📌 打開", "『放在桌面』"), HINT_SP),
-                Triple(false, listOf("📌 打開", "『放在桌面』"), 10f),
-                Triple(false, listOf("📌"), HINT_SP),
+                Triple(false, listOf("在備忘錄裡打開", "『放在桌面』"), HINT_SP),
+                Triple(false, listOf("打開", "『放在桌面』"), HINT_SP),
+                Triple(false, listOf("打開", "『放在桌面』"), 10f),
+                Triple(false, listOf("放在桌面"), HINT_SP),
             )
             fun text(parts: List<String>, sp: Float): Pair<String, Int> {
                 // 一段一段接起來，接不下就換行
@@ -534,6 +534,8 @@ class MemoWidget : AppWidgetProvider() {
             v.setViewVisibility(R.id.memo_row, View.GONE)
             v.setViewVisibility(R.id.memo_empty, View.VISIBLE)
             v.setViewVisibility(R.id.memo_empty_emoji, if (emoji) View.VISIBLE else View.GONE)
+            v.setTextViewText(R.id.memo_empty_emoji, "")
+            v.setTextViewCompoundDrawables(R.id.memo_empty_emoji, R.drawable.widget_heart, 0, 0, 0)
             v.setTextViewText(R.id.memo_empty_text, t)
             v.setTextViewTextSize(R.id.memo_empty_text, TypedValue.COMPLEX_UNIT_SP, sp)
             v.setInt(R.id.memo_empty_text, "setMaxLines", lines)
@@ -565,7 +567,7 @@ class MemoWidget : AppWidgetProvider() {
 
             val bodyLines = m.body.lines().map { it.trim() }.filter { it.isNotEmpty() }
             val title = m.title.ifBlank { bodyLines.firstOrNull() }
-                ?: if (m.photos > 0) "📷 照片" else if (m.voices > 0) "🎙️ 語音" else "備忘錄"
+                ?: if (m.photos > 0) "照片" else if (m.voices > 0) "語音" else "備忘錄"
             val rest = if (m.title.isBlank()) bodyLines.drop(1) else bodyLines
             v.setTextViewText(R.id.memo_title, title)
 
@@ -584,8 +586,8 @@ class MemoWidget : AppWidgetProvider() {
 
             // 標題旁邊的小字（📷、🎙️、對方的名字）：放了會把標題擠成「晚安…」就不放
             val meta = listOfNotNull(
-                "📷".takeIf { !big && !small && m.photos > 0 && w >= 120f },
-                "🎙️".takeIf { m.voices > 0 && w >= 120f },
+                "照片".takeIf { !big && !small && m.photos > 0 && w >= 120f },
+                "語音".takeIf { m.voices > 0 && w >= 120f },
                 m.author?.takeIf { w - (if (small) 44f else if (big) 66f else 0f) >= 180f },
             ).joinToString(" ").takeIf { it.isNotEmpty() && fonts.width(title, titleSp) + 4f + fonts.width(it, META_SP) <= textW } ?: ""
             v.setViewVisibility(R.id.memo_meta, if (meta.isNotEmpty()) View.VISIBLE else View.GONE)

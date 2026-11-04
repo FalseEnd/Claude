@@ -49,7 +49,7 @@ internal fun NearbyCard(s: AppState, vm: AppViewModel) {
         }
         if (!on) return@CuteCard
         val status = when {
-            s.partnerNearby -> "💞 ${s.partnerName} 就在你身邊（${Fmt.time(s.partnerNearSince!!)} 起）"
+            s.partnerNearby -> "${s.partnerName} 就在你身邊（${Fmt.time(s.partnerNearSince!!)} 起）"
             s.demo -> "示範模式：到「我的 › 示範控制台」讓 ${s.partnerName} 走到你身邊看看"
             problem != null -> problem
             else -> "偵測中… ${s.partnerName} 的手機也要更新到最新版、打開這個開關才偵測得到"

@@ -1,5 +1,6 @@
 package tw.xiaoliangkou.app.ui.screens
 
+import tw.xiaoliangkou.app.ui.components.IllustratedIcon
 import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -84,10 +85,10 @@ fun AvatarSheet(s: AppState, vm: AppViewModel, close: () -> Unit) {
             if (bmp == null) vm.toast("讀不到這張照片，換一張試試看") else picked = bmp
         }
     }
-    fun save(avatar: String?) = vm.act("頭像已更新 ✨", onDone = close) { it.updateAvatar(avatar) }
+    fun save(avatar: String?) = vm.act("頭像已更新", onDone = close) { it.updateAvatar(avatar) }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("設定頭像 📷", style = MaterialTheme.typography.titleLarge)
+        Text("設定頭像", style = MaterialTheme.typography.titleLarge)
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Avatar(name, Cute.colors.me, 96.dp, image = current) }
         CuteButton("從相簿選照片", Modifier.fillMaxWidth(), icon = Icons.Rounded.PhotoLibrary, enabled = !vm.busy) {
             pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -101,7 +102,7 @@ fun AvatarSheet(s: AppState, vm: AppViewModel, close: () -> Unit) {
                         .then(if (e == selected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape) else Modifier)
                         .bouncyClick(enabled = !vm.busy) { save(Avatars.emoji(e)) },
                     contentAlignment = Alignment.Center,
-                ) { Text(e, style = MaterialTheme.typography.headlineSmall) }
+                ) { IllustratedIcon(e, Modifier.size(38.dp), "${Avatars.illustrationLabel(e)}頭像") }
             }
         }
         if (current != null) {
@@ -113,7 +114,7 @@ fun AvatarSheet(s: AppState, vm: AppViewModel, close: () -> Unit) {
     picked?.let { src ->
         AvatarCropDialog(src, onCancel = { picked = null }) { square ->
             picked = null
-            vm.act("頭像已更新 ✨", onDone = close) { r -> r.updateAvatar(withContext(Dispatchers.Default) { Avatars.encodePhoto(square) }) }
+            vm.act("頭像已更新", onDone = close) { r -> r.updateAvatar(withContext(Dispatchers.Default) { Avatars.encodePhoto(square) }) }
         }
     }
 }

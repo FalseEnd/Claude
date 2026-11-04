@@ -90,7 +90,7 @@ class StatusWidgetTest {
         val n = ServiceNotice.of(s, showStatus = true, items = StatusText.DEFAULTS)
         assertTrue(n.status)
         assertTrue(n.title, n.title.startsWith("小雨 在 小雨公司"))
-        assertTrue(n.text.contains("🔋 34%") && n.text.contains("好累"))
+        assertTrue(n.text.contains("34%") && n.text.contains("好累"))
         assertFalse("位置已經在標題了", n.big!!.contains("📍"))
         assertTrue(n.sub!!.startsWith("在一起第 "))
         assertEquals(Avatars.emoji("🐰"), n.avatar)
@@ -98,7 +98,7 @@ class StatusWidgetTest {
         // 只選電量
         val battery = ServiceNotice.of(s, true, setOf(StatusText.BATTERY))
         assertEquals("小雨", battery.title)
-        assertEquals("🔋 34%", battery.text)
+        assertEquals("34%", battery.text)
         // 關掉、或還沒配對：只說明背景連線
         assertFalse(ServiceNotice.of(s, false, StatusText.DEFAULTS).status)
         assertFalse(ServiceNotice.of(s.copy(partner = null, couple = null), true, StatusText.DEFAULTS).status)
@@ -110,13 +110,15 @@ class StatusWidgetTest {
         assertEquals(Notifier.CH_STATUS, n.channelId)
         assertTrue(n.extras.getCharSequence(Notification.EXTRA_TITLE).toString().startsWith("小雨 在"))
         assertNotNull(n.getLargeIcon())
-        assertEquals(listOf("📍 現在在哪？", "🤗 抱抱", "💞 更多安撫"), n.actions.map { it.title.toString() })
+        assertTrue(n.extras.getCharSequence(Notification.EXTRA_TEXT).toString().startsWith("34% · 好累"))
+        assertFalse(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString().startsWith("🔋"))
+        assertEquals(listOf("現在在哪？", "抱抱", "更多安撫"), n.actions.map { it.title.toString() })
         // 「更多安撫」打開浮在目前畫面上的小視窗（不是整個 App）
         val more = Shadows.shadowOf(n.actions[2].actionIntent).savedIntent
         assertEquals(QuickComfortActivity::class.java.name, more.component?.className)
         // 對方沒分享位置：沒有「現在在哪？」，多一個親親（最多三個按鈕）
         val noLocation = notifier.serviceNotification(ServiceNotice.of(s.copy(partnerSharing = s.partnerSharing!!.copy(shareLocation = false)), true, StatusText.DEFAULTS))
-        assertEquals(listOf("🤗 抱抱", "😘 親親", "💞 更多安撫"), noLocation.actions.map { it.title.toString() })
+        assertEquals(listOf("抱抱", "親親", "更多安撫"), noLocation.actions.map { it.title.toString() })
         val kiss = Shadows.shadowOf(noLocation.actions[1].actionIntent).savedIntent
         assertEquals(StatusActionReceiver.COMFORT, kiss.action)
         assertEquals("kiss", kiss.getStringExtra(StatusActionReceiver.EXTRA_KIND))
@@ -124,6 +126,15 @@ class StatusWidgetTest {
         val plain = notifier.serviceNotification(ServiceNotice.of(s, false, StatusText.DEFAULTS))
         assertEquals(Notifier.CH_SERVICE, plain.channelId)
         assertEquals(0, NotificationCompat.getActionCount(plain))
+    }
+
+    @Test fun notificationPreservesSymbolsInsideMultilineMoodNotes() {
+        val note = "晚安\n🔋 帶水"
+        val state = s.copy(moods = s.moods.map { if (it.userId == s.partner?.id) it.copy(note = note) else it })
+        val notice = ServiceNotice.of(state, true, setOf(StatusText.MOOD))
+        val notification = Notifier(context).serviceNotification(notice)
+        assertEquals("好累：$note", notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        assertEquals("好累：$note", notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString())
     }
 
     // ------------------------------------------------------------ 桌面小工具
@@ -188,28 +199,29 @@ class StatusWidgetTest {
         // 拉寬就放得下「在一起」三個字（示範模式還有「（示範）」），小字就不用再寫
         val wide = views(Widgets.together(context, snap, today, size = SizeF(320f, 56f)))
         assertEquals("在一起（示範）", wide.text(R.id.together_label))
-        assertEquals("第 520 天還有 6 天 🎉", wide.text(R.id.together_sub))
+        assertEquals("第 520 天還有 6 天", wide.text(R.id.together_sub))
         val real = snap.copy(demo = false)
         assertEquals("在一起", views(Widgets.together(context, real, today, size = SizeF(200f, 56f))).text(R.id.together_label))
         assertEquals("520 倒數 6 天", views(Widgets.together(context, real, today)).text(R.id.together_sub))
         // 一個月內沒有里程碑：小字寫兩個人的名字
         val noMilestone = real.copy(togetherSince = today.minusDays(40).toString())
-        assertEquals("阿哲♥小雨", views(Widgets.together(context, noMilestone, today)).text(R.id.together_sub))
-        assertEquals("阿哲 ♥ 小雨", views(Widgets.together(context, noMilestone, today, size = SizeF(320f, 56f))).text(R.id.together_sub))
+        assertEquals("阿哲 · 小雨", views(Widgets.together(context, noMilestone, today)).text(R.id.together_sub))
+        assertEquals("阿哲 · 小雨", views(Widgets.together(context, noMilestone, today, size = SizeF(320f, 56f))).text(R.id.together_sub))
 
         // 一格高的 4×1：名字、一行狀態（整項整項放，不會切在一半）、🤗
-        assertEquals(listOf("📍 小雨公司", "🔋 34%", "😩 好累", "🔕 勿擾中"), Widgets.statusParts(snap).take(4))
+        assertEquals(listOf("小雨公司", "34%", "好累", "勿擾中"), Widgets.statusParts(snap).take(4))
         val partner = views(Widgets.partner(context, snap))
         assertEquals("小雨（示範）", partner.text(R.id.partner_name))
-        assertTrue(partner.text(R.id.status)!!.startsWith("📍 小雨公司 · 🔋 34% · 😩 好累"))
+        assertTrue(partner.text(R.id.status)!!.startsWith("小雨公司 · 34% · 好累"))
         assertTrue(partner.text(R.id.updated)!!.endsWith("更新"))
-        assertEquals("🤗", partner.text(R.id.hug_button))
+        assertEquals("抱抱", partner.findViewById<TextView>(R.id.hug_button).contentDescription.toString())
+        assertNotNull(partner.findViewById<TextView>(R.id.hug_button).background)
         // 🤗 可以按的範圍至少 48dp 寬
         val hug = laidOut(Widgets.partner(context, snap), 320, 56).findViewById<View>(R.id.hug_button)
         assertTrue(hug.width >= (48 * context.resources.displayMetrics.density).roundToInt())
         // 窄一點：狀態少放幾項；名字太長就不寫更新時間
         val narrow = views(Widgets.partner(context, snap.copy(demo = false), size = SizeF(240f, 56f)))
-        assertEquals("📍 小雨公司 · 🔋 34%", narrow.text(R.id.status))
+        assertTrue("先顯示位置和電量，剩下的狀態能放才放", narrow.text(R.id.status)!!.startsWith("小雨公司 · 34%"))
         assertTrue(narrow.text(R.id.updated)!!.endsWith("更新"))
         assertNull(views(Widgets.partner(context, snap.copy(partnerName = "全世界最可愛的小雨"), size = SizeF(240f, 56f))).text(R.id.updated))
 
@@ -217,21 +229,22 @@ class StatusWidgetTest {
         assertNotNull(views(Widgets.partner(context, snap, size = SizeF(276f, 102f))).text(R.id.status))
         // 拉到兩格高：換成大版面，每項分行
         val tall = views(Widgets.partner(context, snap, size = SizeF(320f, 140f)))
-        assertTrue(tall.text(R.id.place)!!.startsWith("📍 在 小雨公司"))
-        assertEquals("🔋 34%　😩 好累：開了一整天的會", tall.text(R.id.line1))
+        assertTrue(tall.text(R.id.place)!!.startsWith("在 小雨公司"))
+        assertEquals("34%　好累：開了一整天的會", tall.text(R.id.line1))
         assertTrue(tall.text(R.id.updated)!!.contains("在一起第 "))
-        assertEquals("🤗 抱抱", tall.text(R.id.hug_button))
+        assertEquals("抱抱", tall.text(R.id.hug_button))
+        assertNotNull(tall.findViewById<TextView>(R.id.hug_button).compoundDrawables[0])
         // 窄的 3×2 放不下大版面：一格高的排法往下多放幾行，一樣整項整項放
         val narrowTall = views(Widgets.partner(context, snap, size = SizeF(196f, 220f))).text(R.id.status)!!.lines()
         assertTrue(narrowTall.toString(), narrowTall.size >= 3)
-        assertTrue(narrowTall.joinToString(" · ").startsWith("📍 小雨公司 · 🔋 34% · 😩 好累"))
+        assertTrue(narrowTall.joinToString(" · ").startsWith("小雨公司 · 34% · 好累"))
         val big = views(Widgets.together(context, snap, today, size = SizeF(160f, 160f)))
         assertEquals("%,d".format(days), big.text(R.id.together_days))
         // 示範資料在一起第 514 天：一個月內有第 520 天（示範模式放不下「在一起（示範）」，小字寫「示範」）
-        assertEquals("示範 · 520 倒數 6 天", big.text(R.id.together_sub))
+        assertEquals("示範 · 第 520 天還有 6 天", big.text(R.id.together_sub))
         val bigReal = views(Widgets.together(context, snap.copy(demo = false), today, size = SizeF(160f, 160f)))
         assertEquals("在一起", bigReal.text(R.id.together_label))
-        assertEquals("第 520 天還有 6 天 🎉", bigReal.text(R.id.together_sub))
+        assertEquals("第 520 天還有 6 天", bigReal.text(R.id.together_sub))
     }
 
     @Test fun pausedOrNothingSharedShowsWhy() {
@@ -253,7 +266,7 @@ class StatusWidgetTest {
         val out = WidgetSnapshot.of(null)
         assertEquals(WidgetSnapshot.Kind.SIGNED_OUT, out.kind)
         val together = views(Widgets.together(context, out))
-        assertEquals("💞", together.text(R.id.together_days))
+        assertEquals("—", together.text(R.id.together_days))
         assertNull(together.text(R.id.together_unit))
         assertEquals("還沒登入", together.text(R.id.together_sub))
         assertEquals("登入後顯示在一起的天數", views(Widgets.together(context, out, size = SizeF(320f, 56f))).text(R.id.together_sub))
@@ -310,7 +323,7 @@ class StatusWidgetTest {
         manager.updateAppWidgetOptions(tall, sizes(SizeF(320f, 200f), SizeF(560f, 120f)))
         Widgets.updateAll(context, WidgetSnapshot.of(s))
         assertNotNull(shadow.getViewFor(row).text(R.id.status))
-        assertTrue(shadow.getViewFor(tall).text(R.id.place)!!.startsWith("📍"))
+        assertTrue(shadow.getViewFor(tall).text(R.id.place)!!.startsWith("在 "))
 
         val together = shadow.createWidget(TogetherWidget::class.java, R.layout.widget_together)
         Widgets.updateAll(context, WidgetSnapshot.of(s))

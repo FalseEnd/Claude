@@ -62,16 +62,16 @@ class NearbyScreensTest {
 
     @Test fun homeSaysTogether() {
         show { HomeScreen(s.copy(partnerNearSince = since), vm, {}, {}) }
-        assertTrue(has("💞 小雨 就在你身邊"))
+        assertTrue(has("小雨 就在你身邊"))
         assertFalse("GPS 算的距離不寫了", has("相距 "))
-        assertTrue("手機卡片的位置", has("就在你身邊 💞"))
+        assertTrue("手機卡片的位置", has("就在你身邊"))
         compose.onRoot().captureRoboImage("build/screens/111_nearby_home.png")
     }
 
     @Test fun togetherEvenWithoutLocationSharing() {
         val st = s.copy(partnerNearSince = since, partnerSharing = s.partnerSharing!!.copy(shareLocation = false))
         show { HomeScreen(st, vm, {}, {}) }
-        assertTrue(has("💞 小雨 就在你身邊"))
+        assertTrue(has("小雨 就在你身邊"))
         assertFalse(has("小雨 沒有分享位置"))
     }
 
@@ -84,7 +84,7 @@ class NearbyScreensTest {
     @Test fun privacyCard() {
         show { PrivacyScreen(s.copy(partnerNearSince = since), vm) {} }
         compose.onNodeWithText("藍牙偵測在身邊").performScrollTo()
-        assertTrue(has("💞 小雨 就在你身邊（${Fmt.time(since)} 起）"))
+        assertTrue(has("小雨 就在你身邊（${Fmt.time(since)} 起）"))
         assertTrue(has("只有 小雨 的手機認得出來"))
         compose.onRoot().captureRoboImage("build/screens/112_nearby_privacy.png")
     }

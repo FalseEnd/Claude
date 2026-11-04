@@ -148,7 +148,7 @@ class Notifier(private val context: Context) {
     private fun addReplies(b: NotificationCompat.Builder, id: Long, kind: String, title: String, comfortId: Long?) {
         val input = RemoteInput.Builder(StatusActionReceiver.KEY_REPLY).setLabel("回一句悄悄話…").build()
         b.addAction(
-            NotificationCompat.Action.Builder(R.drawable.ic_stat_heart, "💬 回覆", StatusActionReceiver.reply(context, id, comfortId, title, text = true))
+            NotificationCompat.Action.Builder(android.R.drawable.ic_menu_send, "回覆", StatusActionReceiver.reply(context, id, comfortId, title, text = true))
                 .addRemoteInput(input)
                 .setAllowGeneratedReplies(true)
                 .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
@@ -156,7 +156,7 @@ class Notifier(private val context: Context) {
                 .build(),
         )
         b.addAction(
-            NotificationCompat.Action.Builder(R.drawable.ic_stat_heart, if (kind == "comfort") "🤗 回抱" else "🤗 抱抱", StatusActionReceiver.reply(context, id, comfortId, title, text = false))
+            NotificationCompat.Action.Builder(R.drawable.ic_stat_heart, if (kind == "comfort") "回抱" else "抱抱", StatusActionReceiver.reply(context, id, comfortId, title, text = false))
                 .setShowsUserInterface(false)
                 .build(),
         )
@@ -194,7 +194,7 @@ class Notifier(private val context: Context) {
             .setAutoCancel(true)
             .setContentIntent(openApp("weather", MORNING_ID))
         heart?.let(b::setLargeIcon)
-        if (remind != null) b.addAction(0, "💌 提醒 $partnerName", remind)
+        if (remind != null) b.addAction(android.R.drawable.ic_menu_send, "提醒 $partnerName", remind)
         runCatching { NotificationManagerCompat.from(context).notify(MORNING_ID, b.build()) }
     }
 
@@ -235,13 +235,13 @@ class Notifier(private val context: Context) {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         (n.big ?: n.text).takeIf { it.isNotEmpty() }?.let { b.setStyle(NotificationCompat.BigTextStyle().bigText(it)) }
         if (n.whenMs != null) b.setWhen(n.whenMs).setShowWhen(true) else b.setShowWhen(false)
-        if (n.locate) b.addAction(0, "📍 現在在哪？", StatusActionReceiver.intent(context, StatusActionReceiver.LOCATE))
+        if (n.locate) b.addAction(android.R.drawable.ic_menu_mylocation, "現在在哪？", StatusActionReceiver.intent(context, StatusActionReceiver.LOCATE))
         if (n.hug) {
             // 通知最多三個按鈕：抱抱一定有，沒有「現在在哪？」時多一個親親；
             // 「更多安撫」打開浮在目前畫面上的小視窗，「現在在哪？」、抱抱和其他安撫全部都選得到
-            b.addAction(0, "🤗 抱抱", StatusActionReceiver.intent(context, StatusActionReceiver.HUG))
-            if (!n.locate) b.addAction(0, "😘 親親", StatusActionReceiver.comfort(context, "kiss"))
-            b.addAction(0, "💞 更多安撫", quickComforts())
+            b.addAction(R.drawable.ic_stat_heart, "抱抱", StatusActionReceiver.intent(context, StatusActionReceiver.HUG))
+            if (!n.locate) b.addAction(R.drawable.ic_stat_heart, "親親", StatusActionReceiver.comfort(context, "kiss"))
+            b.addAction(android.R.drawable.ic_menu_more, "更多安撫", quickComforts())
         }
         return b.build()
     }

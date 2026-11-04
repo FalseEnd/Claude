@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
@@ -96,7 +97,7 @@ class StickerImageTest {
     @Test fun invalidIdNeverLoads() {
         show("../../evil?x=1")
         compose.waitForIdle()
-        compose.onNodeWithText("🖼️").assertExists()
+        compose.onNodeWithContentDescription("貼圖載入失敗").assertExists()
         compose.onAllNodesWithContentDescription("貼圖").assertCountEquals(0)
         assertTrue(requests.isEmpty())
     }
@@ -114,7 +115,7 @@ class StickerImageTest {
             .components { add(FakeImageLoaderEngine.Builder().intercept({ true }) { chain -> ErrorResult(null, chain.request, IOException("404")) }.build()) }
             .build()
         show("L4c8BNDK4STL7B5LdV")
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("🖼️").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("貼圖載入失敗").fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodesWithContentDescription("貼圖").assertCountEquals(0)
     }
 

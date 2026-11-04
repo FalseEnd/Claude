@@ -1,6 +1,7 @@
 package tw.xiaoliangkou.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,6 +44,7 @@ import tw.xiaoliangkou.app.data.toInstantOrNull
 import tw.xiaoliangkou.app.service.Locator
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Fmt
+import tw.xiaoliangkou.app.ui.components.IllustratedIcon
 import tw.xiaoliangkou.app.ui.components.ButtonRow
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.CuteCard
@@ -63,9 +65,9 @@ internal fun partnerSpot(s: AppState): Pair<WeatherSpot?, String> {
     val ps = s.partnerSharing
     val loc = s.partnerStatus.location
     return when {
-        ps?.paused == true -> null to "${s.partnerName} 暫停分享中，看不到那邊的天氣 🙈"
+        ps?.paused == true -> null to "${s.partnerName} 暫停分享中，看不到那邊的天氣"
         ps?.shareLocation != true -> null to "${s.partnerName} 沒有分享位置，看不到那邊的天氣"
-        loc == null -> null to "還沒收到 ${s.partnerName} 的位置 📡"
+        loc == null -> null to "還沒收到 ${s.partnerName} 的位置"
         else -> WeatherSpot(loc.lat, loc.lng, (loc.recordedAt ?: loc.updatedAt)?.toInstantOrNull()) to ""
     }
 }
@@ -158,12 +160,12 @@ private fun WeatherHalf(name: String, load: WeatherLoad?, missing: String, modif
             is WeatherLoad.Ready -> {
                 val (emoji, text) = Weather.describe(load.w.code, load.w.isDay)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(emoji, style = MaterialTheme.typography.headlineSmall)
+                    IllustratedIcon(emoji, Modifier.size(32.dp), contentDescription = text)
                     Text(Weather.deg(load.w.temp), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
                 }
                 TidyText(listOfNotNull(load.area, text).joinToString(" · "), style = MaterialTheme.typography.bodySmall, maxLines = 2)
                 val a = Weather.advice(load.w)
-                TidyText("${a.outing.emoji} ${a.tips.firstOrNull()?.todo ?: a.outing.text}", style = MaterialTheme.typography.labelMedium, color = outingColor(a.outing), maxLines = 2)
+                TidyText(a.tips.firstOrNull()?.todo ?: a.outing.text, style = MaterialTheme.typography.labelMedium, color = outingColor(a.outing), maxLines = 2)
             }
             WeatherLoad.Loading -> Text("讀取中…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             is WeatherLoad.Failed -> TidyText(load.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -222,7 +224,7 @@ private fun SpotCard(title: String, color: Color, load: WeatherLoad?, spot: Weat
         when (load) {
             null -> TidyText(missing, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             WeatherLoad.Loading -> Text("讀取天氣中…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            is WeatherLoad.Failed -> TidyText("${load.message} 😥", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            is WeatherLoad.Failed -> TidyText(load.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             is WeatherLoad.Ready -> {
                 SpotWeather(load.w, load.area)
                 extra(load.w)
@@ -235,7 +237,7 @@ private fun SpotCard(title: String, color: Color, load: WeatherLoad?, spot: Weat
 private fun SpotWeather(w: WeatherNow, area: String?) {
     val (emoji, text) = Weather.describe(w.code, w.isDay)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(emoji, style = MaterialTheme.typography.displaySmall)
+        IllustratedIcon(emoji, Modifier.size(52.dp), contentDescription = text)
         Column(Modifier.weight(1f)) {
             Text(Weather.deg(w.temp), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
             TidyText(listOfNotNull(area, text).joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
@@ -264,15 +266,15 @@ private fun SpotWeather(w: WeatherNow, area: String?) {
         Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(outingColor(a.outing).copy(alpha = 0.12f)).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(a.outing.emoji, style = MaterialTheme.typography.titleLarge)
+        IllustratedIcon(a.outing.emoji, Modifier.size(28.dp))
         TidyText("外出建議：${a.outing.text}", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
     }
     if (a.tips.isEmpty()) {
-        TidyText("天氣不錯，沒什麼要特別注意的 🌈", style = MaterialTheme.typography.bodyMedium)
+        TidyText("天氣不錯，沒什麼要特別注意的", style = MaterialTheme.typography.bodyMedium)
     } else {
         a.tips.forEach { t ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(t.emoji)
+                IllustratedIcon(t.emoji, Modifier.size(24.dp))
                 TidyText("${t.concern}：${t.todo}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
         }
@@ -296,9 +298,9 @@ private fun RemindPartner(s: AppState, vm: AppViewModel, a: Weather.Advice) {
     ) {
         TidyText("提醒 ${s.partnerName}：「$message」", style = MaterialTheme.typography.bodyMedium)
         ButtonRow {
-            CuteButton(if (sent) "已經提醒了 💌" else "💌 提醒 ${s.partnerName}", small = true, enabled = !sent && !sending, onClick = {
+            CuteButton(if (sent) "已經提醒了" else "提醒 ${s.partnerName}", small = true, enabled = !sent && !sending, onClick = {
                 sending = true
-                vm.act(success = "已經提醒 ${s.partnerName} 了 💌", hearts = true, onDone = { sent = true }) {
+                vm.act(success = "已經提醒 ${s.partnerName} 了", hearts = true, onDone = { sent = true }) {
                     try { it.sendComfort(kind, message, null) } finally { sending = false }
                 }
             })

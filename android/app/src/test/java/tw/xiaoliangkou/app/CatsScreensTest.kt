@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
@@ -68,14 +69,14 @@ class CatsScreensTest {
         compose.setContent {
             Row(Modifier.fillMaxSize().background(Color(0xFF6B6B6B)).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(CircleShape, RoundedCornerShape(28.dp)).forEach { shape ->
-                    Box(Modifier.size(108.dp).clip(shape).background(Color(0xFFFFE3EC))) {
+                    Box(Modifier.size(96.dp).clip(shape).background(colorResource(R.color.launcher_bg))) {
                         Image(painterResource(R.drawable.ic_launcher_foreground), null, Modifier.fillMaxSize().scale(1.5f))
                     }
                 }
-                Box(Modifier.size(108.dp).clip(CircleShape).background(Color(0xFF2B3A4A))) {
+                Box(Modifier.size(96.dp).clip(CircleShape).background(Color(0xFF2B3A4A))) {
                     Image(painterResource(R.drawable.ic_launcher_monochrome), null, Modifier.fillMaxSize().scale(1.5f), colorFilter = ColorFilter.tint(Color(0xFFCFE3FF)))
                 }
-                Box(Modifier.size(48.dp).clip(CircleShape).background(Color(0xFFFFE3EC))) {
+                Box(Modifier.size(48.dp).clip(CircleShape).background(colorResource(R.color.launcher_bg))) {
                     Image(painterResource(R.drawable.ic_launcher_foreground), null, Modifier.fillMaxSize().scale(1.5f))
                 }
             }

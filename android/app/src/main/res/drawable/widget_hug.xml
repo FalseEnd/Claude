@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 一格高的 🤗 按鈕：看起來是 38dp 的圓，可以按的範圍比較大 -->
+<!-- 一格高的抱抱按鈕：圓底和愛心各自置中，可點擊範圍比較大 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:width="38dp" android:height="38dp" android:gravity="center" android:drawable="@drawable/widget_chip" />
+    <item android:width="24dp" android:height="24dp" android:gravity="center" android:drawable="@drawable/widget_heart" />
 </layer-list>

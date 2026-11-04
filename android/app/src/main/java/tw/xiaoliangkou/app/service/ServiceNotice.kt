@@ -35,12 +35,12 @@ data class ServiceNotice(
             val place = st.item(StatusText.PLACE)
             val rest = st.items.filter { it.key != StatusText.PLACE }
             // 展開後每項一行；位置已經在標題了，不再重複
-            val lines = rest.map { it.toString() } + listOfNotNull(st.note)
+            val lines = rest.map { it.text } + listOfNotNull(st.note)
             return ServiceNotice(
                 status = true,
                 // 收起來時只看得到一行：標題放位置，內文放其他項目
                 title = partner + place?.let { " ${it.text}" }.orEmpty(),
-                text = rest.joinToString(" · ") { it.toString() }.ifEmpty { st.note ?: if (place != null) "" else plain },
+                text = rest.joinToString(" · ") { it.text }.ifEmpty { st.note ?: if (place != null) "" else plain },
                 big = lines.joinToString("\n").ifEmpty { null },
                 sub = if (!s.connected) "連線中斷，資料可能不是最新" else StatusText.daysTogether(s)?.let { "在一起第 $it 天" },
                 whenMs = st.updatedAt?.toEpochMilli(),

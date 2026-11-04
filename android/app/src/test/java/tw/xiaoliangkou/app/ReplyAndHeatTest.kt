@@ -113,7 +113,7 @@ class ReplyAndHeatTest {
         shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
         c.notifier.show(7, "小雨 給了你一個大大的抱抱", "晚安", "comfort", buildJsonObject { put("comfort_id", 12) })
         val n = notification(7)
-        assertEquals(listOf("💬 回覆", "🤗 回抱"), n.actions.map { it.title.toString() })
+        assertEquals(listOf("回覆", "回抱"), n.actions.map { it.title.toString() })
         val input = n.actions[0].remoteInputs.single()
         assertEquals(StatusActionReceiver.KEY_REPLY, input.resultKey)
         assertEquals("回一句悄悄話…", input.label.toString())
@@ -124,7 +124,7 @@ class ReplyAndHeatTest {
         assertTrue("回抱不用", shadowOf(n.actions[1].actionIntent).flags and PendingIntent.FLAG_IMMUTABLE != 0)
         // 對方心情不好（要不要安撫一下？）也可以直接回；開心、抵達這些不用
         c.notifier.show(8, "小雨 現在覺得難過", "要不要安撫一下？", "mood", buildJsonObject { put("mood", "sad") })
-        assertEquals(listOf("💬 回覆", "🤗 抱抱"), notification(8).actions.map { it.title.toString() })
+        assertEquals(listOf("回覆", "抱抱"), notification(8).actions.map { it.title.toString() })
         c.notifier.show(9, "小雨 現在覺得開心", "今天超順利", "mood", buildJsonObject { put("mood", "happy") })
         assertTrue(notification(9).actions.isNullOrEmpty())
         c.notifier.show(10, "小雨 已抵達 公司", "", "place")
@@ -175,6 +175,6 @@ class ReplyAndHeatTest {
         idleUntil { shadowOf(notification(23)).contentText.toString().startsWith("沒有送出") }
         val n = notification(23)
         assertEquals("沒有送出：傳太快了，休息一下再傳", shadowOf(n).contentText.toString())
-        assertEquals(listOf("💬 回覆", "🤗 回抱"), n.actions.map { it.title.toString() })
+        assertEquals(listOf("回覆", "回抱"), n.actions.map { it.title.toString() })
     }
 }

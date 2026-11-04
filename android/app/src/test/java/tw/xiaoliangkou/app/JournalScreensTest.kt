@@ -136,8 +136,8 @@ class JournalScreensTest {
             CalendarScreen(s, vm, {}, today.minusDays(1))
         }
         compose.onNodeWithText("這天的生活").assertExists()
-        compose.onNodeWithText("🎙️ 0:03").assertExists()
-        compose.onNodeWithText("記錄這天 ✍️").assertExists()
+        compose.onNodeWithText("0:03").assertExists()
+        compose.onNodeWithText("記錄這天").assertExists()
         compose.onNodeWithText("在這天約會").assertExists()
     }
 
@@ -161,8 +161,8 @@ class JournalScreensTest {
         compose.onNodeWithText("編輯這天的紀錄").assertExists()
         compose.onNodeWithText("儲存").assertIsEnabled()
         compose.onNodeWithText("刪除這則紀錄").assertExists()
-        compose.onNodeWithText("📷 照片").assertExists()
-        compose.onNodeWithText("🎙️ 錄音").assertExists()
+        compose.onNodeWithText("照片").assertExists()
+        compose.onNodeWithText("錄音").assertExists()
         // 移除一張照片
         compose.onAllNodesWithContentDescription("移除")[0].performClick()
         compose.waitUntil(WAIT) { photoCount() == 1 }
@@ -174,7 +174,7 @@ class JournalScreensTest {
             val s by demo.state.collectAsState()
             DayEntrySheet(s, vm, null, today.minusDays(3)) { closed = true }
         }
-        compose.onNodeWithText("記錄這天的生活 ✍️").assertExists()
+        compose.onNodeWithText("記錄這天的生活").assertExists()
         compose.onNodeWithText("刪除這則紀錄").assertDoesNotExist()
         // 沒寫字也沒照片：不能存
         compose.onNodeWithText("儲存").assertIsNotEnabled()
@@ -194,8 +194,8 @@ class JournalScreensTest {
             val s by demo.state.collectAsState()
             CalendarScreen(s, vm, { opened = it }, day)
         }
-        compose.onNodeWithText("這天還沒有紀錄，補一點回憶吧 ✨").assertExists()
-        compose.onNodeWithText("記錄這天 ✍️").performClick()
+        compose.onNodeWithText("這天還沒有紀錄，補一點回憶吧").assertExists()
+        compose.onNodeWithText("記錄這天").performClick()
         assertEquals(SheetSpec.DayEntryEdit(null, day), opened)
     }
 
@@ -243,8 +243,8 @@ class JournalScreensTest {
             CalendarScreen(s.copy(schemaOutdated = true), vm, {}, today.minusDays(3))
         }
         compose.onNodeWithText("upgrade-v2.sql", substring = true).assertExists()
-        compose.onNodeWithText("記錄這天 ✍️").assertDoesNotExist()
-        compose.onNodeWithText("這天還沒有紀錄，補一點回憶吧 ✨").assertDoesNotExist()
+        compose.onNodeWithText("記錄這天").assertDoesNotExist()
+        compose.onNodeWithText("這天還沒有紀錄，補一點回憶吧").assertDoesNotExist()
     }
 
     /** 打開的紀錄已經不見了：不會變成新增（一存就多一則） */
@@ -290,7 +290,7 @@ class JournalScreensTest {
             }
         }
         compose.onNodeWithText("儲存").assertIsEnabled()
-        compose.onNodeWithText("🎙️ 錄音").performClick()
+        compose.onNodeWithText("錄音").performClick()
         compose.waitUntil(WAIT) { compose.onAllNodesWithText("先停止錄音再儲存").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("先停止錄音再儲存").assertIsNotEnabled()
         compose.onNodeWithText("取消").performClick()
@@ -374,7 +374,7 @@ class JournalScreensTest {
             }
         }
         val before = demoFiles()
-        compose.onNodeWithText("📷 照片").performClick()
+        compose.onNodeWithText("照片").performClick()
         compose.waitUntil(WAIT) { compose.onAllNodesWithText("1 / ${Limits.MEDIA}").fetchSemanticsNodes().isNotEmpty() }
         compose.waitUntil(WAIT) { !vm.busy }
         return MediaItem((demoFiles() - before).single(), MediaItem.PHOTO)

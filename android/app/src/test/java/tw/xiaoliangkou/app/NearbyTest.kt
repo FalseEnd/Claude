@@ -189,8 +189,8 @@ class NearbyTest {
         val s = demo.state.value
         assertTrue(Derived.distanceText(s, "相距")!!.startsWith("相距 "))
         val near = s.copy(partnerNearSince = t0)
-        assertEquals("就在你身邊 💞", Derived.distanceText(near, "相距"))
-        assertTrue(StatusText.of(near).item(StatusText.PLACE)!!.text.endsWith(" · 就在你身邊 💞"))
+        assertEquals("就在你身邊", Derived.distanceText(near, "相距"))
+        assertTrue(StatusText.of(near).item(StatusText.PLACE)!!.text.endsWith(" · 就在你身邊"))
         // 沒分享位置，但藍牙偵測到在身邊
         val noLocation = near.copy(partnerSharing = near.partnerSharing!!.copy(shareLocation = false))
         assertEquals("💞 就在你身邊", StatusText.of(noLocation).item(StatusText.PLACE).toString())

@@ -167,7 +167,7 @@ class LockScreensTest {
         capture("81_security_off")
         compose.onNodeWithText("進入 App 要解鎖").performClick()
         assertTrue(has("用什麼解鎖？"))
-        compose.onNodeWithText("🔢 數字密碼（4～8 位）").performClick()
+        compose.onNodeWithText("數字密碼（4～8 位）").performClick()
         assertTrue(has("設定密碼"))
         type("1234")
         compose.onNodeWithText("下一步").performClick()
@@ -218,7 +218,7 @@ class LockScreensTest {
         compose.onNodeWithText("變更密碼或圖形").performClick()
         type("2580")
         compose.waitForIdle()
-        compose.onNodeWithText("🔢 數字密碼（4～8 位）").performClick()
+        compose.onNodeWithText("數字密碼（4～8 位）").performClick()
         assertTrue(has("設定密碼"))
         type("9999")
         compose.onNodeWithText("下一步").performClick()
@@ -282,7 +282,7 @@ class LockScreensTest {
         bio.problem = "這支手機不支援指紋或臉部辨識"
         show { SecurityScreen(vm, back = {}, lock = lock, biometrics = bio) }
         compose.onNodeWithText("進入 App 要解鎖").performClick()
-        compose.onNodeWithText("✍️ 圖形（連 4 個點以上）").performClick()
+        compose.onNodeWithText("圖形（連 4 個點以上）").performClick()
         assertTrue(has("畫出圖形"))
         draw(4, 5)
         assertTrue(has("至少連 4 個點"))

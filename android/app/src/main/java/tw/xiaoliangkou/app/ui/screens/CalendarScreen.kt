@@ -74,6 +74,7 @@ import tw.xiaoliangkou.app.data.DateEvent
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Fmt
 import tw.xiaoliangkou.app.ui.SheetSpec
+import tw.xiaoliangkou.app.ui.components.IllustratedIcon
 import tw.xiaoliangkou.app.ui.components.ChoiceChip
 import tw.xiaoliangkou.app.ui.components.CountUpText
 import tw.xiaoliangkou.app.ui.components.CuteButton
@@ -274,7 +275,7 @@ private fun DayPanel(s: AppState, vm: AppViewModel, d: LocalDate, events: List<D
                 Line("🌸", "${if (s.cycleOwnerIsMe) "我" else s.partnerName} · $label", "週期第 ${ph.cycleDay} 天" + (ph.follicular?.let { if (it) " · 濾泡期" else " · 黃體期" } ?: ""))
             }
         }
-        if (events.isEmpty() && anns.isEmpty()) Text("這天還沒有安排 🍃", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (events.isEmpty() && anns.isEmpty()) Text("這天還沒有安排", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SoftButton("在這天約會", Modifier.fillMaxWidth(), icon = Icons.Rounded.Add) { sheet(SheetSpec.EventEdit(null, d)) }
     }
 }
@@ -318,8 +319,8 @@ private fun EventRow(s: AppState, vm: AppViewModel, e: DateEvent, withDate: Bool
         }
         if (invited) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Pill("${s.partnerName} 約你 💌", MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.align(Alignment.CenterVertically))
-                CuteButton("答應", icon = Icons.Rounded.Check, small = true) { vm.act("已答應，${s.partnerName} 收到通知了 🥳", hearts = true) { it.answerEvent(e.id, "confirmed") } }
+                Pill("${s.partnerName} 約你", MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.align(Alignment.CenterVertically))
+                CuteButton("答應", icon = Icons.Rounded.Check, small = true) { vm.act("已答應，${s.partnerName} 收到通知了", hearts = true) { it.answerEvent(e.id, "confirmed") } }
                 SoftButton("婉拒", small = true) { vm.act("已婉拒") { it.answerEvent(e.id, "declined") } }
             }
         }
@@ -340,10 +341,10 @@ fun EventSheet(s: AppState, vm: AppViewModel, id: String?, date: LocalDate, clos
     var remind by remember { mutableStateOf(e?.remindMinutes?.firstOrNull() ?: 60) }
     var pickTime by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(if (e == null) "約 ${s.partnerName} 💌" else "編輯約會", style = MaterialTheme.typography.titleLarge)
+        Text(if (e == null) "約 ${s.partnerName}" else "編輯約會", style = MaterialTheme.typography.titleLarge)
         CuteField(title, { title = it.take(40) }, "要做什麼", placeholder = "例如：吃火鍋、看夜景")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("🍲 吃火鍋", "🎬 看電影", "🌃 看夜景", "🧺 野餐", "☕ 咖啡廳").forEach { idea -> ChoiceChip(idea, title == idea.substringAfter(" ")) { title = idea.substringAfter(" ") } }
+            listOf("🍲" to "吃火鍋", "🎬" to "看電影", "🌃" to "看夜景", "🧺" to "野餐", "☕" to "咖啡廳").forEach { (symbol, idea) -> ChoiceChip(idea, title == idea, symbol) { title = idea } }
         }
         // 日期換成兩行（別年的日期、字放大）時，旁邊的時間也一樣高
         Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -372,7 +373,7 @@ fun EventSheet(s: AppState, vm: AppViewModel, id: String?, date: LocalDate, clos
                 put("locationText", place.trim()); put("note", note.trim())
                 putJsonArray("remindMinutes") { add(JsonPrimitive(remind)) }
             }
-            vm.act(if (e == null) "已送出邀請，等 ${s.partnerName} 回覆 💌" else "已更新", hearts = e == null, onDone = close) { it.saveEvent(id, body) }
+            vm.act(if (e == null) "已送出邀請，等 ${s.partnerName} 回覆" else "已更新", hearts = e == null, onDone = close) { it.saveEvent(id, body) }
         }
         if (e != null && e.createdBy == s.myId) SoftButton("刪除約會", Modifier.fillMaxWidth(), icon = Icons.Rounded.Delete) { vm.act("已刪除", onDone = close) { it.deleteEvent(e.id) } }
         Text("${s.partnerName} 答應後，兩個人都會在約會前收到提醒。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -392,7 +393,7 @@ fun AnniversaryScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (S
         if (since != null) item {
             CuteCard(color = Cute.colors.partnerSoft) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    HeartBeat { Text("💞", style = MaterialTheme.typography.displayMedium) }
+                    HeartBeat { IllustratedIcon("💞", Modifier.size(52.dp)) }
                     Text("從 ${since.year}/${since.monthValue}/${since.dayOfMonth} 開始", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     CountUpText(Dates.daysTogether(since, today), MaterialTheme.typography.displayLarge, suffix = " 天", color = MaterialTheme.colorScheme.primary)
                     Text("在一起的每一天都算數", style = MaterialTheme.typography.bodyMedium)
@@ -425,7 +426,7 @@ fun AnniversaryScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (S
                             a.title + if (o.years > 0) (if (a.kind == "birthday") " · ${o.years}\u00A0歲" else " · 第\u00A0${o.years}\u00A0年") else "",
                             Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
                         )
-                        if (o.daysLeft == 0) HeartBeat { Pill("就是今天 🎉", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary) }
+                        if (o.daysLeft == 0) HeartBeat { Pill("就是今天", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary) }
                         else Pill(Fmt.daysLeft(o.daysLeft), if (o.daysLeft <= 7) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
                     }
                     // 日期和提醒：放不下就在「·」後面換行，不會被切掉
@@ -450,11 +451,11 @@ fun AnniversarySheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Un
     var yearly by remember { mutableStateOf((a?.repeat ?: "yearly") == "yearly") }
     var remind by remember { mutableStateOf(a?.remindDays?.toSet() ?: setOf(0, 1)) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(if (a == null) "新增紀念日 🎈" else "編輯紀念日", style = MaterialTheme.typography.titleLarge)
+        Text(if (a == null) "新增紀念日" else "編輯紀念日", style = MaterialTheme.typography.titleLarge)
         CuteField(title, { title = it.take(30) }, "名稱", placeholder = "例如：第一次出國")
         DateField("日期", date) { date = it }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("custom" to "💝 自訂", "birthday" to "🎂 生日", "first_date" to "🌹 第一次約會").forEach { (k, l) -> ChoiceChip(l, kind == k) { kind = k } }
+            listOf(Triple("custom", "自訂", "💝"), Triple("birthday", "生日", "🎂"), Triple("first_date", "第一次約會", "🌹")).forEach { (key, label, symbol) -> ChoiceChip(label, kind == key, symbol) { kind = key } }
         }
         Text("提醒時間", style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -466,7 +467,7 @@ fun AnniversarySheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Un
                 put("title", title.trim()); put("date", date); put("kind", kind); put("repeat", if (yearly) "yearly" else "none")
                 putJsonArray("remindDays") { (remind.ifEmpty { setOf(0) }).sorted().forEach { add(JsonPrimitive(it)) } }
             }
-            vm.act("已儲存，兩個人都會收到提醒 🔔", hearts = a == null, onDone = close) { it.saveAnniversary(id, body) }
+            vm.act("已儲存，兩個人都會收到提醒", hearts = a == null, onDone = close) { it.saveAnniversary(id, body) }
         }
         if (a != null) SoftButton("刪除", Modifier.fillMaxWidth(), icon = Icons.Rounded.Delete) { vm.act("已刪除", onDone = close) { it.deleteAnniversary(a.id) } }
     }

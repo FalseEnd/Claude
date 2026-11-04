@@ -143,14 +143,14 @@ fun DayJournal(s: AppState, vm: AppViewModel, date: LocalDate, sheet: (SheetSpec
                 if (entries.isEmpty()) {
                     Text(
                         when {
-                            date.isAfter(today) -> "這天還沒到，到時候再來寫吧 🌱"
-                            date == today -> "今天過得怎麼樣？寫幾句、拍張照或錄段話 ✨"
-                            else -> "這天還沒有紀錄，補一點回憶吧 ✨"
+                            date.isAfter(today) -> "這天還沒到，到時候再來寫吧"
+                            date == today -> "今天過得怎麼樣？寫幾句、拍張照或錄段話"
+                            else -> "這天還沒有紀錄，補一點回憶吧"
                         },
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                SoftButton("記錄這天 ✍️", Modifier.fillMaxWidth()) { sheet(SheetSpec.DayEntryEdit(null, date)) }
+                SoftButton("記錄這天", Modifier.fillMaxWidth()) { sheet(SheetSpec.DayEntryEdit(null, date)) }
             }
         }
     }
@@ -234,7 +234,7 @@ private fun EntryForm(s: AppState, vm: AppViewModel, e: DayEntry?, date: LocalDa
     // 寫了還沒儲存（或正在錄音）：滑掉面板、按返回前先問
     tw.xiaoliangkou.app.ui.SheetDraftGuard(recording || body.trim() != e?.body.orEmpty().trim() || media != e?.media.orEmpty() || (e != null && day != e.day))
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(if (e == null) "記錄這天的生活 ✍️" else "編輯這天的紀錄", style = MaterialTheme.typography.titleLarge)
+        Text(if (e == null) "記錄這天的生活" else "編輯這天的紀錄", style = MaterialTheme.typography.titleLarge)
         DateField("日期", day) { day = it }
         CuteField(
             body, { body = it.take(Limits.DAY_BODY) }, "想記下什麼", Modifier.heightIn(min = 140.dp),
@@ -258,7 +258,7 @@ private fun EntryForm(s: AppState, vm: AppViewModel, e: DayEntry?, date: LocalDa
             val d = Fmt.parseDate(day) ?: date
             val list = media
             uploads.kept += list.map { it.path }
-            vm.act(if (e == null) "記下來了，${s.partnerName} 也看得到 📔" else "已更新", hearts = e == null, onDone = close) {
+            vm.act(if (e == null) "記下來了，${s.partnerName} 也看得到" else "已更新", hearts = e == null, onDone = close) {
                 it.saveDayEntry(e?.id, d, body.trim(), list)
             }
         }

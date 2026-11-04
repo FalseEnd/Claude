@@ -1,5 +1,6 @@
 package tw.xiaoliangkou.app.ui.screens
 
+import tw.xiaoliangkou.app.ui.components.IllustratedIcon
 import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -153,9 +154,9 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
         item {
             CuteCard {
                 MenuRow(Icons.Rounded.Badge, c.me, c.meSoft, "我的資料", "暱稱、生日、身高、血型…${s.partnerName} 也看得到") { open("profile") }
-                MenuRow(Icons.Rounded.FavoriteBorder, c.partner, c.partnerSoft, "${s.partnerName} 的資料與備註", "對方的資料，和只有你看得到的備註 🔒") { open("partner") }
+                MenuRow(Icons.Rounded.FavoriteBorder, c.partner, c.partnerSoft, "${s.partnerName} 的資料與備註", "對方的資料，和只有你看得到的備註") { open("partner") }
                 MenuRow(Icons.Rounded.StickyNote2, c.peach, c.peach.copy(alpha = 0.25f), "備忘錄", "文字、照片、語音，可以放在桌面") { open("memos") }
-                MenuRow(Icons.Rounded.Pets, c.peach, c.butter.copy(alpha = 0.3f), "我們的貓咪", s.pet?.pet?.let { "${it.name}（${Pet.stageOf(it.xp).label}）等你來餵 🐟" } ?: "兩個人一起養一隻小貓") { open("pet") }
+                MenuRow(Icons.Rounded.Pets, c.peach, c.butter.copy(alpha = 0.3f), "我們的貓咪", s.pet?.pet?.let { "${it.name}（${Pet.stageOf(it.xp).label}）等你來餵" } ?: "兩個人一起養一隻小貓") { open("pet") }
                 MenuRow(Icons.Rounded.AutoAwesome, c.lavender, c.fertileSoft, "星座運勢與御神籤", "今天的運勢、兩人速配、抽一支籤") { open("fortune") }
                 MenuRow(Icons.Rounded.WbSunny, c.butter, c.butter.copy(alpha = 0.3f), "天氣與外出建議", "兩邊的天氣、空氣品質，提醒 ${s.partnerName} 要注意什麼") { open("weather") }
             }
@@ -171,15 +172,15 @@ fun MoreScreen(s: AppState, vm: AppViewModel, sheet: (SheetSpec) -> Unit = {}, o
         item {
             CuteCard {
                 MenuRow(Icons.Rounded.Shield, c.mint, MaterialTheme.colorScheme.secondaryContainer, "分享與隱私", if (s.mySharing?.paused == true) "暫停分享中" else "決定 ${s.partnerName} 能看到什麼") { open("privacy") }
-                MenuRow(Icons.Rounded.Lock, c.lavender, c.fertileSoft, "App 安全性", if (vm.container.lock.enabled) "已上鎖 🔒 · 指紋、臉部或密碼" else "用指紋、臉部或密碼鎖住小倆口") { open("security") }
+                MenuRow(Icons.Rounded.Lock, c.lavender, c.fertileSoft, "App 安全性", if (vm.container.lock.enabled) "已上鎖 · 指紋、臉部或密碼" else "用指紋、臉部或密碼鎖住小倆口") { open("security") }
                 MenuRow(Icons.Rounded.Notifications, c.peach, c.peach.copy(alpha = 0.25f), "通知設定", "通知列顯示 ${s.partnerName} 的狀態、想收到哪些通知") { open("notif") }
                 MenuRow(Icons.Rounded.Widgets, c.butter, c.butter.copy(alpha = 0.25f), "桌面小工具", "在桌面看在一起的天數、${s.partnerName} 的狀態、備忘錄") { open("widgets") }
                 if (!s.demo) {
                     MenuRow(Icons.Rounded.Tune, c.me, c.meSoft, "權限與背景執行", "位置、通知、省電、自動記帳") { open("permissions") }
                     MenuRow(
                         Icons.Rounded.Cloud, c.sky, c.meSoft, "Supabase 與帳號",
-                        if (s.schemaOutdated) "資料庫需要更新，點這裡看怎麼做 🛠️"
-                        else if (upgradeGains(s).isNotEmpty()) "可以再更新一次資料庫（${upgradeGains(s).joinToString("、") { it.first }}）📱"
+                        if (s.schemaOutdated) "資料庫需要更新，點這裡看怎麼做"
+                        else if (upgradeGains(s).isNotEmpty()) "可以再更新一次資料庫（${upgradeGains(s).joinToString("、") { it.first }}）"
                         else "連線、邀請另一半、GIPHY 貼圖、改密碼、登出",
                     ) { open("account") }
                 } else {
@@ -229,7 +230,7 @@ fun PrivacyScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
         item {
             CuteCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("暫停分享 🙈", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Text("暫停分享", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     if (sh?.paused == true) Pill("到 ${Fmt.time(sh.pausedUntilInstant!!)}", Cute.colors.butter.copy(alpha = 0.4f))
                 }
                 Text("暫停位置、手機狀態與開銷。${s.partnerName} 會看到「暫停中」與恢復時間，不會以為你失聯。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -320,7 +321,7 @@ internal fun MorningWeatherCard(s: AppState, vm: AppViewModel, on: Boolean, minu
         }
         if (!on) return@CuteCard
         ButtonRow {
-            SoftButton("⏰ 幾點：$time", small = true) {
+            SoftButton("幾點：$time", small = true) {
                 TimePickerDialog(context, { _, h, m -> scope.launch { vm.container.setMorningWeather(true, h * 60 + m) } }, minutes / 60, minutes % 60, true).show()
             }
             SoftButton(if (trying) "抓天氣中…" else "現在試試看", small = true, enabled = !trying) {
@@ -394,8 +395,8 @@ private fun NoticePreview(n: ServiceNotice) {
         }
         if (n.locate || n.hug) {
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                if (n.locate) Text("📍 現在在哪？", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                if (n.hug) Text("🤗 抱抱", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                if (n.locate) Text("現在在哪？", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                if (n.hug) Text("抱抱", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             }
         }
     }
@@ -465,7 +466,7 @@ fun AccountScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.conta
         item {
             CuteCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(if (s.connected) "🟢" else "🟠", style = MaterialTheme.typography.titleLarge)
+                    IllustratedIcon(if (s.connected) "✅" else "⚠️", Modifier.size(28.dp), if (s.connected) "已連線" else "未連線")
                     Column(Modifier.weight(1f)) {
                         Text(if (s.connected) "已連上你們的 Supabase" else "連線中…", style = MaterialTheme.typography.titleMedium)
                         Text(prefs?.supabaseUrl?.substringAfter("://").orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -494,7 +495,7 @@ fun AccountScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.conta
                         shareText(context, InviteLink.shareText(p.supabaseUrl, p.supabaseKey), "傳送連線邀請")
                     }
                 }
-                Text("金鑰是公開用的 anon / publishable key，資料由資料庫的權限規則保護，只有你們兩個看得到 🔒", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("金鑰是公開用的 anon / publishable key，資料由資料庫的權限規則保護，只有你們兩個看得到", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
@@ -507,13 +508,13 @@ fun AccountScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.conta
         if (s.paired) item {
             CuteCard {
                 Text("在一起的日子", style = MaterialTheme.typography.titleMedium)
-                DateField("從哪天開始", s.couple?.togetherSince ?: LocalDate.now().toString()) { d -> vm.act("已更新 💞") { it.setTogetherSince(d) } }
+                DateField("從哪天開始", s.couple?.togetherSince ?: LocalDate.now().toString()) { d -> vm.act("已更新") { it.setTogetherSince(d) } }
             }
         }
         if (s.paired) item { GiphyKeyCard(s, vm, giphy) }
         item {
             CuteCard {
-                Text("改密碼 🔑", style = MaterialTheme.typography.titleMedium)
+                Text("改密碼", style = MaterialTheme.typography.titleMedium)
                 CuteField(old, { old = it }, "目前的密碼", password = true)
                 CuteField(new, { new = it }, "新密碼（至少 6 個字）", password = true)
                 SoftButton("更新密碼", Modifier.fillMaxWidth(), icon = Icons.Rounded.Key, enabled = old.isNotEmpty() && new.length >= 6) {
@@ -536,16 +537,16 @@ fun AccountScreen(s: AppState, vm: AppViewModel, giphy: GiphySearcher = vm.conta
  * schema 5 以前沒有 0.2.6 再多的安撫，schema 6 以前沒有一起養的小貓，schema 7 以前沒有手機溫度，schema 8 以前沒有更多貓咪
  */
 internal fun upgradeGains(s: AppState): List<Pair<String, String>> = listOfNotNull(
-    ("更多貓咪" to "🐈 再多 9 種貓可以選：虎斑、暹羅、布偶、摺耳…，養了的也能換").takeIf { s.catsOutdated },
-    ("手機溫度" to "🌡️ 看得到對方的手機溫度，太燙的時候提醒對方").takeIf { s.tempOutdated },
-    ("養小貓" to "🐱 兩個人一起養一隻小貓，每天餵牠、陪牠玩，看牠長大").takeIf { s.petOutdated },
+    ("更多貓咪" to "再多 9 種貓可以選：虎斑、暹羅、布偶、摺耳…，養了的也能換").takeIf { s.catsOutdated },
+    ("手機溫度" to "看得到對方的手機溫度，太燙的時候提醒對方").takeIf { s.tempOutdated },
+    ("養小貓" to "兩個人一起養一隻小貓，每天餵牠、陪牠玩，看牠長大").takeIf { s.petOutdated },
     when {
         !s.moodsOutdated -> null
-        s.canPick(5) -> "更多安撫" to "💞 安撫多到 ${Catalog.comforts.size} 種"
-        else -> "更多心情和安撫" to "😊 心情多到 ${Catalog.moods.size} 種、安撫多到 ${Catalog.comforts.size} 種"
+        s.canPick(5) -> "更多安撫" to "安撫多到 ${Catalog.comforts.size} 種"
+        else -> "更多心情和安撫" to "心情多到 ${Catalog.moods.size} 種、安撫多到 ${Catalog.comforts.size} 種"
     },
-    ("GIPHY 貼圖" to "🧸 心情和安撫可以附上 GIPHY 貼圖").takeIf { s.stickersOutdated },
-    ("手機名稱、電信" to "📱 看得到對方的手機名稱和電信").takeIf { s.deviceInfoOutdated },
+    ("GIPHY 貼圖" to "心情和安撫可以附上 GIPHY 貼圖").takeIf { s.stickersOutdated },
+    ("手機名稱、電信" to "看得到對方的手機名稱和電信").takeIf { s.deviceInfoOutdated },
 )
 
 /**
@@ -563,7 +564,7 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, gains: List
         if (editor != null) "按「SQL Editor」打開你們專案的 SQL Editor，貼上後按「Run」"
         else "到 Supabase 後台的 SQL Editor，按左上角的「＋」›「Create a new snippet」，貼上後按「Run」",
         "跳出「Potential issue detected」的話，按「Run query」繼續",
-        "下方出現「更新完成 🎉」就好了，回來按「重新檢查」",
+        "下方出現「更新完成」就好了，回來按「重新檢查」",
     )
     // minor：新功能都能用了，只是還少了 [gains]（跑過舊的 upgrade-v2.sql），不急
     CuteCard(color = if (minor) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f) else Cute.colors.butter.copy(alpha = 0.3f)) {
@@ -578,11 +579,11 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, gains: List
                 )
             }
         }
-        // 表情單獨一欄：換行時第二行對齊文字
+        // 插圖單獨一欄，文案不依空格拆開。
         gains.forEach { (_, line) ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(line.substringBefore(' '), style = MaterialTheme.typography.bodyMedium)
-                TidyText(line.substringAfter(' '), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                IllustratedIcon("✨", Modifier.size(22.dp))
+                TidyText(line, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
         }
         steps.forEachIndexed { i, t ->
@@ -606,9 +607,9 @@ private fun SchemaUpgradeCard(projectUrl: String?, vm: AppViewModel, gains: List
                 val st = r.state.value
                 // 現在的 upgrade-v2.sql 一次補齊：還缺最新的（一起養的小貓、更多心情和安撫）就是還沒跑成功
                 vm.toast(
-                    if (st.schemaOutdated || (minor && (st.moodsOutdated || st.petOutdated || st.tempOutdated || st.catsOutdated))) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次"
-                    else if (minor) "資料庫更新好了，${gains.joinToString("、") { it.first }}都有了 🎉"
-                    else "資料庫更新好了，新功能都可以用了 🎉",
+                    if (st.schemaOutdated || (minor && (st.moodsOutdated || st.petOutdated || st.tempOutdated || st.catsOutdated))) "還是舊的資料庫：確認 SQL Editor 下方出現「更新完成」，再檢查一次"
+                    else if (minor) "資料庫更新好了，${gains.joinToString("、") { it.first }}都有了"
+                    else "資料庫更新好了，新功能都可以用了",
                 )
             }
         }
@@ -622,7 +623,7 @@ fun DemoConsole(s: AppState, vm: AppViewModel, back: () -> Unit) {
     var speed by remember { mutableFloatStateOf((demo?.speed ?: 1).toFloat()) }
     var running by remember { mutableStateOf(demo?.running ?: true) }
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { ScreenHeader("示範控制台 🧪", onBack = back) }
+        item { ScreenHeader("示範控制台", onBack = back) }
         item { Note("這裡扮演「${s.partnerName}」那一端的手機。按下按鈕後回到首頁，看看會跳出哪些通知與變化。", "🎭") }
         item {
             CuteCard {
@@ -646,9 +647,9 @@ fun DemoConsole(s: AppState, vm: AppViewModel, back: () -> Unit) {
                 // 兩顆一排；字太長放不下兩顆時自己一排
                 ButtonRow(maxPerRow = 2) {
                     listOf(
-                        "sad" to "😢 心情不好", "happy" to "🥰 心情很好", "hug" to "🤗 給你抱抱", "battery" to "🔋 電量剩 19%",
-                        "spend" to "💳 刷卡消費", "invite" to "💌 約你出去", "pause" to "🙈 暫停／恢復分享", "guess" to "💰 猜你的花費",
-                        "diary" to "📔 記錄今天的生活", "memo" to "📝 新增共同備忘錄", "nearby" to "💞 走到你身邊／離開",
+                        "sad" to "心情不好", "happy" to "心情很好", "hug" to "給你抱抱", "battery" to "電量剩 19%",
+                        "spend" to "刷卡消費", "invite" to "約你出去", "pause" to "暫停／恢復分享", "guess" to "猜你的花費",
+                        "diary" to "記錄今天的生活", "memo" to "新增共同備忘錄", "nearby" to "走到你身邊／離開",
                     ).forEach { (k, l) -> SoftButton(l, small = true) { demo?.demoAction(k); vm.toast("${s.partnerName}：$l") } }
                 }
             }
@@ -657,7 +658,7 @@ fun DemoConsole(s: AppState, vm: AppViewModel, back: () -> Unit) {
             CuteCard {
                 Text("小貓", style = MaterialTheme.typography.titleMedium)
                 ButtonRow(maxPerRow = 2) {
-                    listOf("petFeed" to "🍚 ${s.partnerName} 餵貓", "petHungry" to "⏩ 過一天沒人餵", "petReset" to "🐣 重新領養").forEach { (k, l) ->
+                    listOf("petFeed" to "${s.partnerName} 餵貓", "petHungry" to "過一天沒人餵", "petReset" to "重新領養").forEach { (k, l) ->
                         SoftButton(l, small = true) { demo?.demoAction(k); vm.toast(l) }
                     }
                 }
@@ -677,7 +678,7 @@ fun PlaceSheet(s: AppState, vm: AppViewModel, id: String?, lat: Double, lng: Dou
     var arrive by remember { mutableStateOf(p?.notifyArrive ?: true) }
     var leave by remember { mutableStateOf(p?.notifyLeave ?: true) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(if (p == null) "新增標點 📍" else "編輯標點", style = MaterialTheme.typography.titleLarge)
+        Text(if (p == null) "新增標點" else "編輯標點", style = MaterialTheme.typography.titleLarge)
         CuteField(name, { name = it.take(20) }, "名稱", placeholder = "例如：公司、學校、我家")
         // 圖示一排放不下時換行：預設的 💗、📍 不會被擠出畫面
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -709,7 +710,7 @@ fun PlaceSheet(s: AppState, vm: AppViewModel, id: String?, lat: Double, lng: Dou
                 put("notifyArrive", arrive); put("notifyLeave", leave)
                 if (p == null) { put("lat", lat); put("lng", lng) }
             }
-            vm.act(if (p == null && watch != "me") "已新增，並通知 ${s.partnerName} 📍" else "已儲存", onDone = close) { it.savePlace(id, body) }
+            vm.act(if (p == null && watch != "me") "已新增，並通知 ${s.partnerName}" else "已儲存", onDone = close) { it.savePlace(id, body) }
         }
         if (p != null) SoftButton("刪除標點", Modifier.fillMaxWidth(), icon = Icons.Rounded.Delete) { vm.act("已刪除", onDone = close) { it.deletePlace(p.id) } }
     }

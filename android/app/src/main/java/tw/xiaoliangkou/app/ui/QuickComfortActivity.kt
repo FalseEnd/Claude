@@ -97,7 +97,7 @@ internal fun QuickComfort(s: AppState, send: (String?) -> Unit, close: () -> Uni
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TidyText(if (s.paired) "給 ${s.partnerName} 💞" else "小倆口", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                TidyText(if (s.paired) "給 ${s.partnerName}" else "小倆口", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 IconButton(onClick = close) { Icon(Icons.Rounded.Close, "關閉") }
             }
             if (!s.loaded || !s.paired) {
@@ -106,7 +106,7 @@ internal fun QuickComfort(s: AppState, send: (String?) -> Unit, close: () -> Uni
             }
             TidyText("點一下就送出去", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (s.partnerSharing?.locationLive == true) {
-                SoftButton("📍 ${s.partnerName} 現在在哪？", Modifier.fillMaxWidth(), icon = Icons.Rounded.MyLocation) { send(null) }
+                SoftButton("${s.partnerName} 現在在哪？", Modifier.fillMaxWidth(), icon = Icons.Rounded.MyLocation) { send(null) }
             }
             GroupedChoices(Catalog.comfortGroups, { s.canPick(it.since) }) { c, modifier ->
                 MoodBubble(c.emoji, c.label, picked == c.key, modifier) {

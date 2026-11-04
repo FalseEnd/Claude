@@ -109,10 +109,10 @@ class WeatherScreensTest {
         screen()
         val expected = Weather.reminder(Weather.advice(FakeWeather.RAINY_COOL))
         assertTrue(has("提醒 小雨：「$expected」"))
-        compose.onNodeWithText("💌 提醒 小雨").performClick()
+        compose.onNodeWithText("提醒 小雨").performClick()
         idleUntil { sent.isNotEmpty() }
         assertEquals(listOf("safe" to expected), sent)
-        idleUntil { has("已經提醒了 💌") }
+        idleUntil { has("已經提醒了") }
     }
 
     /** 資料庫還沒有 0.2.6 的安撫：改送抱抱，提醒的話一樣 */
@@ -122,7 +122,7 @@ class WeatherScreensTest {
             override suspend fun sendComfort(kind: String, message: String?, sticker: String?) { sent += kind }
         })
         screen(s.copy(dbSchema = 5))
-        compose.onNodeWithText("💌 提醒 小雨").performClick()
+        compose.onNodeWithText("提醒 小雨").performClick()
         idleUntil { sent.isNotEmpty() }
         assertEquals(listOf("hug"), sent)
     }
@@ -147,7 +147,7 @@ class WeatherScreensTest {
     @Test fun cannotFetch() {
         weather.fail = "連不到天氣資料"
         screen()
-        assertEquals(2, compose.onAllNodesWithText("連不到天氣資料 😥").fetchSemanticsNodes().size)
+        assertEquals(2, compose.onAllNodesWithText("連不到天氣資料").fetchSemanticsNodes().size)
     }
 
     @Test fun homeCard() {

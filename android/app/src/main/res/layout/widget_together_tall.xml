@@ -106,7 +106,7 @@
         android:gravity="center"
         android:includeFontPadding="false"
         android:maxLines="1"
-        android:text="阿哲 ♥ 小雨"
+        android:text="阿哲 · 小雨"
         android:textColor="@color/widget_muted"
         android:textSize="12sp" />
 </LinearLayout>

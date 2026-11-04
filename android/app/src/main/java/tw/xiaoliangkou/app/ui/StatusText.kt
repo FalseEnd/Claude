@@ -98,7 +98,7 @@ object StatusText {
             !s.paired -> "還沒配對"
             sharing?.paused == true -> "$name 暫停分享到 ${hm(sharing.pausedUntilInstant!!)}，時間到會自動恢復"
             sharing?.shareLocation != true && sharing?.shareDevice != true -> "$name 目前沒有分享位置和手機狀態"
-            items.isEmpty() -> "還沒收到 $name 的狀態，等對方打開小倆口 📡"
+            items.isEmpty() -> "還沒收到 $name 的狀態，等對方打開小倆口"
             else -> null
         }
         val updated = listOfNotNull(d?.updatedAt?.toInstantOrNull(), loc?.updatedAt?.toInstantOrNull()).maxOrNull()

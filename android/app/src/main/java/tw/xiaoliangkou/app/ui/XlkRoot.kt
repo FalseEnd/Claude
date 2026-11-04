@@ -261,7 +261,7 @@ private fun Connecting(vm: AppViewModel) {
         Text("正在連到你們的 Supabase…", style = MaterialTheme.typography.titleMedium)
         LoadingDots()
         if (slow) {
-            Text("還連不上。請確認手機有網路；免費的 Supabase 專案一週沒人用會被暫停，到 Supabase 後台按 Resume project 就好 ☁️", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("還連不上。請確認手機有網路；免費的 Supabase 專案一週沒人用會被暫停，到 Supabase 後台按 Resume project 就好", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             CuteButton("再試一次", Modifier.fillMaxWidth()) { vm.refresh() }
             SoftButton("登出，重新設定", Modifier.fillMaxWidth()) { scope.launch { vm.container.logout() } }
         }

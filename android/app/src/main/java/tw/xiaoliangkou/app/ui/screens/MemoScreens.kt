@@ -77,6 +77,7 @@ import tw.xiaoliangkou.app.data.Memo
 import tw.xiaoliangkou.app.ui.AppViewModel
 import tw.xiaoliangkou.app.ui.Fmt
 import tw.xiaoliangkou.app.ui.SheetSpec
+import tw.xiaoliangkou.app.ui.components.IllustratedIcon
 import tw.xiaoliangkou.app.ui.components.Avatar
 import tw.xiaoliangkou.app.ui.components.CuteButton
 import tw.xiaoliangkou.app.ui.components.CuteCard
@@ -153,7 +154,7 @@ fun MemosScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet: (SheetSp
         }
         if (pinned.isNotEmpty()) {
             item(span = full) {
-                SectionTitle("📌 在桌面", Modifier.padding(top = 4.dp), trailing = if (pinned.size > MemoWidgetSnapshot.MAX) "小工具顯示前 ${MemoWidgetSnapshot.MAX} 則" else "${pinned.size} 則")
+                SectionTitle("在桌面", Modifier.padding(top = 4.dp), trailing = if (pinned.size > MemoWidgetSnapshot.MAX) "小工具顯示前 ${MemoWidgetSnapshot.MAX} 則" else "${pinned.size} 則")
             }
             items(pinned, key = { it.id }) { MemoCard(it, s, vm) { open(it) } }
         }
@@ -226,11 +227,15 @@ private fun MemoCard(m: Memo, s: AppState, vm: AppViewModel, onClick: () -> Unit
                 }
                 if (voices.isNotEmpty()) {
                     val label = if (voices.size == 1) voices[0].durationMs?.let(::formatDuration) ?: "語音" else "${voices.size} 段語音"
-                    Text(
-                        "🎙️ $label", style = MaterialTheme.typography.labelSmall, maxLines = 1,
-                        modifier = Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
+                    Row(
+                        Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
                             .padding(horizontal = 8.dp, vertical = 3.dp),
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        IllustratedIcon("🎙️", Modifier.size(16.dp))
+                        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    }
                 }
                 // 誰的、什麼時候：放不下同一行時，時間換到下一行（不會擠成「🔒 …」）
                 FlowRow(
@@ -240,7 +245,7 @@ private fun MemoCard(m: Memo, s: AppState, vm: AppViewModel, onClick: () -> Unit
                     Row(Modifier.align(Alignment.CenterVertically), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         if (!mine) Avatar(s.partnerName, Cute.colors.partner, 18.dp, image = s.partner?.avatarUrl)
                         Text(
-                            if (!mine) s.partnerName else if (m.shared) "👫 共用" else "🔒 只有我",
+                            if (!mine) s.partnerName else if (m.shared) "共用" else "只有我",
                             style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -253,9 +258,9 @@ private fun MemoCard(m: Memo, s: AppState, vm: AppViewModel, onClick: () -> Unit
             }
         }
         if (m.pinned) {
-            Text(
-                "📌", style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 10.dp).clearAndSetSemantics {},
+            IllustratedIcon(
+                "📌",
+                Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 10.dp).size(20.dp).clearAndSetSemantics {},
             )
         }
     }
@@ -271,7 +276,7 @@ private fun MemoPhoto(item: MediaItem, vm: AppViewModel, modifier: Modifier) {
     Box(modifier.background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f)), contentAlignment = Alignment.Center) {
         val img = image
         if (img != null) Image(img, "照片", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else Text("📷", Modifier.alpha(0.45f), style = MaterialTheme.typography.titleLarge)
+        else IllustratedIcon("📷", Modifier.size(28.dp).alpha(0.45f))
     }
 }
 
@@ -316,9 +321,9 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 when {
-                    original == null -> "新增備忘錄 📝"
-                    mine -> "編輯備忘錄 ✏️"
-                    else -> "$partner 的備忘錄 💌"
+                    original == null -> "新增備忘錄"
+                    mine -> "編輯備忘錄"
+                    else -> "$partner 的備忘錄"
                 },
                 style = MaterialTheme.typography.titleLarge,
             )
@@ -359,7 +364,7 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
                 !mine -> Note("這是 $partner 共用的備忘錄，你也可以一起改；只有 $partner 可以刪除或改成只有自己看得到。", "💌")
                 !canShare -> Note("還沒配對，備忘錄只有你看得到。", "🔒")
                 else -> {
-                    Segmented(listOf("shared" to "👫 共用", "private" to "🔒 只有我"), if (shared) "shared" else "private") { shared = it == "shared" }
+                    Segmented(listOf("shared" to "共用", "private" to "只有我"), if (shared) "shared" else "private") { shared = it == "shared" }
                     Text(
                         if (shared) "$partner 也看得到、也可以一起改" else "只有你看得到，$partner 不會知道有這則備忘錄",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -385,7 +390,7 @@ fun MemoSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
             val list = media
             // 送出儲存的就不能刪了（可能已經存進資料庫）
             uploads.kept += list.map { it.path }
-            vm.act(if (original == null) "已新增備忘錄 📝" else "已儲存 📝", hearts = original == null && nowShared, onDone = close) {
+            vm.act(if (original == null) "已新增備忘錄" else "已儲存", hearts = original == null && nowShared, onDone = close) {
                 it.saveMemo(id, title.trim(), body.trim(), list, nowShared, pinned, color)
             }
         }
@@ -461,7 +466,7 @@ private fun rememberMemoWidgetPlaced(): Boolean {
 
 /** 把「備忘錄」小工具加到桌面（桌面不支援直接加入時，說明怎麼手動加） */
 private fun pinMemoWidget(vm: AppViewModel, context: android.content.Context) {
-    if (Widgets.pin(context, MemoWidget::class.java)) vm.toast("跟著畫面上的提示放到桌面就好了 ✨")
+    if (Widgets.pin(context, MemoWidget::class.java)) vm.toast("跟著畫面上的提示放到桌面就好了")
     else vm.toast("這個桌面不能直接加入，請長按桌面空白處 › 小工具 › 小倆口")
 }
 

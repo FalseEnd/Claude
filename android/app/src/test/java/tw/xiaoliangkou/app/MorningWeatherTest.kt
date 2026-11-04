@@ -81,7 +81,7 @@ class MorningWeatherTest {
         val n = morningNotification()!!
         assertEquals("早安 ☀️ 今天晴天 27°～34°", n.extras.getString("android.title"))
         assertTrue(n.extras.getCharSequence("android.bigText").toString().contains("小雨 那邊 14° 下雨"))
-        assertEquals("💌 提醒 小雨", n.actions.single().title.toString())
+        assertEquals("提醒 小雨", n.actions.single().title.toString())
         val remind = shadowOf(n.actions.single().actionIntent).savedIntent
         assertEquals(StatusActionReceiver.COMFORT, remind.action)
         assertEquals("safe", remind.getStringExtra(StatusActionReceiver.EXTRA_KIND))

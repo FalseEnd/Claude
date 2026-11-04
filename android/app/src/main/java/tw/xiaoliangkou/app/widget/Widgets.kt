@@ -21,6 +21,7 @@ import android.widget.RemoteViews
 import kotlinx.serialization.json.Json
 import tw.xiaoliangkou.app.MainActivity
 import tw.xiaoliangkou.app.R
+import tw.xiaoliangkou.app.core.Catalog
 import tw.xiaoliangkou.app.core.Dates
 import tw.xiaoliangkou.app.data.Avatars
 import tw.xiaoliangkou.app.service.Notifier
@@ -201,7 +202,7 @@ object Widgets {
     private fun togetherText(snap: WidgetSnapshot, today: LocalDate): Together {
         val n = if (snap.kind == WidgetSnapshot.Kind.PAIRED) days(snap, today) else null
         val label = if (snap.kind == WidgetSnapshot.Kind.PAIRED) "在一起" + if (snap.demo) "（示範）" else "" else "小倆口"
-        val number = n?.let { Fmt.int(it) } ?: "💞"
+        val number = n?.let { Fmt.int(it) } ?: "—"
         return when (snap.kind) {
             WidgetSnapshot.Kind.SIGNED_OUT -> Together(label, number, false, listOf("登入後顯示在一起的天數", "還沒登入"))
             WidgetSnapshot.Kind.UNPAIRED -> Together(label, number, false, listOf("配對後開始數在一起的天數", "還沒配對"))
@@ -209,8 +210,8 @@ object Widgets {
                 // 一個月內有里程碑（第 100、520…天）就提醒，不然寫兩個人的名字
                 val since = snap.togetherSince?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
                 val next = since?.let { Dates.upcomingMilestones(it, today, 1).firstOrNull() }?.takeIf { it.daysLeft in 1..30 }
-                val subs = if (next != null) listOf("第 ${next.day} 天還有 ${next.daysLeft} 天 🎉", "${next.day} 倒數 ${next.daysLeft} 天")
-                else listOf("${snap.myName} ♥ ${snap.partnerName}", "${snap.myName}♥${snap.partnerName}")
+                val subs = if (next != null) listOf("第 ${next.day} 天還有 ${next.daysLeft} 天", "${next.day} 倒數 ${next.daysLeft} 天")
+                else listOf("${snap.myName} · ${snap.partnerName}", "${snap.myName}·${snap.partnerName}")
                 // 放不下「在一起（示範）」時，示範模式要在小字寫「示範」
                 Together(label, number, n != null, subs, if (snap.demo) subs.map { "示範 · $it" } + "示範模式" else subs)
             }
@@ -374,16 +375,23 @@ object Widgets {
     /** 狀態那行的每一項：📍 在哪、🔋 電量、心情、其他；暫停分享、沒有分享時的說明放最前面 */
     internal fun statusParts(snap: WidgetSnapshot): List<String> {
         val items = buildList {
-            snap.place?.let { add("📍 " + it.removePrefix("在 ").substringBefore(" · ")) }
+            snap.place?.let { add(it.removePrefix("在 ").substringBefore(" · ")) }
             // 心情只留「😩 好累」，後面的話放不下
-            snap.items.forEach { add(it.substringBefore("：")) }
+            snap.items.forEach { add(statusLabel(it).substringBefore("：")) }
         }
-        val note = snap.note?.removePrefix(snap.partnerName)?.trim()
+        val note = snap.note?.removeSuffix(" 📡")?.removePrefix(snap.partnerName)?.trim()
         return when {
             items.isEmpty() -> listOf(note ?: "還沒有狀態")
             note != null -> listOf(note.substringBefore("，")) + items
             else -> items
         }
+    }
+
+    /** 只移除狀態項目開頭由 App 加上的圖標，心情備註裡的使用者文字保留。 */
+    private fun statusLabel(text: String): String {
+        val symbols = Catalog.moods.map { it.emoji } + listOf("📍", "💞", "⚡", "🪫", "🔋", "🔕", "📱", "😴", "📶", "📵", "👣", "🌡️", "🔥", "🥵", "❄️")
+        val prefix = symbols.firstOrNull { text.startsWith("$it ") } ?: return text
+        return text.removePrefix("$prefix ")
     }
 
     /** 「14:05」或「10/15 14:05」 */
@@ -437,6 +445,9 @@ object Widgets {
         else v.setImageViewResource(R.id.partner_avatar, R.drawable.widget_avatar_partner)
         v.setTextViewText(R.id.partner_name, name)
         v.show(R.id.hug_button, paired)
+        // 使用原創愛心插圖，避免桌面上的按鈕依賴系統 emoji 字型。
+        v.setTextViewText(R.id.hug_button, if (tall != null) "抱抱" else "")
+        v.setTextViewCompoundDrawables(R.id.hug_button, if (tall != null) R.drawable.widget_heart else 0, 0, 0, 0)
         if (interactive) {
             v.setOnClickPendingIntent(R.id.widget_root, openApp(context, "home"))
             if (paired) v.setOnClickPendingIntent(R.id.hug_button, StatusActionReceiver.intent(context, StatusActionReceiver.HUG))
@@ -468,7 +479,7 @@ object Widgets {
             h >= s.minHeight && max(s.hug.toFloat(), r.height(name, s.name) + 3 + r.height(sample, s.status)) <= h - 2 * s.padV
         fun roomy(r: Ruler, s: PartnerStyle) = columnOf(s) >= max(
             min(r.width(name, s.name), r.width("一二三四", s.name)),
-            min(r.width(parts.first().substringBefore("，"), s.status), r.width("📍 一二三四", s.status)),
+            min(r.width(parts.first().substringBefore("，"), s.status), r.width("一二三四", s.status)),
         )
         fun pick(r: Ruler) = PARTNER_STYLES.firstOrNull { tallEnough(r, it) && roomy(r, it) }
         // 系統字很大時放不下：改用不跟著放大的字，狀態那行還是看得到
@@ -547,19 +558,19 @@ object Widgets {
     ): List<String?>? {
         // 版面：左右留白 14、頭像 60、間距 12；上下留白 10。「🤗 抱抱」旁邊至少要留一點位置給名字
         val column = w - 28 - 60 - 12
-        if (paired && r.width("🤗 抱抱", 12f) + 20 + 40 > column) return null
+        if (paired && r.width("抱抱", 12f) + 24 + 20 + 40 > column) return null
         val rows: List<String?> = if (!paired) {
             listOf(waiting.firstOrNull { r.width(it, 13f) <= column } ?: waiting.last(), null, null, null)
         } else {
             val lines = buildList {
-                add(snap.place?.let { "📍 $it" } ?: snap.note ?: "還沒有狀態")
-                snap.items.chunked(2).take(2).forEach { add(it.joinToString("　")) }
-                if (snap.place != null && snap.note != null && size < 3) add(snap.note)
+                add(snap.place ?: snap.note?.removeSuffix(" 📡") ?: "還沒有狀態")
+                snap.items.map(::statusLabel).chunked(2).take(2).forEach { add(it.joinToString("　")) }
+                if (snap.place != null && snap.note != null && size < 3) add(snap.note.removeSuffix(" 📡"))
             }
             val together = days(snap, Fmt.localDate(now))?.let { "在一起第 ${Fmt.int(it)} 天" }
             listOf(lines.getOrNull(0), lines.getOrNull(1), lines.getOrNull(2), listOfNotNull(at?.let { "$it 更新" }, together).joinToString(" · ").ifEmpty { " " })
         }
-        val head = max(r.height(name, 17f, pad = true), if (paired) 8 + r.height("🤗 抱抱", 12f, pad = true) else 0f)
+        val head = max(r.height(name, 17f, pad = true), if (paired) 8 + max(24f, r.height("抱抱", 12f, pad = true)) else 0f)
         val body = rows.mapIndexed { i, text ->
             text?.let { (if (i == 0 || i == 3) 2 else 0) + r.height(it, if (i == 3) 11f else 13f, pad = true) } ?: 0f
         }.sum()

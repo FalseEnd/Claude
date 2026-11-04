@@ -135,7 +135,7 @@ class MemoScreensTest {
         primeCache()
         val st = moreMemos()
         shot("50_memos") { MemosScreen(st, vm, {}) {} }
-        compose.onNodeWithText("📌 在桌面").assertExists()
+        compose.onNodeWithText("在桌面").assertExists()
         compose.onNodeWithText("其他備忘錄").assertExists()
     }
 
@@ -159,8 +159,8 @@ class MemoScreensTest {
     @Config(qualifiers = "w400dp-h1300dp-xhdpi")
     @Test fun newSheet() {
         sheet("52_sheet_memo_new") { MemoSheet(s, vm, null) {} }
-        compose.onNodeWithText("新增備忘錄 📝").assertExists()
-        compose.onNodeWithText("👫 共用").assertExists()
+        compose.onNodeWithText("新增備忘錄").assertExists()
+        compose.onNodeWithText("共用").assertExists()
         compose.onNodeWithText("儲存").assertExists()
         compose.onAllNodesWithText("刪除").assertCountEquals(0)
     }
@@ -172,7 +172,7 @@ class MemoScreensTest {
         val m = s.memo("m1")!!
         runBlocking { demo.saveMemo(m.id, m.title, m.body, listOf(DemoMedia.PICNIC, DemoMedia.SUNSET, DemoMedia.VOICE), true, true, m.color) }
         sheet("52b_sheet_memo_edit") { MemoSheet(s, vm, "m1") {} }
-        compose.onNodeWithText("🔒 只有我").performClick()
+        compose.onNodeWithText("只有我").performClick()
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithText("儲存時會把照片和語音搬到只有你看得到的地方", substring = true).assertExists()
         compose.onRoot().captureRoboImage("build/screens/52b_sheet_memo_edit.png")
@@ -184,9 +184,9 @@ class MemoScreensTest {
     @Test fun partnerSheet() {
         primeCache()
         sheet("53_sheet_memo_partner") { MemoSheet(s, vm, "m3") {} }
-        compose.onNodeWithText("小雨 的備忘錄 💌").assertExists()
+        compose.onNodeWithText("小雨 的備忘錄").assertExists()
         compose.onNodeWithText("這是 小雨 共用的備忘錄", substring = true).assertExists()
-        compose.onAllNodesWithText("🔒 只有我").assertCountEquals(0)
+        compose.onAllNodesWithText("只有我").assertCountEquals(0)
         compose.onAllNodesWithText("刪除").assertCountEquals(0)
     }
 
@@ -194,7 +194,7 @@ class MemoScreensTest {
     @Test fun darkUnpairedSheet() {
         sheet("53b_sheet_memo_unpaired_dark", dark = true) { MemoSheet(s.copy(couple = null, partner = null), vm, null) {} }
         compose.onNodeWithText("還沒配對，備忘錄只有你看得到。").assertExists()
-        compose.onAllNodesWithText("👫 共用").assertCountEquals(0)
+        compose.onAllNodesWithText("共用").assertCountEquals(0)
     }
 
     /** 「桌面小工具」頁裡的備忘錄卡片：用真的小工具版面預覽 */
@@ -247,7 +247,7 @@ class MemoScreensTest {
         liveSheet(null) { closed = true }
         compose.onAllNodes(hasSetTextAction())[0].performTextInput("我的小秘密")
         compose.onAllNodes(hasSetTextAction())[1].performTextInput("禮物藏在衣櫃")
-        compose.onNodeWithText("🔒 只有我").performClick()
+        compose.onNodeWithText("只有我").performClick()
         compose.onNodeWithText("放在桌面小工具").performScrollTo().performClick()
         compose.onNodeWithText("儲存").performScrollTo().performClick()
         waitFor { closed }

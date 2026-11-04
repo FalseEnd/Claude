@@ -14,7 +14,7 @@
         android:paddingStart="6dp"
         android:paddingEnd="6dp"
         android:paddingBottom="6dp"
-        android:text="📝 備忘錄"
+        android:text="備忘錄"
         android:textColor="@color/widget_text"
         android:textSize="13sp" />
 
@@ -34,7 +34,7 @@
             android:ellipsize="end"
             android:fontFamily="@font/huninn"
             android:maxLines="1"
-            android:text="週末採買清單 🛒"
+            android:text="週末採買清單"
             android:textColor="@color/widget_text"
             android:textSize="14sp" />
 
@@ -44,7 +44,7 @@
             android:ellipsize="end"
             android:fontFamily="@font/huninn"
             android:maxLines="1"
-            android:text="🥚 雞蛋　🥛 鮮奶　🍓 草莓"
+            android:text="雞蛋　鮮奶　草莓"
             android:textColor="@color/widget_memo_body"
             android:textSize="12sp" />
     </LinearLayout>
@@ -69,7 +69,7 @@
             android:ellipsize="end"
             android:fontFamily="@font/huninn"
             android:maxLines="1"
-            android:text="想一起去的地方 ✈️"
+            android:text="想一起去的地方"
             android:textColor="@color/widget_text"
             android:textSize="14sp" />
 
@@ -79,7 +79,7 @@
             android:ellipsize="end"
             android:fontFamily="@font/huninn"
             android:maxLines="1"
-            android:text="京都賞楓 🍁　墾丁看海 🌊"
+            android:text="京都賞楓　墾丁看海"
             android:textColor="@color/widget_memo_body"
             android:textSize="12sp" />
     </LinearLayout>

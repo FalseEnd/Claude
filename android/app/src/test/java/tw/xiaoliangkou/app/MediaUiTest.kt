@@ -77,10 +77,10 @@ class MediaUiTest {
             }
         }
         compose.waitUntil(WAIT) { photoCount() == 3 }
-        compose.onNodeWithText("🎙️ 0:03").assertExists()
-        compose.onNodeWithText("🎙️ 1:05").assertExists()
-        compose.onNodeWithText("📷 照片").assertExists()
-        compose.onNodeWithText("🎙️ 錄音").assertExists()
+        compose.onNodeWithText("0:03").assertExists()
+        compose.onNodeWithText("1:05").assertExists()
+        compose.onNodeWithText("照片").assertExists()
+        compose.onNodeWithText("錄音").assertExists()
         compose.onRoot().captureRoboImage("build/screens/media_thumbs.png")
 
         // 移除一張
@@ -111,7 +111,7 @@ class MediaUiTest {
         ShadowMediaPlayer.addMediaInfo(DataSource.toDataSource(file.absolutePath), ShadowMediaPlayer.MediaInfo(3200, 0))
         compose.setContent { XlkTheme { VoiceChip(DemoMedia.VOICE, vm) } }
         fun showing(desc: String) = compose.onAllNodesWithContentDescription(desc).fetchSemanticsNodes().isNotEmpty()
-        compose.onNodeWithText("🎙️ 0:03").performClick()
+        compose.onNodeWithText("0:03").performClick()
         compose.waitUntil(WAIT) { showing("暫停") }
         // 播完、被別段語音打斷：不管是誰停的，膠囊都變回可以播放
         vm.container.voice.stop()

@@ -217,10 +217,10 @@ class FortuneScreensTest {
         compose.setContent { XlkTheme { FortuneContent(s, {}, FortuneTab.OMIKUJI, clock, Random(5)) } }
         drawAndWait()
         val no = Omikuji.draw(Random(5)).no
-        compose.onNodeWithText("🔮 星座運勢").performClick()
+        compose.onNodeWithText("星座運勢").performClick()
         compose.mainClock.advanceTimeBy(1000)
         assertTrue(compose.onAllNodesWithText("看完整解籤 ›").fetchSemanticsNodes().isEmpty())
-        compose.onNodeWithText("⛩️ 御神籤").performClick()
+        compose.onNodeWithText("御神籤").performClick()
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithText("看完整解籤 ›").assertExists()
         assertEquals(2, compose.onAllNodesWithText("第 $no 籤").fetchSemanticsNodes().size)
@@ -247,7 +247,7 @@ class FortuneScreensTest {
         compose.setContent { XlkTheme { FortuneContent(s, {}, FortuneTab.OMIKUJI, clock, Random(3)) } }
         compose.waitForIdle()
         assertEquals(1, shadow.listeners.size)
-        compose.onNodeWithText("也可以直接搖手機 📳").assertExists()
+        compose.onNodeWithText("也可以直接搖手機").assertExists()
 
         // 輕輕晃不算
         shadow.sendSensorEventToListeners(event(0f, 3f, 9.8f))
@@ -268,7 +268,7 @@ class FortuneScreensTest {
         assertEquals(1, shadow.listeners.size)
 
         // 換到星座運勢就取消
-        compose.onNodeWithText("🔮 星座運勢").performClick()
+        compose.onNodeWithText("星座運勢").performClick()
         compose.waitForIdle()
         assertTrue(shadow.listeners.isEmpty())
     }

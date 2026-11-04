@@ -221,7 +221,7 @@ class ProfileScreensTest {
 
         remote(ProfileInfo.HEIGHT, "177")
         eventually { compose.onNode(hasSetTextAction() and hasText("177")).assertExists() }
-        compose.onNodeWithText("都儲存好了 ✓").assertExists()
+        compose.onNodeWithText("都儲存好了").assertExists()
         compose.onNodeWithText("儲存").assertIsNotEnabled()
 
         compose.onNode(hasSetTextAction() and hasText("ISTJ")).performTextReplacement("enfj")
@@ -238,7 +238,7 @@ class ProfileScreensTest {
         assertEquals("產品經理", ProfileInfo.text(info, ProfileInfo.JOB))
         assertEquals(177.0, ProfileInfo.number(info, ProfileInfo.HEIGHT))
         assertEquals(70.0, ProfileInfo.number(info, ProfileInfo.WEIGHT))
-        eventually { compose.onNodeWithText("都儲存好了 ✓").assertExists() }
+        eventually { compose.onNodeWithText("都儲存好了").assertExists() }
         compose.onNode(hasSetTextAction() and hasText("70")).assertExists()
     }
 
@@ -253,14 +253,14 @@ class ProfileScreensTest {
     @Test @Config(qualifiers = "w400dp-h900dp-xhdpi")
     fun myProfileValidatesAndSaves() {
         val repo = live { st -> MyProfileScreen(st, vm) {} }
-        compose.onNodeWithText("都儲存好了 ✓").assertExists()
+        compose.onNodeWithText("都儲存好了").assertExists()
         compose.onNodeWithText("儲存").assertIsNotEnabled()
 
         val height = compose.onNode(hasSetTextAction() and hasText("176"))
         height.performTextReplacement("1760")
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithText("要在 50–250 之間").assertExists()
-        compose.onNodeWithText("有欄位要修正一下 ✋").assertExists()
+        compose.onNodeWithText("有欄位要修正一下").assertExists()
         compose.onNodeWithText("儲存").assertIsNotEnabled()
         compose.onRoot().captureRoboImage("build/screens/40_my_profile_error.png")
 
@@ -274,7 +274,7 @@ class ProfileScreensTest {
         assertEquals("ENFJ", ProfileInfo.text(repo.state.value.me!!.info, ProfileInfo.MBTI))
         // 其他欄位原封不動
         assertEquals("軟體工程師", ProfileInfo.text(repo.state.value.me!!.info, ProfileInfo.JOB))
-        idleUntil { runCatching { compose.onNodeWithText("都儲存好了 ✓").assertExists() }.isSuccess }
+        idleUntil { runCatching { compose.onNodeWithText("都儲存好了").assertExists() }.isSuccess }
     }
 
     /** 編輯到一半畫面重畫（例如資料從別台手機更新）：輸入的內容不能不見 */

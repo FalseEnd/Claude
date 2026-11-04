@@ -197,7 +197,7 @@ class MemoWidgetTest {
         val one = MemoWidgetSnapshot.of(s)
         val v = render(one, 250, 180)
         assertTrue(v.shown(R.id.memo_header))
-        assertEquals("📝 備忘錄（示範）", v.text(R.id.memo_header_title))
+        assertEquals("備忘錄（示範）", v.text(R.id.memo_header_title))
         assertFalse(v.shown(R.id.memo_empty))
         val note = v.notes().single()
         assertEquals("週末採買清單 🛒", note.text(R.id.memo_title))
@@ -323,7 +323,7 @@ class MemoWidgetTest {
         assertTrue(v.notes().isEmpty())
         assertEquals("在備忘錄裡打開『放在桌面』", v.text(R.id.memo_empty_text))
         // 窄的時候自己斷行
-        assertEquals("📌 在備忘錄裡打開\n『放在桌面』", render(none, 160, 72).text(R.id.memo_empty_text))
+        assertEquals("在備忘錄裡打開\n『放在桌面』", render(none, 160, 72).text(R.id.memo_empty_text))
         assertEquals("登入後，放在桌面的\n備忘錄會出現在這裡", render(MemoWidgetSnapshot.of(null), 250, 180).text(R.id.memo_empty_text))
     }
 

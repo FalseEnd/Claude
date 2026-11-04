@@ -57,9 +57,9 @@ object Derived {
         }
     }
 
-    /** 和對方的距離：藍牙偵測到就在身邊時是「就在你身邊 💞」，不然用 GPS 算（[prefix] 是「相距」「距離你」） */
+    /** 和對方的距離：藍牙偵測到就在身邊時是「就在你身邊」，不然用 GPS 算（[prefix] 是「相距」「距離你」） */
     fun distanceText(s: AppState, prefix: String): String? =
-        if (s.partnerNearby) "就在你身邊 💞" else distanceToPartner(s)?.let { "$prefix ${Fmt.distance(it)}" }
+        if (s.partnerNearby) "就在你身邊" else distanceToPartner(s)?.let { "$prefix ${Fmt.distance(it)}" }
 
     fun distanceToPartner(s: AppState): Double? {
         val me = s.myLocation ?: return null

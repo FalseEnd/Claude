@@ -18,6 +18,7 @@ import android.util.LruCache
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.ColorUtils
 import tw.xiaoliangkou.app.R
+import tw.xiaoliangkou.app.ui.components.drawIllustratedSymbol
 import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.min
@@ -37,6 +38,15 @@ object Avatars {
     const val MAX_BYTES = 40_000
 
     val emojis = listOf("🐰", "🐻", "🐱", "🐶", "🦊", "🐼", "🐨", "🐯", "🐹", "🐷", "🐥", "🐧", "🦄", "🐸", "🐮", "🐵")
+
+    /** 舊表情字串沿用作儲存識別值；顯示為原創插圖並提供可讀的協助工具名稱。 */
+    fun illustrationLabel(symbol: String): String = when (symbol) {
+        "🐰" -> "兔兔"; "🐻" -> "小熊"; "🐱" -> "小貓"; "🐶" -> "小狗"
+        "🦊" -> "狐狸"; "🐼" -> "貓熊"; "🐨" -> "無尾熊"; "🐯" -> "老虎"
+        "🐹" -> "倉鼠"; "🐷" -> "小豬"; "🐥" -> "小雞"; "🐧" -> "企鵝"
+        "🦄" -> "獨角獸"; "🐸" -> "青蛙"; "🐮" -> "乳牛"; "🐵" -> "猴子"
+        else -> "動物"
+    }
 
     fun emoji(e: String) = EMOJI_PREFIX + e
     fun emojiOf(avatar: String?): String? =
@@ -150,9 +160,7 @@ object Avatars {
             emoji != null -> {
                 p.color = softColor(color)
                 c.drawCircle(r, r, inner, p)
-                p.textSize = inner * 1.15f
-                p.textAlign = Paint.Align.CENTER
-                c.drawText(emoji, r, r - (p.descent() + p.ascent()) / 2, p)
+                drawIllustratedSymbol(c, emoji, r - inner * 0.9f, r - inner * 0.9f, inner * 1.8f)
             }
             else -> {
                 p.color = color

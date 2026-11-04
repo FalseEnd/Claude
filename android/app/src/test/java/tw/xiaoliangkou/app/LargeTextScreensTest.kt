@@ -817,7 +817,7 @@ class LargeTextScreensTest {
         val m = s.memo("m1")!!
         runBlocking { demo.saveMemo(m.id, m.title, m.body, listOf(DemoMedia.PICNIC, DemoMedia.SUNSET, DemoMedia.VOICE), true, true, m.color) }
         show { SheetBody { MemoSheet(s, vm, "m1") {} } }
-        compose.onNodeWithText("🔒 只有我").performClick()
+        compose.onNodeWithText("只有我").performClick()
         compose.mainClock.advanceTimeBy(1000)
         capture("80_sheet_memo_edit")
     }
@@ -864,7 +864,7 @@ class LargeTextScreensTest {
                 DayEntrySheet(st, vm, null, today) {}
             }
         }
-        compose.onNodeWithText("🎙️ 錄音").performClick()
+        compose.onNodeWithText("錄音").performClick()
         compose.waitUntil(WAIT) { has("⏹ 停止", substring = true) }
         ShadowSystemClock.advanceBy(Duration.ofSeconds(12))
         compose.mainClock.advanceTimeBy(1000)
@@ -1123,7 +1123,7 @@ class LargeTextScreensTest {
                 SheetBody { DayEntrySheet(s, vm, null, today) {} }
             }
         }
-        compose.onNodeWithText("🎙️ 錄音").performClick()
+        compose.onNodeWithText("錄音").performClick()
         compose.waitUntil(WAIT) { has("要打開麥克風權限") }
         screen("98_dialog_mic_blocked")
     }

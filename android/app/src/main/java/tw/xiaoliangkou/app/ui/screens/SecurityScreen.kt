@@ -62,7 +62,7 @@ fun SecurityScreen(vm: AppViewModel, back: () -> Unit, lock: AppLock = vm.contai
                         if (!on) lock.setBiometric(false)
                         else context.findActivity()?.let { a ->
                             // 先試一次，確定這支手機用得了
-                            biometrics.prompt(a, "確認用指紋或臉部解鎖", onSuccess = { lock.setBiometric(true); vm.toast("之後可以用指紋或臉部解鎖了 👍") }, onCancel = {})
+                            biometrics.prompt(a, "確認用指紋或臉部解鎖", onSuccess = { lock.setBiometric(true); vm.toast("之後可以用指紋或臉部解鎖了") }, onCancel = {})
                         }
                     }
                     SoftButton("變更密碼或圖形", Modifier.fillMaxWidth()) { step = PinStep.VERIFY_CHANGE }
@@ -96,8 +96,8 @@ fun SecurityScreen(vm: AppViewModel, back: () -> Unit, lock: AppLock = vm.contai
             title = { Text("用什麼解鎖？") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SoftButton("🔢 數字密碼（4～8 位）", Modifier.fillMaxWidth()) { newType = AppLock.Type.PIN; step = PinStep.SET }
-                    SoftButton("✍️ 圖形（連 4 個點以上）", Modifier.fillMaxWidth()) { newType = AppLock.Type.PATTERN; step = PinStep.SET }
+                    SoftButton("數字密碼（4～8 位）", Modifier.fillMaxWidth()) { newType = AppLock.Type.PIN; step = PinStep.SET }
+                    SoftButton("圖形（連 4 個點以上）", Modifier.fillMaxWidth()) { newType = AppLock.Type.PATTERN; step = PinStep.SET }
                     if (bioProblem == null) Text("設定好之後，也可以用指紋或臉部解鎖", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
@@ -108,7 +108,7 @@ fun SecurityScreen(vm: AppViewModel, back: () -> Unit, lock: AppLock = vm.contai
             val first = !lock.enabled
             lock.setPin(secret!!, newType)
             if (first && bioProblem == null) lock.setBiometric(true)
-            vm.toast(if (first) "App 鎖打開了 🔒" else if (newType == AppLock.Type.PATTERN) "圖形改好了" else "密碼改好了")
+            vm.toast(if (first) "App 鎖打開了" else if (newType == AppLock.Type.PATTERN) "圖形改好了" else "密碼改好了")
             step = null
         }
         PinStep.VERIFY_OFF -> PinDialog(lock, verify = true, onDismiss = { step = null }) {

@@ -1,5 +1,7 @@
 package tw.xiaoliangkou.app.ui.screens
 
+import androidx.compose.foundation.layout.size
+import tw.xiaoliangkou.app.ui.components.IllustratedIcon
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -146,7 +148,7 @@ private fun GuessCard(s: AppState, pending: List<Expense>, sheet: (SheetSpec) ->
     val err = if (done.isEmpty()) 0.0 else done.sumOf { kotlin.math.abs(it.myGuess!! - it.amount!!) / it.amount } / done.size
     CuteCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("猜猜看 💰", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text("猜猜看", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Text("猜得越準分數越高", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (pending.isEmpty()) Text("目前沒有等你猜的開銷。${s.partnerName} 開放猜金額的消費會出現在這裡。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -238,7 +240,7 @@ fun GuessSheet(s: AppState, vm: AppViewModel, id: String, close: () -> Unit) {
                     val g = input.toDoubleOrNull() ?: 0.0
                     val score = Guess.score(g, r.actualAmount)
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(if (r.scorePoints >= 80) "🎉" else if (r.scorePoints >= 50) "😆" else "🙈", style = MaterialTheme.typography.displayMedium)
+                        IllustratedIcon(if (r.scorePoints >= 80) "🎉" else if (r.scorePoints >= 50) "😆" else "🙈", Modifier.size(56.dp))
                         CountUpText(r.scorePoints, MaterialTheme.typography.displayLarge, suffix = " 分", color = MaterialTheme.colorScheme.primary)
                         Text(score.label, style = MaterialTheme.typography.titleLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -295,7 +297,7 @@ fun ExpenseEditSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Un
     // 還沒選類別：學過這家店就用學過的，不然看名字猜
     val suggested = remember(merchant) { memory.recall(merchant.trim())?.category ?: PaymentParser.categorizeMerchant(merchant) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(if (e == null) "記一筆 ✍️" else "編輯開銷", style = MaterialTheme.typography.titleLarge)
+        Text(if (e == null) "記一筆" else "編輯開銷", style = MaterialTheme.typography.titleLarge)
         CuteField(merchant, { merchant = it.take(60) }, "商家或項目", placeholder = "例如：鼎泰豐")
         CuteField(amount, { amount = it.filter(Char::isDigit).take(8) }, "金額（NT$）", keyboard = KeyboardType.Number)
         Text("類別", style = MaterialTheme.typography.labelLarge)
@@ -303,7 +305,7 @@ fun ExpenseEditSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Un
             Catalog.categories.forEach { c -> ChoiceChip(c.label, (category ?: suggested) == c.key, c.emoji) { category = c.key; picked = true } }
         }
         Text("${s.partnerName} 看得到嗎", style = MaterialTheme.typography.labelLarge)
-        Segmented(listOf("shared" to "看得到", "private" to "不給看", "surprise" to "禮物模式 🎁"), visibility) { visibility = it; if (it != "shared") guessable = false }
+        Segmented(listOf("shared" to "看得到", "private" to "不給看", "surprise" to "禮物模式"), visibility) { visibility = it; if (it != "shared") guessable = false }
         if (visibility == "surprise") {
             DateField("這天之後才讓 ${s.partnerName} 看到", reveal) { reveal = it }
         }
@@ -321,7 +323,7 @@ fun ExpenseEditSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Un
                 put("guessable", guessable && visibility == "shared")
                 if (e == null) put("source", "manual")
             }
-            vm.act(if (visibility == "surprise") "已儲存，${Fmt.md(LocalDate.parse(reveal))} 前對方看不到 🤫" else "已記下 ✨", onDone = close) { it.saveExpense(id, body) }
+            vm.act(if (visibility == "surprise") "已儲存，${Fmt.md(LocalDate.parse(reveal))} 前對方看不到" else "已記下", onDone = close) { it.saveExpense(id, body) }
         }
         if (e != null) SoftButton("刪除", Modifier.fillMaxWidth(), icon = Icons.Rounded.Delete) { vm.act("已刪除", onDone = close) { it.deleteExpense(e.id) } }
     }
@@ -345,7 +347,7 @@ fun ParseTestSheet(vm: AppViewModel, close: () -> Unit) {
     val result = remember(title, text) { PaymentParser.parseNotification(PaymentParser.Notice("", title, listOf(text))) }
     val parsed = (result as? PaymentParser.Result.Payment)?.parsed?.let(vm.container.merchants::apply)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("測試自動記帳 🤖", style = MaterialTheme.typography.titleLarge)
+        Text("測試自動記帳", style = MaterialTheme.typography.titleLarge)
         Text("開啟通知存取權後，App 會在背景自動處理付款通知。這裡可以貼一則通知看看會怎麼被記下來。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             samples.forEach { (l, ti, t) -> ChoiceChip(l, text == t) { title = ti; text = t } }
@@ -396,10 +398,13 @@ private fun PaymentLogRow(e: tw.xiaoliangkou.app.service.AutoBookkeeping.Entry, 
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(color).bouncyClick(onClick = onClick).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        TidyText(
-            "$emoji ${e.outcome} · ${e.app}${e.title.takeIf { it.isNotBlank() && it != e.app }?.let { "（$it）" }.orEmpty()} · ${Fmt.rel(java.time.Instant.ofEpochMilli(e.at))}",
-            style = MaterialTheme.typography.labelLarge,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            IllustratedIcon(emoji, Modifier.size(22.dp), e.outcome)
+            TidyText(
+                "${e.outcome} · ${e.app}${e.title.takeIf { it.isNotBlank() && it != e.app }?.let { "（$it）" }.orEmpty()} · ${Fmt.rel(java.time.Instant.ofEpochMilli(e.at))}",
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
         Text(e.detail, style = MaterialTheme.typography.bodyMedium)
         Text(e.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis)
     }

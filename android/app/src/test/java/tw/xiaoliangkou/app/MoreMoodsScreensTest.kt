@@ -163,7 +163,7 @@ class MoreMoodsScreensTest {
         })
         var closed = false
         sheet { ComfortSheet(s, vm, giphy, replyTo = received.id) { closed = true } }
-        assertTrue(has("回應 小雨 💌"))
+        assertTrue(has("回應 小雨"))
         assertTrue(has(received.message!!))
         idleUntil { read == listOf(received.id) }
         capture("37d_sheet_comfort_reply")
@@ -193,18 +193,18 @@ class MoreMoodsScreensTest {
     @Test fun quickComfortWindowHasEveryOption() {
         val sent = mutableListOf<String?>()
         show { QuickComfort(s, send = { sent += it }, close = {}) }
-        assertTrue(has("📍 小雨 現在在哪？"))
+        assertTrue(has("小雨 現在在哪？"))
         Catalog.comforts.forEach { assertTrue(it.label, has(it.label)) }
         capture("37e_quick_comfort")
         compose.onNodeWithText("晚安").performClick()
-        compose.onNodeWithText("📍 小雨 現在在哪？").performClick()
+        compose.onNodeWithText("小雨 現在在哪？").performClick()
         assertEquals(listOf("night", null), sent)
     }
 
     /** 對方沒分享位置：沒有「現在在哪？」；資料庫還沒更新：只有原本的安撫 */
     @Test fun quickComfortWindowFollowsSharingAndDatabase() {
         show { QuickComfort(s.copy(dbSchema = 4, partnerSharing = s.partnerSharing!!.copy(shareLocation = false)), send = {}, close = {}) }
-        assertFalse(has("📍 小雨 現在在哪？"))
+        assertFalse(has("小雨 現在在哪？"))
         Catalog.comforts.forEach { assertEquals(it.label, !it.extra, has(it.label)) }
     }
 

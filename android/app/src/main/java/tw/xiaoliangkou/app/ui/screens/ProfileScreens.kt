@@ -217,7 +217,7 @@ private fun BirthdayField(value: String, onPick: (LocalDate) -> Unit, onClear: (
     var open by remember { mutableStateOf(false) }
     val d = Fmt.parseDate(value)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        FieldLabel("🎂 生日")
+        FieldLabel("生日")
         Row(
             Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(FIELD_SHAPE).background(wellColor())
                 .clickable(onClickLabel = "選擇生日", role = Role.Button) { open = true }
@@ -232,8 +232,8 @@ private fun BirthdayField(value: String, onPick: (LocalDate) -> Unit, onClear: (
             if (d != null) IconButton(onClick = onClear) { Icon(Icons.Rounded.Close, "清除生日", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             else Icon(Icons.Rounded.Event, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp))
         }
-        val hint = d?.let { "自動算好了：${ProfileInfo.age(it)} 歲 · ${Horoscope.signOf(it).let { s -> "${s.emoji} ${s.name}（${s.range}）" }}" }
-            ?: "填了生日，就會自動算出年齡和星座 ✨"
+        val hint = d?.let { "自動算好了：${ProfileInfo.age(it)} 歲 · ${Horoscope.signOf(it).let { s -> "${s.name}（${s.range}）" }}" }
+            ?: "填了生日，就會自動算出年齡和星座"
         Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
     }
     if (open) BirthdayPicker(d, { open = false }) { onPick(it); open = false }
@@ -325,7 +325,7 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
         val info = ProfileInfo.build(changed - NAME_KEY - BIRTHDAY_KEY, me.info)
         val newName = (changed[NAME_KEY] ?: me.displayName).trim()
         val newBirthday = (changed[BIRTHDAY_KEY] ?: me.birthday.orEmpty()).ifEmpty { null }
-        vm.act(if (s.paired) "已儲存，${s.partnerName} 也看得到了 ✨" else "已儲存 ✨", onDone = {
+        vm.act(if (s.paired) "已儲存，${s.partnerName} 也看得到了" else "已儲存", onDone = {
             val saved = ProfileInfo.values(info) + mapOf(NAME_KEY to newName, BIRTHDAY_KEY to newBirthday.orEmpty())
             // 存的時候又改了的欄位留著
             form = saved + form.filter { (k, v) -> v != sent[k] }
@@ -342,7 +342,7 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
     fun Info(key: String, modifier: Modifier = Modifier) {
         val f = field(key)
         ProfileField(
-            "${f.emoji} ${f.label}", f.label, form[key].orEmpty(), { set(key, clean(f, it)) }, placeholderOf(f), modifier,
+            f.label, f.label, form[key].orEmpty(), { set(key, clean(f, it)) }, placeholderOf(f), modifier,
             keyboard = when { f.numeric -> KeyboardType.Decimal; key == ProfileInfo.PHONE -> KeyboardType.Phone; else -> KeyboardType.Text },
             singleLine = f.maxLength <= 40, error = errors[key], unit = f.unit, maxLength = f.maxLength,
         )
@@ -373,25 +373,25 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 if (bd != null) {
                                     val sign = Horoscope.signOf(bd)
-                                    Pill("🎂 ${ProfileInfo.age(bd)} 歲", c.card)
-                                    Pill("${sign.emoji} ${sign.name}", c.card)
-                                } else Pill("🎂 還沒填生日", c.card, MaterialTheme.colorScheme.onSurfaceVariant)
-                                form[ProfileInfo.BLOOD_TYPE]?.takeIf { it.isNotBlank() }?.let { Pill("🩸 ${it.uppercase()} 型", c.card) }
+                                    Pill("${ProfileInfo.age(bd)} 歲", c.card)
+                                    Pill(sign.name, c.card)
+                                } else Pill("還沒填生日", c.card, MaterialTheme.colorScheme.onSurfaceVariant)
+                                form[ProfileInfo.BLOOD_TYPE]?.takeIf { it.isNotBlank() }?.let { Pill("${it.uppercase()} 型", c.card) }
                             }
                         }
                     }
                     Completion(filled, total, partner)
                 }
                 Note(
-                    if (s.paired) "這些資料 ${s.partnerName} 都看得到 👀 不想說的留白就好" else "配對之後，另一半就看得到這些資料 👀 不想說的留白就好",
+                    if (s.paired) "這些資料 ${s.partnerName} 都看得到 不想說的留白就好" else "配對之後，另一半就看得到這些資料 不想說的留白就好",
                     "💞", c.partnerSoft,
                 )
 
                 SectionTitle("基本資料")
                 CuteCard {
-                    ProfileField("😊 暱稱", "暱稱", name, { set(NAME_KEY, it.take(Limits.NAME)) }, "大家都怎麼叫你", error = nameError)
+                    ProfileField("暱稱", "暱稱", name, { set(NAME_KEY, it.take(Limits.NAME)) }, "大家都怎麼叫你", error = nameError)
                     BirthdayField(birthday, onPick = { picked ->
-                        if (picked.isAfter(LocalDate.now())) vm.toast("生日不能是未來的日子喔 🤔") else set(BIRTHDAY_KEY, picked.toString())
+                        if (picked.isAfter(LocalDate.now())) vm.toast("生日不能是未來的日子喔") else set(BIRTHDAY_KEY, picked.toString())
                     }, onClear = { set(BIRTHDAY_KEY, "") })
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Info(ProfileInfo.HEIGHT, Modifier.weight(1f))
@@ -453,10 +453,10 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             val (status, color) = when {
-                !valid -> "有欄位要修正一下 ✋" to MaterialTheme.colorScheme.error
+                !valid -> "有欄位要修正一下" to MaterialTheme.colorScheme.error
                 dirty -> "有修改還沒儲存" to MaterialTheme.colorScheme.onSurfaceVariant
                 // 綠色調深一點，白底上才看得清楚
-                else -> "都儲存好了 ✓" to lerp(c.good, MaterialTheme.colorScheme.onSurface, 0.4f)
+                else -> "都儲存好了" to lerp(c.good, MaterialTheme.colorScheme.onSurface, 0.4f)
             }
             Text(
                 status, style = MaterialTheme.typography.bodyMedium, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -492,7 +492,7 @@ fun MyProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit) {
 private fun BloodTypePicker(selected: String, onSelect: (String) -> Unit) {
     val f = field(ProfileInfo.BLOOD_TYPE)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        FieldLabel("${f.emoji} ${f.label}")
+        FieldLabel(f.label)
         val options = ProfileInfo.bloodTypes.map { it to it } + ("" to "未知")
         if (LocalDensity.current.fontScale < 1.5f) Segmented(options, selected, onSelect = onSelect)
         else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -522,7 +522,7 @@ private fun Completion(filled: Int, total: Int, partner: String) {
             color = Cute.colors.me, trackColor = Cute.colors.card, strokeCap = StrokeCap.Round, gapSize = 0.dp, drawStopIndicator = {},
         )
         TidyText(
-            if (filled >= total) "全部填好了，$partner 一定很開心 🥰" else "還有 ${total - filled} 項沒填，多寫一點讓 $partner 更懂你 💡",
+            if (filled >= total) "全部填好了，$partner 一定很開心" else "還有 ${total - filled} 項沒填，多寫一點讓 $partner 更懂你",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -551,10 +551,10 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
     val phone = ProfileInfo.text(info, ProfileInfo.PHONE)
     val intro = ProfileInfo.text(info, ProfileInfo.INTRO)
     val chips = listOfNotNull(
-        bd?.let { "🎂 ${ProfileInfo.age(it, today)} 歲" },
-        sign?.let { "${it.emoji} ${it.name}" },
-        ProfileInfo.text(info, ProfileInfo.BLOOD_TYPE)?.let { "🩸 ${it.uppercase()} 型" },
-        ProfileInfo.text(info, ProfileInfo.MBTI)?.let { "🧠 ${it.uppercase()}" },
+        bd?.let { "${ProfileInfo.age(it, today)} 歲" },
+        sign?.name,
+        ProfileInfo.text(info, ProfileInfo.BLOOD_TYPE)?.let { "${it.uppercase()} 型" },
+        ProfileInfo.text(info, ProfileInfo.MBTI)?.let { "${it.uppercase()}" },
     )
     val tiles = TILE_KEYS.mapNotNull { k -> ProfileInfo.display(info, field(k))?.let { field(k) to it } }
     val shown = TILE_KEYS + listOf(ProfileInfo.PHONE, ProfileInfo.INTRO, ProfileInfo.BLOOD_TYPE, ProfileInfo.MBTI)
@@ -652,16 +652,16 @@ fun PartnerProfileScreen(s: AppState, vm: AppViewModel, back: () -> Unit, sheet:
         }
         // 資料庫還沒更新時資料本來就讀不到，不要說成「還沒填」
         if (!outdated && chips.isEmpty() && tiles.isEmpty() && rows.isEmpty() && phone == null && intro == null) item {
-            CuteCard { EmptyState("$name 還沒填個人資料\n可以提醒一下：「我的 › 我的資料」就能填 ✍️", "🐣") }
+            CuteCard { EmptyState("$name 還沒填個人資料\n可以提醒一下：「我的 › 我的資料」就能填", "🐣") }
         }
 
         item {
             Row(Modifier.fillMaxWidth().padding(top = 6.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("只有我看得到的備註 🔒", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text("只有我看得到的備註", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 if (!outdated) CuteButton("新增", Modifier.minimumInteractiveComponentSize(), icon = Icons.Rounded.Add, small = true) { sheet(SheetSpec.NoteEdit(null)) }
             }
         }
-        item { Note("$name 看不到這些備註，也不會收到通知 🤫", "🔒", noteTint(strong = true)) }
+        item { Note("$name 看不到這些備註，也不會收到通知", "🔒", noteTint(strong = true)) }
         if (notes.isEmpty() && !outdated) item {
             CuteCard {
                 EmptyState("記下 $name 的小喜好、想要的禮物、\n不能踩的地雷，只有你看得到", "📝")
@@ -687,12 +687,12 @@ private fun UnpairedHint(back: () -> Unit) {
             CoupleCats(height = 100.dp, partnerSad = true)
             Text("還沒有配對喔", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Text(
-                "配對之後，就能看到另一半填的生日、喜好和尺寸，也能寫只有你看得到的小備註 🔒",
+                "配對之後，就能看到另一半填的生日、喜好和尺寸，也能寫只有你看得到的小備註",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
             )
         }
-        Note("回到首頁就能配對：一人產生配對碼、另一人輸入 💌", "💡")
+        Note("回到首頁就能配對：一人產生配對碼、另一人輸入", "💡")
     }
 }
 
@@ -711,14 +711,14 @@ private fun BirthdayCountdown(name: String, birthday: LocalDate, today: LocalDat
             TidyText(
                 when {
                     occ.daysLeft == 0 -> "今天滿 ${occ.years} 歲，快去跟 $name 說生日快樂！"
-                    soon -> "滿 ${occ.years} 歲 · 可以開始準備驚喜了 🎁"
+                    soon -> "滿 ${occ.years} 歲 · 可以開始準備驚喜了"
                     else -> "${birthday.year} 年出生 · 下次生日滿 ${occ.years} 歲"
                 },
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             // 倒數放在說明下面：標題、說明用整個寬度，字放大也不會被擠成好幾行
             Box(Modifier.padding(top = 4.dp)) {
-                if (occ.daysLeft == 0) HeartBeat { Pill("就是今天 🎉", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary) }
+                if (occ.daysLeft == 0) HeartBeat { Pill("就是今天", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary) }
                 else Pill(if (occ.daysLeft == 1) "明天" else "還有 ${occ.daysLeft} 天", if (soon) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
             }
         }
@@ -778,7 +778,7 @@ private fun NoteCard(n: PrivateNote, onOpen: () -> Unit, onDelete: () -> Unit) {
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(n.body, style = MaterialTheme.typography.bodyLarge, maxLines = 8, overflow = TextOverflow.Ellipsis)
-            Text("🔒 ${Fmt.rel(n.time)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${Fmt.rel(n.time)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         IconButton(onClick = onDelete, modifier = Modifier.offset(y = (-8).dp)) {
             Icon(Icons.Rounded.DeleteOutline, "刪除備註", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
@@ -822,8 +822,8 @@ fun NoteSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
     // 寫了還沒儲存：滑掉面板、按返回前先問
     tw.xiaoliangkou.app.ui.SheetDraftGuard(text != (note?.body ?: "").trim())
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(if (note == null) "寫一則備註 📝" else "編輯備註 📝", style = MaterialTheme.typography.titleLarge)
-        Note("只有你看得到，${s.partnerName} 看不到，也不會收到通知 🤫", "🔒", noteTint(strong = true))
+        Text(if (note == null) "寫一則備註" else "編輯備註", style = MaterialTheme.typography.titleLarge)
+        Note("只有你看得到，${s.partnerName} 看不到，也不會收到通知", "🔒", noteTint(strong = true))
         OutlinedTextField(
             value = body,
             onValueChange = { body = if (it.text.length <= Limits.NOTE) it else it.copy(text = it.text.take(Limits.NOTE)) },
@@ -846,7 +846,7 @@ fun NoteSheet(s: AppState, vm: AppViewModel, id: String?, close: () -> Unit) {
             }
         }
         CuteButton("儲存", Modifier.fillMaxWidth(), icon = Icons.Rounded.Check, enabled = text.isNotEmpty() && text != note?.body && !vm.busy) {
-            vm.act(if (note == null) "記下來了，只有你看得到 🔒" else "已更新備註 🔒", onDone = close) { it.saveNote(id, text) }
+            vm.act(if (note == null) "記下來了，只有你看得到" else "已更新備註", onDone = close) { it.saveNote(id, text) }
         }
         if (note != null) SoftButton("刪除這則備註", Modifier.fillMaxWidth(), icon = Icons.Rounded.Delete, enabled = !vm.busy) { confirmDelete = true }
     }

@@ -283,7 +283,7 @@ class StickerScreensTest {
         show { HomeScreen(homeState(), vm, {}, {}) }
         waitStickers(2)
         compose.onNodeWithText("收到抱抱了，晚安").assertExists()
-        compose.onNodeWithText("😩 好累").assertExists()
+        compose.onNodeWithText("好累").assertExists()
         capture("38_home_received_comfort")
     }
 
@@ -305,7 +305,7 @@ class StickerScreensTest {
         compose.onNodeWithText("收到了").performClick()
         idleUntil { done.isNotEmpty() && !vm.busy }
         assertEquals(listOf("read ${c.id}"), done)
-        compose.onNodeWithText("回抱 🤗").performClick()
+        compose.onNodeWithText("回抱").performClick()
         idleUntil { done.size == 3 && !vm.busy }
         assertEquals(listOf("read ${c.id}", "read ${c.id}", "send hug null null"), done)
     }
@@ -337,7 +337,7 @@ class StickerScreensTest {
             override suspend fun sendComfort(kind: String, message: String?, sticker: String?) { sent++ }
         })
         show { HomeScreen(s, vm, {}, {}) }
-        compose.onNodeWithText("回抱 🤗").performClick()
+        compose.onNodeWithText("回抱").performClick()
         idleUntil { messages.isNotEmpty() && !vm.busy }
         assertEquals(listOf("連不到 Supabase，請確認網路"), messages)
         assertEquals(0, sent)
@@ -884,49 +884,49 @@ class StickerScreensTest {
         show { AccountScreen(db.value, vm, giphy) {} }
         compose.onNodeWithText("我更新好了，重新檢查").performScrollTo().performClick()
         idleUntil { messages.isNotEmpty() && !vm.busy }
-        assertEquals("還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次", messages.last())
+        assertEquals("還是舊的資料庫：確認 SQL Editor 下方出現「更新完成」，再檢查一次", messages.last())
 
         // 只補到貼圖、還沒有更多心情：還是舊的 upgrade-v2.sql
         db.value = db.value.copy(dbSchema = RemoteRepository.STICKER_SCHEMA)
         compose.onNodeWithText("我更新好了，重新檢查").performScrollTo().performClick()
         idleUntil { messages.size == 2 }
-        assertEquals("還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次", messages.last())
+        assertEquals("還是舊的資料庫：確認 SQL Editor 下方出現「更新完成」，再檢查一次", messages.last())
 
         // 補到更多心情，還沒有小貓和手機溫度：還是舊的 upgrade-v2.sql
         db.value = db.value.copy(dbSchema = RemoteRepository.MOODS_SCHEMA)
         compose.onNodeWithText("我更新好了，重新檢查").performScrollTo().performClick()
         idleUntil { messages.size == 3 }
-        assertEquals("還是舊的資料庫：確認 SQL Editor 下方出現「更新完成 🎉」，再檢查一次", messages.last())
+        assertEquals("還是舊的資料庫：確認 SQL Editor 下方出現「更新完成」，再檢查一次", messages.last())
 
         db.value = db.value.copy(dbSchema = RemoteRepository.CATS_SCHEMA)
         compose.onNodeWithText("我更新好了，重新檢查").performScrollTo().performClick()
         idleUntil { messages.size == 4 }
-        assertEquals("資料庫更新好了，更多貓咪、手機溫度、養小貓、更多心情和安撫、GIPHY 貼圖都有了 🎉", messages.last())
+        assertEquals("資料庫更新好了，更多貓咪、手機溫度、養小貓、更多心情和安撫、GIPHY 貼圖都有了", messages.last())
     }
 
     /** 「我的」選單的說明跟著列出再更新一次會多什麼 */
     @Test fun moreMenuListsWhatTheUpgradeAdds() {
         var st by mutableStateOf(s.copy(demo = false, dbSchema = 3))
         show { MoreScreen(st, vm) {} }
-        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度、養小貓、更多心情和安撫、GIPHY 貼圖）📱"))
+        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度、養小貓、更多心情和安撫、GIPHY 貼圖）"))
         st = st.copy(dbSchema = 2)
         compose.waitForIdle()
-        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度、養小貓、更多心情和安撫、GIPHY 貼圖、手機名稱、電信）📱"))
+        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度、養小貓、更多心情和安撫、GIPHY 貼圖、手機名稱、電信）"))
         st = st.copy(dbSchema = 4)
         compose.waitForIdle()
-        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度、養小貓、更多心情和安撫）📱"))
+        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度、養小貓、更多心情和安撫）"))
         st = st.copy(dbSchema = 5)
         compose.waitForIdle()
-        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度、養小貓、更多安撫）📱"))
+        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度、養小貓、更多安撫）"))
         st = st.copy(dbSchema = 6)
         compose.waitForIdle()
-        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度、養小貓）📱"))
+        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度、養小貓）"))
         st = st.copy(dbSchema = 7)
         compose.waitForIdle()
-        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度）📱"))
+        assertTrue(has("可以再更新一次資料庫（更多貓咪、手機溫度）"))
         st = st.copy(dbSchema = 8)
         compose.waitForIdle()
-        assertTrue(has("可以再更新一次資料庫（更多貓咪）📱"))
+        assertTrue(has("可以再更新一次資料庫（更多貓咪）"))
         st = st.copy(dbSchema = 9)
         compose.waitForIdle()
         assertTrue(has("連線、邀請另一半、GIPHY 貼圖、改密碼、登出"))

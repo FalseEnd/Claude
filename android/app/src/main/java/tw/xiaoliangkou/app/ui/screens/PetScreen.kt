@@ -1,5 +1,6 @@
 package tw.xiaoliangkou.app.ui.screens
 
+import tw.xiaoliangkou.app.ui.components.IllustratedIcon
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -111,8 +112,8 @@ internal fun stageIndex(xp: Int) = Pet.stages.indexOf(Pet.stageOf(xp))
 internal fun petReaction(action: String, item: String?, r: PetResult): String = when (action) {
     "feed" -> when {
         r.xp == 0 && !r.bonus -> "肚子飽飽，吃一點點就好～"
-        item == "can" -> "罐罐！！最喜歡了 😻"
-        item == "fish" -> "小魚乾～再一條嘛 🐟"
+        item == "can" -> "罐罐！！最喜歡了"
+        item == "fish" -> "小魚乾～再一條嘛"
         else -> "喀滋喀滋～好好吃！"
     }
     "play" -> when {
@@ -121,31 +122,31 @@ internal fun petReaction(action: String, item: String?, r: PetResult): String = 
         item == "yarn" -> "毛線球滾來滾去～"
         else -> "抓到了！再來再來！"
     }
-    "bath" -> "嗚…濕答答的，可是香香的 🛁"
-    "brush" -> "呼嚕呼嚕～好舒服 ✨"
-    else -> Pet.purrs.random()
+    "bath" -> "嗚…濕答答的，可是香香的"
+    "brush" -> "呼嚕呼嚕～好舒服"
+    else -> Pet.purrs.random().removeSuffix(" 💕")
 }
 
 /** 這次照顧得到的成長值（沒有就是 null，不用跳提示） */
 internal fun petGain(r: PetResult): String? = listOfNotNull(
-    "+${r.xp} 成長值 ✨".takeIf { r.xp > 0 },
-    "今天的任務都完成了 🎉".takeIf { r.bonus },
-    "連續照顧滿 ${Pet.STREAK_EVERY} 天的倍數 🔥".takeIf { r.streakBonus },
+    "+${r.xp} 成長值".takeIf { r.xp > 0 },
+    "今天的任務都完成了".takeIf { r.bonus },
+    "連續照顧滿 ${Pet.STREAK_EVERY} 天的倍數".takeIf { r.streakBonus },
 ).joinToString("，").ifEmpty { null }
 
 /** 照顧紀錄的一行字 */
 internal fun petEventText(e: PetEvent, who: String, petName: String): String = when (e.action) {
-    "adopt" -> "$who 領養了$petName（${Pet.coat(e.item).label}）🐱"
-    "feed" -> Pet.food(e.item)?.let { "$who 餵了${it.label} ${it.emoji}" } ?: "$who 餵牠吃飯 🍚"
-    "play" -> Pet.toy(e.item)?.let { "$who 用${it.label}陪牠玩 ${it.emoji}" } ?: "$who 陪牠玩 🧶"
-    "pet" -> "$who 摸摸牠 🤚"
-    "bath" -> "$who 幫牠洗澡 🛁"
-    "brush" -> "$who 幫牠梳毛 💆"
-    "bonus" -> "完成今天的任務 🎉"
-    "streak" -> "連續照顧 ${e.item} 天 🔥"
-    "grow" -> "長大成${e.item}了！🎉"
-    "rename" -> "$who 幫牠改名叫「${e.item}」✏️"
-    "coat" -> "$who 把牠換成${Pet.coat(e.item).label} ✨"
+    "adopt" -> "$who 領養了$petName（${Pet.coat(e.item).label}）"
+    "feed" -> Pet.food(e.item)?.let { "$who 餵了${it.label}" } ?: "$who 餵牠吃飯"
+    "play" -> Pet.toy(e.item)?.let { "$who 用${it.label}陪牠玩" } ?: "$who 陪牠玩"
+    "pet" -> "$who 摸摸牠"
+    "bath" -> "$who 幫牠洗澡"
+    "brush" -> "$who 幫牠梳毛"
+    "bonus" -> "完成今天的任務"
+    "streak" -> "連續照顧 ${e.item} 天"
+    "grow" -> "長大成${e.item}了！"
+    "rename" -> "$who 幫牠改名叫「${e.item}」"
+    "coat" -> "$who 把牠換成${Pet.coat(e.item).label}"
     else -> "$who 照顧了牠"
 }
 
@@ -182,7 +183,7 @@ fun HomePetCard(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
                     PetCat("orange", 0, CatFace.HAPPY, Modifier.fillMaxSize().padding(4.dp))
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("一起養一隻小貓 🐾", style = MaterialTheme.typography.titleMedium)
+                    Text("一起養一隻小貓", style = MaterialTheme.typography.titleMedium)
                     TidyText("再更新一次資料庫就能養了（我的 › Supabase 與帳號）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -198,7 +199,7 @@ fun HomePetCard(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
                     PetCat("orange", 0, CatFace.HAPPY, Modifier.fillMaxSize().padding(6.dp))
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("領養一隻小貓吧 🐾", style = MaterialTheme.typography.titleMedium)
+                    Text("領養一隻小貓吧", style = MaterialTheme.typography.titleMedium)
                     TidyText("兩個人每天一起餵牠、陪牠玩，看牠從小奶貓長成大胖貓", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     SoftButton("去領養", small = true) { open("pet") }
                 }
@@ -229,9 +230,9 @@ fun HomePetCard(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     TidyText(pet.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                    Pill("${stage.label} ${stage.emoji}", Cute.colors.butter.copy(alpha = 0.35f))
+                    Pill(stage.label, Cute.colors.butter.copy(alpha = 0.35f))
                 }
-                TidyText("${mood.emoji} ${mood.text}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                TidyText(mood.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                 PetBar("🍗", st.fullness, FULL, compact = true)
                 PetBar("💖", st.happiness, HAPPY, compact = true)
                 PetBar("✨", st.cleanliness, CLEAN, compact = true)
@@ -240,17 +241,17 @@ fun HomePetCard(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
         val today = bundle.today
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TidyText(
-                if (today.feeds == 0) "🥺 今天還沒有人餵${pet.name}" else "今天 ${tick(today.feeds > 0)} 餵飯 ${tick(today.plays > 0)} 陪玩 ${tick(today.pets >= Pet.TASK_PETS)} 摸摸 ${today.pets.coerceAtMost(Pet.TASK_PETS)}/${Pet.TASK_PETS}",
+                if (today.feeds == 0) "今天還沒有人餵${pet.name}" else "今天 ${tick(today.feeds > 0)} 餵飯 ${tick(today.plays > 0)} 陪玩 ${tick(today.pets >= Pet.TASK_PETS)} 摸摸 ${today.pets.coerceAtMost(Pet.TASK_PETS)}/${Pet.TASK_PETS}",
                 style = MaterialTheme.typography.labelLarge,
                 color = if (today.feeds == 0) Cute.colors.bad else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
-            SoftButton(if (today.feeds == 0 || st.fullness < 40) "🍚 去餵牠" else "照顧牠", small = true) { open("pet") }
+            SoftButton(if (today.feeds == 0 || st.fullness < 40) "去餵牠" else "照顧牠", small = true) { open("pet") }
         }
     }
 }
 
-private fun tick(done: Boolean) = if (done) "✅" else "⬜"
+private fun tick(done: Boolean) = if (done) "✓" else "·"
 
 private val FULL = Color(0xFFFFA26B)
 private val HAPPY = Color(0xFFFF7FA8)
@@ -262,7 +263,7 @@ private fun PetBar(emoji: String, value: Double, color: Color, label: String? = 
     val v by animateFloatAsState((value / 100.0).toFloat().coerceIn(0f, 1f), tween(600), label = "bar")
     val low = value < 25
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(emoji, style = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleSmall)
+        IllustratedIcon(emoji, Modifier.size(if (compact) 18.dp else 24.dp), label)
         if (label != null) Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
         Box(Modifier.weight(1f).height(if (compact) 8.dp else 12.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant)) {
             Box(Modifier.fillMaxWidth(v).height(if (compact) 8.dp else 12.dp).clip(RoundedCornerShape(50)).background(if (low) Cute.colors.bad else color))
@@ -310,7 +311,7 @@ fun PetScreen(s: AppState, vm: AppViewModel, back: () -> Unit, open: (String) ->
                 !s.paired -> item { EmptyState("配對之後就能一起養小貓", "🐾") }
                 !s.petReady -> item {
                     CuteCard {
-                        Text("一起養一隻小貓 🐾", style = MaterialTheme.typography.titleMedium)
+                        Text("一起養一隻小貓", style = MaterialTheme.typography.titleMedium)
                         TidyText("資料庫還沒有小貓：到「我的 › Supabase 與帳號」再執行一次 upgrade-v2.sql 就能養了。兩個人其中一個做就好。")
                         SoftButton("怎麼更新", small = true) { open("account") }
                     }
@@ -335,11 +336,11 @@ fun PetScreen(s: AppState, vm: AppViewModel, back: () -> Unit, open: (String) ->
         AlertDialog(
             onDismissRequest = { grown = null },
             confirmButton = { TextButton({ grown = null }) { Text("好棒！") } },
-            title = { Text("${pet?.name ?: "牠"} 長大了！🎉") },
+            title = { Text("${pet?.name ?: "牠"} 長大了！") },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     PetCat(pet?.coat ?: "orange", st?.let { Pet.stages.indexOf(it) } ?: 1, CatFace.HAPPY, Modifier.size(140.dp))
-                    TidyText("現在是${stage} ${st?.emoji.orEmpty()}，謝謝你們的照顧", textAlign = TextAlign.Center)
+                    TidyText("現在是${stage}，謝謝你們的照顧", textAlign = TextAlign.Center)
                 }
             },
         )
@@ -364,14 +365,14 @@ private fun PetRoom(pet: PetDto, s: AppState, prop: String?, say: String?, bounc
         PetCat(pet.coat, stageIndex(st.xp), face, Modifier.fillMaxSize().padding(top = 70.dp, bottom = 14.dp), prop = prop, bounce = bounce)
         HeartBurstOverlay(hearts)
         // 牠說的話（沒有的話是現在的心情）
-        val text = say ?: "${mood.text} ${mood.emoji}"
+        val text = say ?: mood.text
         TidyText(
             text,
             Modifier.align(Alignment.TopCenter).padding(top = 14.dp, start = 24.dp, end = 24.dp)
                 .clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.92f)).padding(horizontal = 14.dp, vertical = 8.dp),
             style = MaterialTheme.typography.titleSmall, color = Color(0xFF4A2B39), textAlign = TextAlign.Center, maxLines = 2,
         )
-        Pill("🤚 點牠摸摸", Color.White.copy(alpha = 0.75f), Color(0xFF4A2B39), modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp))
+        Pill("點牠摸摸", Color.White.copy(alpha = 0.75f), Color(0xFF4A2B39), modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp))
     }
 }
 
@@ -432,8 +433,8 @@ private fun PetStatusCard(pet: PetDto, s: AppState, rename: () -> Unit) {
             IconButton(rename) { Icon(Icons.Rounded.Edit, "改名字、換品種") }
         }
         ButtonRow(spacing = 6.dp) {
-            Pill("${stage.label} ${stage.emoji}", Cute.colors.butter.copy(alpha = 0.35f))
-            Pill(if (streak > 0) "🔥 連續照顧 $streak 天" else "🔥 今天開始連續照顧", Cute.colors.peach.copy(alpha = 0.3f))
+            Pill(stage.label, Cute.colors.butter.copy(alpha = 0.35f))
+            Pill(if (streak > 0) "連續照顧 $streak 天" else "今天開始連續照顧", Cute.colors.peach.copy(alpha = 0.3f))
         }
         PetBar("🍗", st.fullness, FULL, "飽足")
         PetBar("💖", st.happiness, HAPPY, "開心")
@@ -446,7 +447,7 @@ private fun PetStatusCard(pet: PetDto, s: AppState, rename: () -> Unit) {
             Row {
                 Text("成長值 ${st.xp}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
                 TidyText(
-                    if (next == null) "已經是最大隻的大胖貓了 👑" else "再 ${next.xp - st.xp} 長成${next.label} ${next.emoji}",
+                    if (next == null) "已經是最大隻的大胖貓了" else "再 ${next.xp - st.xp} 長成${next.label}",
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -456,7 +457,7 @@ private fun PetStatusCard(pet: PetDto, s: AppState, rename: () -> Unit) {
             // 長大的路線：小奶貓 → … → 大胖貓
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                 Pet.stages.forEach { x ->
-                    Text(x.emoji, style = MaterialTheme.typography.titleSmall, modifier = Modifier.alpha(if (st.xp >= x.xp) 1f else 0.3f).semantics { contentDescription = x.label })
+                    IllustratedIcon(x.emoji, Modifier.size(26.dp).alpha(if (st.xp >= x.xp) 1f else 0.3f), x.label)
                 }
             }
         }
@@ -532,7 +533,7 @@ private fun TasksCard(pet: PetDto, bundle: PetResponse) {
         TaskRow("🧶", "陪牠玩", t.plays > 0, if (t.plays > 0) "${t.plays} 次" else null)
         TaskRow("🤚", "摸摸牠 ${Pet.TASK_PETS} 次", t.pets >= Pet.TASK_PETS, "${t.pets.coerceAtMost(Pet.TASK_PETS)}/${Pet.TASK_PETS}")
         Note(
-            if (done) "今天的任務完成了！多了 ${Pet.TASK_BONUS} 成長值 🎉" else "三個都做完多 ${Pet.TASK_BONUS} 成長值，兩個人一起做也算",
+            if (done) "今天的任務完成了！多了 ${Pet.TASK_BONUS} 成長值" else "三個都做完多 ${Pet.TASK_BONUS} 成長值，兩個人一起做也算",
             if (done) "🏆" else "✨",
             if (done) Cute.colors.mint.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant,
         )
@@ -542,8 +543,8 @@ private fun TasksCard(pet: PetDto, bundle: PetResponse) {
 @Composable
 private fun TaskRow(emoji: String, text: String, done: Boolean, count: String?) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(if (done) "✅" else "⬜", style = MaterialTheme.typography.titleMedium)
-        Text(emoji, style = MaterialTheme.typography.titleMedium)
+        IllustratedIcon(if (done) "✅" else "⬜", Modifier.size(24.dp), if (done) "已完成" else "待完成")
+        IllustratedIcon(emoji, Modifier.size(26.dp))
         TidyText(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         if (count != null) Text(count, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -581,13 +582,13 @@ private fun AdoptCard(s: AppState, vm: AppViewModel) {
         Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(22.dp)).background(Cute.colors.butter.copy(alpha = 0.25f))) {
             PetCat(coat, 0, CatFace.HAPPY, Modifier.fillMaxSize().padding(top = 10.dp, bottom = 6.dp))
         }
-        Text("領養一隻小貓 🐾", style = MaterialTheme.typography.titleLarge)
+        Text("領養一隻小貓", style = MaterialTheme.typography.titleLarge)
         TidyText("你和 ${s.partnerName} 一起養，兩個人都能餵牠、陪牠玩。每天都要有人來看牠，牠會從小奶貓慢慢長成大胖貓。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("選一隻", style = MaterialTheme.typography.titleSmall)
         CoatGrid(s, vm, coat) { coat = it }
         CuteField(name, { name = it }, "幫牠取名字", placeholder = "例如：麻糬、湯圓（沒填就叫咪咪）", supporting = "最多 ${Pet.NAME_MAX} 個字，之後也可以改", isError = !valid)
-        CuteButton("🐾 領養${Pet.coat(coat).label}", Modifier.fillMaxWidth(), enabled = valid && !vm.busy) {
-            vm.act("歡迎回家！🎉", hearts = true) { it.adoptPet(name.ifBlank { "咪咪" }, coat) }
+        CuteButton("領養${Pet.coat(coat).label}", Modifier.fillMaxWidth(), enabled = valid && !vm.busy) {
+            vm.act("歡迎回家！", hearts = true) { it.adoptPet(name.ifBlank { "咪咪" }, coat) }
         }
     }
 }
@@ -604,7 +605,7 @@ private fun CoatGrid(s: AppState, vm: AppViewModel, selected: String, stage: Int
         }
     }
     if (Pet.coats.any { !s.canPickCoat(it) }) {
-        TidyText("🔒 的品種要再執行一次 upgrade-v2.sql 才能選", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TidyText("尚未開放的品種要再執行一次 upgrade-v2.sql 才能選", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -619,7 +620,7 @@ private fun CoatChoice(c: Pet.Coat, selected: Boolean, stage: Int, locked: Boole
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         PetCat(c.key, stage, if (selected) CatFace.HAPPY else CatFace.OK, Modifier.fillMaxWidth().height(size * 0.8f), animated = false)
-        Text(if (locked) "🔒 ${c.label}" else c.label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(if (locked) "${c.label}（未開放）" else c.label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -640,7 +641,7 @@ private fun EditPetCard(s: AppState, pet: PetDto, vm: AppViewModel, close: () ->
         CoatGrid(s, vm, coat, stage) { coat = it }
         ButtonRow {
             SoftButton("取消", small = true) { close() }
-            CuteButton("好了", small = true, enabled = valid && !vm.busy) { vm.act("改好了 ✏️", onDone = close) { it.editPet(name, coat) } }
+            CuteButton("好了", small = true, enabled = valid && !vm.busy) { vm.act("改好了", onDone = close) { it.editPet(name, coat) } }
         }
     }
 }

@@ -66,13 +66,13 @@ class HeatScreensTest {
         show { HomeScreen(partner(34.2, 0), vm, {}, {}) }
         assertTrue(has("手機溫度"))
         assertTrue(has("34.2°C"))
-        assertTrue(has("正常 😊"))
+        assertTrue(has("正常"))
     }
 
     @Test fun partnerPhoneIsHot() {
         show { HomeScreen(partner(46.3, 3), vm, {}, {}) }
         assertTrue(has("46.3°C"))
-        assertTrue(has("很燙 🔥 · 提醒對方：先停下來，拿掉保護殼、別放在太陽下"))
+        assertTrue(has("很燙 · 提醒對方：先停下來，拿掉保護殼、別放在太陽下"))
         compose.onRoot().captureRoboImage("build/screens/110_phone_hot.png")
         // 自己的手機
         compose.onNode(hasText("我") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)).performClick()
@@ -89,7 +89,7 @@ class HeatScreensTest {
     @Config(qualifiers = "zh-rTW-w360dp-h1400dp-xhdpi", fontScale = 1.3f)
     @Test fun largeText() {
         show { HomeScreen(partner(42.0, 2), vm, {}, {}) }
-        assertTrue(has("有點熱 🥵"))
+        assertTrue(has("有點熱"))
         compose.onRoot().captureRoboImage("build/screens-large/phone_heat.png")
     }
 }

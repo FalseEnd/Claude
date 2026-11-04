@@ -423,11 +423,11 @@ private fun DemoStickers(recent: List<String>, pick: (String) -> Unit) {
             Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("🧪")
+            IllustratedIcon("🧪")
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 TidyText("示範模式不能搜尋 GIPHY", style = MaterialTheme.typography.titleSmall)
                 TidyText(
-                    "用你們的 Supabase 登入、設定好 key，就能搜尋各種貼圖。示範的貼圖一樣是從 GIPHY 載入的，先用這張試試看 👇",
+                    "用你們的 Supabase 登入、設定好 key，就能搜尋各種貼圖。示範的貼圖一樣是從 GIPHY 載入的，先用這張試試看",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -444,7 +444,7 @@ private fun PickerState(emoji: String, title: String, sub: String? = null, actio
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(emoji, style = MaterialTheme.typography.displayMedium.unscaled())
+        IllustratedIcon(emoji, Modifier.size(56.dp))
         TidyText(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         if (sub != null) TidyText(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         action?.invoke()
@@ -590,7 +590,7 @@ fun GiphyKeyForm(s: AppState, vm: AppViewModel, searcher: GiphySearcher, label: 
                 }
                 repo.setGiphyKey(k)
                 key = ""
-                vm.toast("設定好了 🎉 ${s.partnerName} 的手機也能用")
+                vm.toast("設定好了，${s.partnerName} 的手機也能用")
                 onSaved()
             } catch (e: CancellationException) {
                 throw e

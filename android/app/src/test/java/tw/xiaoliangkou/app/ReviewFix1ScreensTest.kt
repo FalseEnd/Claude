@@ -120,13 +120,13 @@ class ReviewFix1ScreensTest {
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithText("我更新好了，重新檢查").performScrollTo().performClick()
         compose.waitUntil(10_000) { messages.isNotEmpty() }
-        assertEquals("資料庫更新好了，新功能都可以用了 🎉", messages.single())
+        assertEquals("資料庫更新好了，新功能都可以用了", messages.single())
     }
 
     @Test fun moreScreenPointsToTheSteps() {
         compose.setContent { XlkTheme { MoreScreen(s.copy(demo = false, schemaOutdated = true), vm) {} } }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("資料庫需要更新，點這裡看怎麼做 🛠️").assertExists()
+        compose.onNodeWithText("資料庫需要更新，點這裡看怎麼做").assertExists()
     }
 
     @Test fun newNotificationKindsWaitForUpgrade() {
@@ -150,8 +150,8 @@ class ReviewFix1ScreensTest {
         val before = live()
         compose.setContent { XlkTheme { DemoConsole(vm.state.value, vm) {} } }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("📔 記錄今天的生活").performScrollTo().performClick()
-        compose.onNodeWithText("📝 新增共同備忘錄").performScrollTo().performClick()
+        compose.onNodeWithText("記錄今天的生活").performScrollTo().performClick()
+        compose.onNodeWithText("新增共同備忘錄").performScrollTo().performClick()
         compose.waitUntil(10_000) {
             vm.state.value.dayEntries.size > before.dayEntries.size && vm.state.value.memos.size > before.memos.size
         }

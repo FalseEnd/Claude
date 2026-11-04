@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 一格比較高時的 🤗 按鈕 -->
+<!-- 一格比較高時的抱抱按鈕 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:width="44dp" android:height="44dp" android:gravity="center" android:drawable="@drawable/widget_chip" />
+    <item android:width="26dp" android:height="26dp" android:gravity="center" android:drawable="@drawable/widget_heart" />
 </layer-list>

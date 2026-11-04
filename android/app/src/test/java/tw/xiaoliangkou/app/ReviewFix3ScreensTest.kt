@@ -156,7 +156,7 @@ class ReviewFix3ScreensTest {
     /** 按錄音、錄 [seconds] 秒，回傳錄音檔 */
     private fun record(seconds: Long = 2): File {
         shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO)
-        compose.onNodeWithText("🎙️ 錄音").performClick()
+        compose.onNodeWithText("錄音").performClick()
         waitFor { has("⏹ 停止", substring = true) }
         ShadowSystemClock.advanceBy(Duration.ofSeconds(seconds))
         return voiceFiles().single()
@@ -182,7 +182,7 @@ class ReviewFix3ScreensTest {
         waitFor { has("重新上傳") }
         assertTrue(f.exists())
         compose.onNodeWithText("錄音還沒傳上去").assertIsNotEnabled()
-        compose.onNodeWithText("🎙️ 錄音").assertIsNotEnabled()
+        compose.onNodeWithText("錄音").assertIsNotEnabled()
         compose.onRoot().captureRoboImage("build/screens/70_voice_unsent.png")
 
         // 網路好了：重新上傳，加進這則紀錄、手機裡的檔案刪掉
@@ -259,7 +259,7 @@ class ReviewFix3ScreensTest {
     /** 拒絕到系統不再詢問：問要不要去設定，按了打開這個 App 的設定頁 */
     @Test fun permanentlyDeniedMicOpensSettings() {
         daySheet(registry = denyMic())
-        compose.onNodeWithText("🎙️ 錄音").performClick()
+        compose.onNodeWithText("錄音").performClick()
         waitFor { has("要打開麥克風權限") }
         compose.onRoot().captureRoboImage("build/screens/71_mic_blocked.png")
         compose.onNodeWithText("去設定").performClick()
@@ -274,7 +274,7 @@ class ReviewFix3ScreensTest {
     @Test fun firstDenialOnlyReminds() {
         shadowOf(app.packageManager).setShouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO, true)
         daySheet(registry = denyMic())
-        compose.onNodeWithText("🎙️ 錄音").performClick()
+        compose.onNodeWithText("錄音").performClick()
         compose.waitForIdle()
         assertFalse(has("要打開麥克風權限"))
     }
@@ -336,7 +336,7 @@ class ReviewFix3ScreensTest {
             }
         }
         val before = demoFiles()
-        compose.onNodeWithText("📷 照片").performScrollTo().performClick()
+        compose.onNodeWithText("照片").performScrollTo().performClick()
         waitFor { (demoFiles() - before).isNotEmpty() }
         waitFor { !vm.busy }
         return (demoFiles() - before).single()
@@ -357,7 +357,7 @@ class ReviewFix3ScreensTest {
         val first = uploadInMemoSheet({ show }) { show = false }
         compose.onAllNodesWithContentDescription("移除")[0].performClick()
         val before = demoFiles()
-        compose.onNodeWithText("📷 照片").performScrollTo().performClick()
+        compose.onNodeWithText("照片").performScrollTo().performClick()
         waitFor { (demoFiles() - before).isNotEmpty() }
         waitFor { !vm.busy }
         val second = (demoFiles() - before).single()
