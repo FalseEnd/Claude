@@ -14,9 +14,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -176,6 +178,30 @@ class PetScreensTest {
     @Test fun sleepingAtNight() {
         show(night) { PetScreen(state(night), vm, back = {}, open = {}) }
         assertTrue(has("呼嚕呼嚕…睡著了"))
+    }
+
+    @Test fun careInterruptsGroomingAndSleepingCatsStayAsleep() {
+        val prop = mutableStateOf<String?>(null)
+        val face = mutableStateOf(CatFace.OK)
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            PetCat("orange", 2, face.value, Modifier.size(160.dp), prop = prop.value, autonomous = true)
+        }
+        compose.mainClock.advanceTimeByFrame()
+        fun sees(description: String) = compose.onNodeWithContentDescription(description, substring = true)
+        // The first grooming bout begins after a variable pause.
+        val grooming = compose.onAllNodesWithContentDescription("低頭舔前腳", substring = true)
+        for (step in 1..18) {
+            compose.mainClock.advanceTimeBy(500)
+            if (grooming.fetchSemanticsNodes().isNotEmpty()) break
+        }
+        sees("低頭舔前腳").assertExists()
+        compose.runOnIdle { prop.value = "brush" }
+        compose.mainClock.advanceTimeBy(64)
+        sees("順著梳子抬頭").assertExists()
+        compose.runOnIdle { prop.value = null; face.value = CatFace.SLEEPING }
+        compose.mainClock.advanceTimeBy(10_000)
+        sees("睡著了").assertExists()
     }
 
     @Test fun feedingTheCat() {

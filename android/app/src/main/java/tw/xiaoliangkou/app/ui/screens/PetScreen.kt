@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -73,6 +74,7 @@ import tw.xiaoliangkou.app.ui.components.EmptyState
 import tw.xiaoliangkou.app.ui.components.HeartBurstOverlay
 import tw.xiaoliangkou.app.ui.components.LoadingDots
 import tw.xiaoliangkou.app.ui.components.Note
+import tw.xiaoliangkou.app.ui.components.MOTION_MS
 import tw.xiaoliangkou.app.ui.components.PetCat
 import tw.xiaoliangkou.app.ui.components.Pill
 import tw.xiaoliangkou.app.ui.components.ScreenHeader
@@ -212,19 +214,27 @@ fun HomePetCard(s: AppState, vm: AppViewModel, open: (String) -> Unit) {
     val mood = Pet.mood(st, now)
     val stage = st.stage
     var bounce by remember { mutableIntStateOf(0) }
+    var petting by remember { mutableStateOf(false) }
+    LaunchedEffect(bounce) {
+        if (petting) {
+            delay(MOTION_MS.toLong())
+            petting = false
+        }
+    }
     val hearts = rememberHeartBurst()
     CuteCard(onClick = { open("pet") }) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(
                 Modifier.size(104.dp).clip(RoundedCornerShape(24.dp)).background(Cute.colors.butter.copy(alpha = 0.25f))
                     .clickable(remember { MutableInteractionSource() }, null) {
+                        petting = true
                         bounce++
                         hearts.burst(0.5f, 0.5f, 8)
                         vm.act { it.petAction("pet", null) }
                     }
                     .semantics { contentDescription = "摸摸${pet.name}" },
             ) {
-                PetCat(pet.coat, stageIndex(st.xp), catFace(mood), Modifier.fillMaxSize().padding(6.dp), bounce = bounce)
+                PetCat(pet.coat, stageIndex(st.xp), if (petting) CatFace.PURRING else catFace(mood), Modifier.fillMaxSize().padding(6.dp), prop = if (petting) "pet" else null, bounce = bounce, autonomous = true)
                 HeartBurstOverlay(hearts)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -286,18 +296,26 @@ fun PetScreen(s: AppState, vm: AppViewModel, back: () -> Unit, open: (String) ->
     var picker by remember { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf(false) }
     val hearts = rememberHeartBurst()
+    val listState = rememberLazyListState()
     // 拿出來的碗、玩具過一下收起來；說的話也是
-    LaunchedEffect(prop, bounce) { if (prop != null) { delay(3200); prop = null } }
+    LaunchedEffect(prop, bounce) { if (prop != null) { delay(MOTION_MS.toLong()); prop = null } }
     LaunchedEffect(say, bounce) { if (say != null) { delay(3600); say = null } }
 
     fun care(action: String, item: String?) {
         picker = null
-        // 摸摸馬上有反應（跳一下、冒愛心），其他的等資料庫答應了再動
-        if (action == "pet") { hearts.burst(0.5f, 0.55f, 12); bounce++ }
+        // 摸摸馬上有反應，其他照顧在成功後播放
+        fun showAction() {
+            prop = item ?: action
+            bounce++
+            if (listState.firstVisibleItemIndex > 0) listState.requestScrollToItem(1)
+        }
+        if (action == "pet") {
+            showAction()
+            hearts.burst(0.5f, 0.55f, 12)
+        }
         vm.act { r ->
             val res = r.petAction(action, item)
-            prop = item ?: action
-            if (action != "pet") bounce++
+            if (action != "pet") showAction()
             say = petReaction(action, item, res)
             petGain(res)?.let { vm.toast(it) }
             if (res.grewTo != null) { confetti++; grown = res.grewTo }
@@ -305,7 +323,7 @@ fun PetScreen(s: AppState, vm: AppViewModel, back: () -> Unit, open: (String) ->
     }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        LazyColumn(state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item { ScreenHeader("我們的貓咪", onBack = back) }
             when {
                 !s.paired -> item { EmptyState("配對之後就能一起養小貓", "🐾") }
@@ -331,7 +349,7 @@ fun PetScreen(s: AppState, vm: AppViewModel, back: () -> Unit, open: (String) ->
         }
         Confetti(confetti)
     }
-    grown?.let { stage ->
+    grown?.takeIf { prop == null }?.let { stage ->
         val st = Pet.stages.firstOrNull { it.label == stage }
         AlertDialog(
             onDismissRequest = { grown = null },
@@ -362,7 +380,7 @@ private fun PetRoom(pet: PetDto, s: AppState, prop: String?, say: String?, bounc
             .semantics { contentDescription = "摸摸${pet.name}" },
     ) {
         RoomBackground(night)
-        PetCat(pet.coat, stageIndex(st.xp), face, Modifier.fillMaxSize().padding(top = 70.dp, bottom = 14.dp), prop = prop, bounce = bounce)
+        PetCat(pet.coat, stageIndex(st.xp), face, Modifier.fillMaxSize().padding(top = 70.dp, bottom = 14.dp), prop = prop, bounce = bounce, autonomous = true)
         HeartBurstOverlay(hearts)
         // 牠說的話（沒有的話是現在的心情）
         val text = say ?: mood.text

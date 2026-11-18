@@ -1,6 +1,8 @@
 package tw.xiaoliangkou.app.ui.components
 
 import android.content.res.Resources
+import android.graphics.Bitmap
+import android.graphics.Paint
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -11,10 +13,14 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -23,6 +29,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +41,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import tw.xiaoliangkou.app.R
 import tw.xiaoliangkou.app.core.Pet
+import kotlinx.coroutines.delay
+import kotlin.random.Random
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -65,29 +75,79 @@ fun catFaceFor(prop: String?): CatFace? = when (prop) {
  * 長大、照顧道具和心情提示疊在插圖周圍；[animated] 為 false 時，品種清單完全靜止。
  */
 @Composable
-fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifier, prop: String? = null, bounce: Int = 0, animated: Boolean = true) {
+fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifier, prop: String? = null, bounce: Int = 0, animated: Boolean = true, autonomous: Boolean = false) {
     val resources = LocalContext.current.resources
     val atlas = remember(resources) { CatIllustrations.atlas(resources) }
     val cell = remember(coat) { Pet.coats.indexOfFirst { it.key == coat }.coerceAtLeast(0) }
-    val description = "${Pet.coat(coat).label}，${face.description()}"
-    val artModifier = modifier.semantics { contentDescription = description }
     if (!animated) {
-        Canvas(artModifier) { drawPet(atlas, cell, stage, face, prop, 0f, 0.25f, 0f) }
+        Canvas(modifier.semantics { contentDescription = "${Pet.coat(coat).label}，${face.description()}" }) {
+            drawPet(atlas, cell, stage, face, prop, null, CatPose(), 0.25f, 0f)
+        }
         return
     }
+    var idle by remember(coat, prop, bounce, face, autonomous) { mutableStateOf(CatMotion.REST) }
+    LaunchedEffect(coat, prop, bounce, face, autonomous) {
+        if (autonomous && prop == null && face != CatFace.SLEEPING) {
+            var next = CatMotion.GROOM
+            while (true) {
+                delay(Random.nextLong(4500, 8500))
+                idle = next
+                delay(MOTION_MS.toLong())
+                idle = CatMotion.REST
+                next = if (next == CatMotion.GROOM) CatMotion.STRETCH else CatMotion.GROOM
+            }
+        }
+    }
+    val motion = if (prop == null) idle else CatMotion.forProp(prop)
+    val sprite = remember(atlas, cell) { lazy { CatSprite(atlas, cell) } }
+    val progress = remember(motion, bounce) { Animatable(0f) }
+    LaunchedEffect(progress) {
+        if (motion != CatMotion.REST) progress.animateTo(1f, tween(MOTION_MS, easing = LinearEasing))
+    }
+    val description = if (motion == CatMotion.REST) face.description() else motion.description
     val transition = rememberInfiniteTransition(label = "illustratedPet")
     val breathe by transition.animateFloat(
         0f, 1f, infiniteRepeatable(tween(if (face == CatFace.SLEEPING) 3400 else 2400, easing = LinearEasing)), label = "breathe",
     )
-    val play by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1800, easing = LinearEasing)), label = "care")
-    val hop = remember { Animatable(0f) }
-    LaunchedEffect(bounce) {
-        if (bounce > 0) {
-            hop.snapTo(0f)
-            hop.animateTo(1f, tween(560, easing = LinearEasing))
+    Canvas(modifier.semantics { contentDescription = "${Pet.coat(coat).label}，$description" }) {
+        val t = progress.value
+        val atRest = motion == CatMotion.REST
+        val propPhase = if (atRest) breathe else t * 2 % 1f
+        drawPet(atlas, cell, stage, face, prop, if (atRest) null else sprite.value, motion.pose(t), breathe, propPhase)
+    }
+}
+
+internal const val MOTION_MS = 3200
+
+/** Warp the existing painted fur, with head, front paw and tail weighted separately. */
+private class CatSprite(atlas: ImageBitmap, cell: Int) {
+    private val w = atlas.width / 4
+    private val h = atlas.height / 4
+    private val bitmap = Bitmap.createBitmap(atlas.asAndroidBitmap(), cell % 4 * w + 1, cell / 4 * h + 1, w - 2, h - 2)
+    private val grid = 16
+    private val vertices = FloatArray((grid + 1) * (grid + 1) * 2)
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+    fun draw(scope: DrawScope, left: Float, top: Float, side: Float, pose: CatPose) = with(scope) {
+        var i = 0
+        for (row in 0..grid) for (column in 0..grid) {
+            val x = column.toFloat() / grid
+            val y = row.toFloat() / grid
+            val head = ((.90f - y) / .34f).coerceIn(0f, 1f)
+            val tail = ((x - .69f) / .13f).coerceIn(0f, 1f) * ((y - .50f) / .14f).coerceIn(0f, 1f)
+            val foreleg = (1f - abs(x - .34f) / .19f).coerceAtLeast(0f) * ((y - .60f) / .26f).coerceIn(0f, 1f)
+            val dx = head * (pose.headX - (y - .57f) * pose.headRoll) + tail * pose.tail
+            val dy = head * (pose.headY + (x - .46f) * pose.headRoll) - foreleg * pose.paw
+            vertices[i++] = left + (x + dx) * side
+            vertices[i++] = top + (y + dy) * side
+        }
+        drawIntoCanvas { it.nativeCanvas.drawBitmapMesh(bitmap, grid, grid, vertices, 0, null, 0, paint) }
+        if (pose.lick > .02f) {
+            val mouthX = .46f + pose.headX + .10f * pose.headRoll
+            drawOval(Color(0xFFE99C9A), Offset(left + (mouthX - .018f) * side, top + (.465f + pose.headY) * side),
+                Size(side * .036f, side * .052f * pose.lick))
         }
     }
-    Canvas(artModifier) { drawPet(atlas, cell, stage, face, prop, hop.value, breathe, play) }
 }
 
 /** 同一張圖集只解碼一次，品種清單同時顯示十五隻時不重複佔用點陣記憶體。 */
@@ -115,13 +175,13 @@ private val INK = Color(0xFF725345)
 private val STAGE_SCALE = floatArrayOf(0.70f, 0.79f, 0.87f, 0.95f, 1f)
 
 /** 圖集只決定毛色，照顧行為仍由原本的 app 狀態驅動。 */
-private fun DrawScope.drawPet(atlas: ImageBitmap, cell: Int, stage: Int, face: CatFace, prop: String?, hop: Float, breathe: Float, fast: Float) {
+private fun DrawScope.drawPet(atlas: ImageBitmap, cell: Int, stage: Int, face: CatFace, prop: String?, sprite: CatSprite?, pose: CatPose, breathe: Float, fast: Float) {
     val st = stage.coerceIn(0, 4)
     val side = minOf(size.height * 1.02f, size.width * 1.02f) * STAGE_SCALE[st]
     val cx = size.width / 2
     val floor = size.height * 0.94f
     val breath = sin(breathe * 2 * PI).toFloat()
-    val jump = sin(hop * PI).toFloat() * side * 0.11f
+    val jump = pose.lift * side
     // 正規化圖集的腳掌落在 286/320；整隻（包含右側尾巴）置中，頭略偏左。
     val top = floor - side * (286f / 320f) - jump
     val left = cx - side / 2
@@ -135,19 +195,31 @@ private fun DrawScope.drawPet(atlas: ImageBitmap, cell: Int, stage: Int, face: C
     val source = IntOffset(cell % 4 * cellW + 1, cell / 4 * cellH + 1)
     val sourceSize = IntSize((cellW - 2).coerceAtLeast(1), (cellH - 2).coerceAtLeast(1))
     val pivot = Offset(cx, floor - jump)
-    rotate(if (face == CatFace.PLAYING) sin(fast * 2 * PI).toFloat() * 2.4f else 0f, pivot) {
-        scale(1f + breath * 0.008f, 1f + breath * 0.014f, pivot) {
-            drawImage(atlas, source, sourceSize, IntOffset(left.roundToInt(), top.roundToInt()), IntSize(side.roundToInt().coerceAtLeast(1), side.roundToInt().coerceAtLeast(1)), filterQuality = FilterQuality.High)
-            accessories(c, r, st, top + side * 0.60f, side * 0.55f)
-            if (face == CatFace.DIRTY) dirt(Offset(cx, top + side * 0.56f), side * 0.5f, side * 0.25f, r)
+    translate(left = pose.x * side) {
+        rotate(pose.tilt, pivot) {
+            scale(1f + breath * 0.008f + pose.squash * .28f, 1f + breath * 0.014f - pose.squash, pivot) {
+                if (sprite != null) {
+                    sprite.draw(this, left, top, side, pose)
+                } else {
+                    val pixels = side.roundToInt().coerceAtLeast(1)
+                    drawImage(atlas, source, sourceSize, IntOffset(left.roundToInt(), top.roundToInt()),
+                        IntSize(pixels, pixels), filterQuality = FilterQuality.High)
+                }
+                val head = c + Offset(side * (pose.headX + .19f * pose.headRoll), side * pose.headY)
+                accessories(head, r, st, top + side * (.60f + pose.headY * .65f), side * 0.55f)
+                if (face == CatFace.DIRTY) dirt(Offset(cx, top + side * 0.56f), side * 0.5f, side * 0.25f, r)
+            }
         }
     }
     when (prop) {
-        "kibble", "can", "fish" -> bowl(prop, Offset(cx, floor), r, fast)
+        "kibble", "can", "fish" -> bowl(prop, Offset(cx - side * .045f, floor - side * .07f), r, fast)
         "wand" -> wand(c, r * 0.85f, fast, size.width)
         "yarn" -> yarn(Offset(cx - side * 0.29f + sin(fast * 2 * PI).toFloat() * side * 0.03f, floor - r * 0.25f), r, fast)
         "bath" -> bubbles(c, r, fast, floor)
-        "brush" -> brush(Offset(cx + side * 0.20f, top + side * 0.60f), r, fast)
+        "brush" -> {
+            val stroke = (1f - cos(fast * 2 * PI).toFloat()) / 2
+            brush(Offset(cx + side * (.12f + stroke * .12f), top + side * (.43f + stroke * .23f)), r, fast)
+        }
     }
     if (face == CatFace.SLEEPING) {
         zzz(Offset(cx + side * 0.20f, top + side * 0.18f), r, breathe)
