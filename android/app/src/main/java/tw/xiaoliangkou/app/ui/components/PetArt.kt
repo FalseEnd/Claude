@@ -1,8 +1,5 @@
 package tw.xiaoliangkou.app.ui.components
 
-import android.content.res.Resources
-import android.graphics.Bitmap
-import android.graphics.Paint
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -19,34 +16,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
-import tw.xiaoliangkou.app.R
 import tw.xiaoliangkou.app.core.Pet
 import kotlinx.coroutines.delay
 import kotlin.random.Random
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /** 小貓的心情，也用來決定身邊的心情小插圖。 */
@@ -70,18 +57,19 @@ fun catFaceFor(prop: String?): CatFace? = when (prop) {
 }
 
 /**
- * 十五種毛色都使用透明底手繪風 PNG，不以 emoji、像素畫或 SVG 畫貓。
+ * 十五種毛色都使用透明底手繪插畫，依坐姿、進食、理毛和睡眠切換。
  * 4 × 4 圖集的前十五格依 [Pet.coats] 排列；每格保留透明邊，縮放時不會露出鄰格。
  * 長大、照顧道具和心情提示疊在插圖周圍；[animated] 為 false 時，品種清單完全靜止。
  */
 @Composable
 fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifier, prop: String? = null, bounce: Int = 0, animated: Boolean = true, autonomous: Boolean = false) {
     val resources = LocalContext.current.resources
-    val atlas = remember(resources) { CatIllustrations.atlas(resources) }
     val cell = remember(coat) { Pet.coats.indexOfFirst { it.key == coat }.coerceAtLeast(0) }
+    val base = if (face == CatFace.SLEEPING && prop == null) CatDrawing.SLEEPING else CatDrawing.SITTING
+    val cat = remember(resources, cell, base) { PaintedCat(base, CatBitmaps.get(resources, base, cell), cell) }
     if (!animated) {
         Canvas(modifier.semantics { contentDescription = "${Pet.coat(coat).label}，${face.description()}" }) {
-            drawPet(atlas, cell, stage, face, prop, null, CatPose(), 0.25f, 0f)
+            drawPet(cat, null, 0f, stage, face, prop, CatPose(), .25f, 0f)
         }
         return
     }
@@ -99,7 +87,14 @@ fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifie
         }
     }
     val motion = if (prop == null) idle else CatMotion.forProp(prop)
-    val sprite = remember(atlas, cell) { lazy { CatSprite(atlas, cell) } }
+    val actionDrawing = when (motion) {
+        CatMotion.EAT -> CatDrawing.EATING
+        CatMotion.GROOM -> CatDrawing.GROOMING
+        else -> null
+    }
+    val actionCat = remember(resources, cell, actionDrawing) {
+        actionDrawing?.let { PaintedCat(it, CatBitmaps.get(resources, it, cell), cell) }
+    }
     val progress = remember(motion, bounce) { Animatable(0f) }
     LaunchedEffect(progress) {
         if (motion != CatMotion.REST) progress.animateTo(1f, tween(MOTION_MS, easing = LinearEasing))
@@ -109,55 +104,23 @@ fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifie
     val breathe by transition.animateFloat(
         0f, 1f, infiniteRepeatable(tween(if (face == CatFace.SLEEPING) 3400 else 2400, easing = LinearEasing)), label = "breathe",
     )
+    val blink by transition.animateFloat(
+        0f, 1f, infiniteRepeatable(tween(6100, easing = LinearEasing)), label = "blink",
+    )
     Canvas(modifier.semantics { contentDescription = "${Pet.coat(coat).label}，$description" }) {
         val t = progress.value
         val atRest = motion == CatMotion.REST
-        val propPhase = if (atRest) breathe else t * 2 % 1f
-        drawPet(atlas, cell, stage, face, prop, if (atRest) null else sprite.value, motion.pose(t), breathe, propPhase)
+        var pose = motion.pose(t)
+        if (atRest && base == CatDrawing.SITTING) {
+            val closure = (1f - abs(blink - .72f) / .027f).coerceAtLeast(0f)
+            if (closure > 0f) pose = pose.copy(eyesClosed = closure)
+        }
+        val blend = if (actionCat == null) 0f else minOf(t / .13f, (1f - t) / .12f).coerceIn(0f, 1f)
+        drawPet(cat, actionCat, blend, stage, face, prop, pose, breathe, if (atRest) breathe else t)
     }
 }
 
 internal const val MOTION_MS = 3200
-
-/** Warp the existing painted fur, with head, front paw and tail weighted separately. */
-private class CatSprite(atlas: ImageBitmap, cell: Int) {
-    private val w = atlas.width / 4
-    private val h = atlas.height / 4
-    private val bitmap = Bitmap.createBitmap(atlas.asAndroidBitmap(), cell % 4 * w + 1, cell / 4 * h + 1, w - 2, h - 2)
-    private val grid = 16
-    private val vertices = FloatArray((grid + 1) * (grid + 1) * 2)
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-
-    fun draw(scope: DrawScope, left: Float, top: Float, side: Float, pose: CatPose) = with(scope) {
-        var i = 0
-        for (row in 0..grid) for (column in 0..grid) {
-            val x = column.toFloat() / grid
-            val y = row.toFloat() / grid
-            val head = ((.90f - y) / .34f).coerceIn(0f, 1f)
-            val tail = ((x - .69f) / .13f).coerceIn(0f, 1f) * ((y - .50f) / .14f).coerceIn(0f, 1f)
-            val foreleg = (1f - abs(x - .34f) / .19f).coerceAtLeast(0f) * ((y - .60f) / .26f).coerceIn(0f, 1f)
-            val dx = head * (pose.headX - (y - .57f) * pose.headRoll) + tail * pose.tail
-            val dy = head * (pose.headY + (x - .46f) * pose.headRoll) - foreleg * pose.paw
-            vertices[i++] = left + (x + dx) * side
-            vertices[i++] = top + (y + dy) * side
-        }
-        drawIntoCanvas { it.nativeCanvas.drawBitmapMesh(bitmap, grid, grid, vertices, 0, null, 0, paint) }
-        if (pose.lick > .02f) {
-            val mouthX = .46f + pose.headX + .10f * pose.headRoll
-            drawOval(Color(0xFFE99C9A), Offset(left + (mouthX - .018f) * side, top + (.465f + pose.headY) * side),
-                Size(side * .036f, side * .052f * pose.lick))
-        }
-    }
-}
-
-/** 同一張圖集只解碼一次，品種清單同時顯示十五隻時不重複佔用點陣記憶體。 */
-private object CatIllustrations {
-    @Volatile private var image: ImageBitmap? = null
-
-    fun atlas(resources: Resources): ImageBitmap = image ?: synchronized(this) {
-        image ?: ImageBitmap.imageResource(resources, R.drawable.cat_coats).also { image = it }
-    }
-}
 
 private fun CatFace.description() = when (this) {
     CatFace.OK -> "乖乖坐著"
@@ -175,51 +138,55 @@ private val INK = Color(0xFF725345)
 private val STAGE_SCALE = floatArrayOf(0.70f, 0.79f, 0.87f, 0.95f, 1f)
 
 /** 圖集只決定毛色，照顧行為仍由原本的 app 狀態驅動。 */
-private fun DrawScope.drawPet(atlas: ImageBitmap, cell: Int, stage: Int, face: CatFace, prop: String?, sprite: CatSprite?, pose: CatPose, breathe: Float, fast: Float) {
+private fun DrawScope.drawPet(cat: PaintedCat, actionCat: PaintedCat?, blend: Float, stage: Int, face: CatFace,
+    prop: String?, pose: CatPose, breathe: Float, fast: Float) {
     val st = stage.coerceIn(0, 4)
-    val side = minOf(size.height * 1.02f, size.width * 1.02f) * STAGE_SCALE[st]
+    val side = minOf(size.height, size.width) * STAGE_SCALE[st]
     val cx = size.width / 2
-    val floor = size.height * 0.94f
+    val floor = size.height * .93f
     val breath = sin(breathe * 2 * PI).toFloat()
     val jump = pose.lift * side
-    // 正規化圖集的腳掌落在 286/320；整隻（包含右側尾巴）置中，頭略偏左。
     val top = floor - side * (286f / 320f) - jump
     val left = cx - side / 2
-    val r = side * 0.23f
-    val c = Offset(cx - side * 0.04f, top + side * 0.38f)
-    drawOval(Color(0x167C5A49), Offset(cx - side * 0.28f, floor - side * 0.035f), Size(side * 0.56f * (1f - jump / side), side * 0.07f))
-    if (prop == "laser") laserDot(Offset(cx + sin(fast * 2 * PI).toFloat() * side * 0.34f, floor - side * 0.03f), r)
-    val cellW = atlas.width / 4
-    val cellH = atlas.height / 4
-    // 留一個來源像素，避免高品質取樣讀到鄰格。
-    val source = IntOffset(cell % 4 * cellW + 1, cell / 4 * cellH + 1)
-    val sourceSize = IntSize((cellW - 2).coerceAtLeast(1), (cellH - 2).coerceAtLeast(1))
+    val r = side * .23f
+    val c = Offset(left + side * .453f, top + side * .36f)
+    val sleeping = cat.drawing == CatDrawing.SLEEPING
+    val shadowWidth = side * (if (sleeping) .71f else .53f) * (1f - pose.lift)
+    val shadowCenter = cx + pose.x * side
+    drawOval(Color(0x167C5A49), Offset(shadowCenter - shadowWidth / 2, floor - side * .038f),
+        Size(shadowWidth, side * .064f))
+    if (prop == "laser") laserDot(Offset(cx + pose.toyX * side, floor - side * .024f), r)
     val pivot = Offset(cx, floor - jump)
+    val squash = pose.squash * (1f - blend)
     translate(left = pose.x * side) {
         rotate(pose.tilt, pivot) {
-            scale(1f + breath * 0.008f + pose.squash * .28f, 1f + breath * 0.014f - pose.squash, pivot) {
-                if (sprite != null) {
-                    sprite.draw(this, left, top, side, pose)
-                } else {
-                    val pixels = side.roundToInt().coerceAtLeast(1)
-                    drawImage(atlas, source, sourceSize, IntOffset(left.roundToInt(), top.roundToInt()),
-                        IntSize(pixels, pixels), filterQuality = FilterQuality.High)
+            scale(1f + breath * .004f + squash * .22f, 1f + breath * .009f - squash, pivot) {
+                cat.draw(this, left, top, side, pose, 1f - blend)
+                actionCat?.draw(this, left, top, side, pose, blend)
+                if (!sleeping && blend < .5f) {
+                    val head = c + Offset(side * (pose.headX + .18f * pose.headRoll), side * pose.headY)
+                    // 非坐姿時項圈會藏在下巴和胸毛後。
+                    accessories(head, r, st, top + side * (.515f + pose.headY * .60f), side * .49f)
                 }
-                val head = c + Offset(side * (pose.headX + .19f * pose.headRoll), side * pose.headY)
-                accessories(head, r, st, top + side * (.60f + pose.headY * .65f), side * 0.55f)
-                if (face == CatFace.DIRTY) dirt(Offset(cx, top + side * 0.56f), side * 0.5f, side * 0.25f, r)
+                if (face == CatFace.DIRTY) dirt(Offset(cx, top + side * .56f), side * .5f, side * .25f, r)
             }
         }
     }
     when (prop) {
-        "kibble", "can", "fish" -> bowl(prop, Offset(cx - side * .045f, floor - side * .07f), r, fast)
-        "wand" -> wand(c, r * 0.85f, fast, size.width)
-        "yarn" -> yarn(Offset(cx - side * 0.29f + sin(fast * 2 * PI).toFloat() * side * 0.03f, floor - r * 0.25f), r, fast)
-        "bath" -> bubbles(c, r, fast, floor)
-        "brush" -> {
-            val stroke = (1f - cos(fast * 2 * PI).toFloat()) / 2
-            brush(Offset(cx + side * (.12f + stroke * .12f), top + side * (.43f + stroke * .23f)), r, fast)
+        "kibble", "can", "fish" -> {
+            val mouth = CatDrawing.EATING.mouth
+            val dishSize = r * .74f
+            bowl(prop, Offset(left + side * mouth.x, top + side * mouth.y + dishSize * .42f), dishSize, pose.jaw)
         }
+        "wand" -> wand(c, r * .85f, fast, size.width,
+            Offset(cx + pose.toyX * side, top + jump + side * .30f))
+        "yarn" -> {
+            val turns = (pose.toyX + .27f) * side / (2f * PI.toFloat() * .32f * r)
+            yarn(Offset(cx + pose.toyX * side, floor - r * .25f), r, turns)
+        }
+        "bath" -> bubbles(c + Offset(pose.headX * side, pose.headY * side), r, fast, floor)
+        "brush" -> brush(Offset(cx + side * (.108f + pose.toolStroke * .09f),
+            top + side * (.41f + pose.toolStroke * .22f)), r, fast)
     }
     if (face == CatFace.SLEEPING) {
         zzz(Offset(cx + side * 0.20f, top + side * 0.18f), r, breathe)
@@ -343,112 +310,196 @@ private fun DrawScope.dirt(top: Offset, bw: Float, bh: Float, r: Float) {
     drawOval(mud, Offset(top.x - bw * 0.05f, top.y + bh * 0.62f), Size(r * 0.16f, r * 0.1f))
 }
 
-private fun DrawScope.bowl(item: String, floor: Offset, r: Float, fast: Float) {
-    val w = r * 1.25f
-    val top = floor.y - r * 0.42f
+// Work in units of head radius so the details stay aligned across growth stages.
+private inline fun DrawScope.propAt(at: Offset, radius: Float, draw: DrawScope.() -> Unit) {
+    val canvas = drawContext.canvas
+    canvas.save()
+    try {
+        canvas.translate(at.x, at.y)
+        canvas.scale(radius, radius)
+        draw()
+    } finally {
+        canvas.restore()
+    }
+}
+
+private fun DrawScope.bowl(item: String, floor: Offset, r: Float, fast: Float) = propAt(floor, r) {
+    val rimY = -.42f
+    drawOval(Color(0x30745343), Offset(-.66f, -.08f), Size(1.34f, .14f))
     if (item == "can") {
-        // 打開的罐頭
-        drawRect(Color(0xFFC9D2DE), Offset(floor.x - w * 0.32f, top), Size(w * 0.64f, r * 0.4f))
-        drawRect(Color(0xFFADCBD1), Offset(floor.x - w * 0.32f, top + r * 0.1f), Size(w * 0.64f, r * 0.16f))
-        drawOval(Color(0xFFE3E9F0), Offset(floor.x - w * 0.32f, top - r * 0.08f), Size(w * 0.64f, r * 0.16f))
-        drawOval(Color(0xFFF2A3A0), Offset(floor.x - w * 0.27f, top - r * 0.05f), Size(w * 0.54f, r * 0.1f))
-        return
-    }
-    val bowl = Path().apply {
-        moveTo(floor.x - w / 2, top + r * 0.06f)
-        lineTo(floor.x + w / 2, top + r * 0.06f)
-        lineTo(floor.x + w * 0.38f, floor.y - r * 0.02f)
-        lineTo(floor.x - w * 0.38f, floor.y - r * 0.02f)
-        close()
-    }
-    if (item == "kibble") {
-        listOf(-0.3f, -0.12f, 0.06f, 0.24f, -0.2f, 0.14f).forEachIndexed { i, dx ->
-            val hop = if (i == (fast * 6).toInt() % 6) r * 0.05f else 0f
-            drawCircle(Color(0xFFB0703B), r * 0.07f, Offset(floor.x + dx * w, top + (if (i > 3) -r * 0.08f else 0f) - hop))
+        // The rolled lip, food and inner edge share the same ellipse.
+        drawOval(Color(0xFF899698), Offset(-.48f, -.12f), Size(.96f, .14f))
+        drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(
+            listOf(Color(0xFFA1AFAD), Color(0xFFEBE6D5), Color(0xFFA6B9B8), Color(0xFF859595)), -.48f, .48f
+        ), Offset(-.48f, rimY), Size(.96f, .37f))
+        drawOval(Color(0xFFA0ACA2), Offset(-.48f, -.29f), Size(.96f, .15f))
+        drawRect(Color(0xFF98B5A8), Offset(-.48f, -.26f), Size(.96f, .12f))
+        drawArc(Color(0xFFDCE8D7), 0f, 180f, false, Offset(-.475f, -.20f), Size(.95f, .12f), style = Stroke(.025f))
+        drawOval(Color(0xFFDCE3DE), Offset(-.50f, -.54f), Size(1f, .23f))
+        drawOval(Color(0xFF9C6C59), Offset(-.455f, -.508f), Size(.91f, .162f))
+        drawOval(Color(0xFFD79B83), Offset(-.423f, -.49f), Size(.844f, .136f))
+        for (i in 0..4) {
+            val x = (i - 2) * .14f
+            val y = -.44f - (i % 2) * .02f
+            drawLine(Color(0xFFECC2A8), Offset(x, y), Offset(x + .064f, y + .013f), .021f, StrokeCap.Round)
         }
     } else {
-        // 小魚乾
-        val fx = floor.x
-        val fy = top - r * 0.04f
-        drawOval(Color(0xFFB8C7D9), Offset(fx - r * 0.3f, fy - r * 0.09f), Size(r * 0.5f, r * 0.18f))
-        val tail = Path().apply { moveTo(fx + r * 0.16f, fy); lineTo(fx + r * 0.34f, fy - r * 0.1f); lineTo(fx + r * 0.34f, fy + r * 0.1f); close() }
-        drawPath(tail, Color(0xFFB8C7D9))
-        drawCircle(INK, r * 0.025f, Offset(fx - r * 0.2f, fy - r * 0.02f))
-    }
-    drawPath(bowl, Color(0xFFE6ACA8))
-    drawLine(Color.White.copy(alpha = 0.7f), Offset(floor.x - w * 0.42f, top + r * 0.16f), Offset(floor.x + w * 0.42f, top + r * 0.16f), r * 0.05f)
-    drawCircle(Color.White.copy(alpha = 0.85f), r * 0.05f, Offset(floor.x - w * 0.12f, top + r * 0.26f))
-    drawCircle(Color.White.copy(alpha = 0.85f), r * 0.05f, Offset(floor.x + w * 0.12f, top + r * 0.26f))
-}
-
-private fun DrawScope.wand(head: Offset, r: Float, fast: Float, width: Float) {
-    val swing = sin(fast * 4 * PI).toFloat() * r * 0.5f
-    val handle = Offset(width * 0.97f, head.y - r * 1.6f)
-    val tip = Offset(head.x + r * 1.2f, head.y - r * 1.75f)
-    drawLine(Color(0xFFB98A5E), handle, tip, r * 0.06f, StrokeCap.Round)
-    val feather = Offset(tip.x - r * 0.3f + swing, tip.y + r * 0.6f + abs(swing) * 0.2f)
-    drawLine(INK.copy(alpha = 0.5f), tip, feather, r * 0.02f)
-    listOf(Color(0xFFE8AEA7) to -25f, Color(0xFFEAC577) to 0f, Color(0xFFADCBD1) to 25f).forEach { (col, deg) ->
-        rotate(deg + swing / r * 20f, feather) {
-            drawOval(col, Offset(feather.x - r * 0.06f, feather.y), Size(r * 0.12f, r * 0.36f))
+        val ceramic = Path().apply {
+            moveTo(-.63f, rimY)
+            cubicTo(-.61f, -.29f, -.55f, -.09f, -.44f, -.035f)
+            quadraticTo(0f, .055f, .44f, -.035f)
+            cubicTo(.55f, -.09f, .61f, -.29f, .63f, rimY)
+            close()
         }
-    }
-}
-
-private fun DrawScope.laserDot(at: Offset, r: Float) {
-    drawCircle(Color(0x55FF2D2D), r * 0.14f, at)
-    drawCircle(Color(0xFFFF2D2D), r * 0.06f, at)
-    drawCircle(Color.White.copy(alpha = 0.8f), r * 0.02f, at)
-}
-
-private fun DrawScope.yarn(at: Offset, r: Float, fast: Float) {
-    val rr = r * 0.32f
-    drawCircle(Color(0xFFC7B8D6), rr, at)
-    rotate(fast * 360f, at) {
-        listOf(-0.5f, 0f, 0.5f).forEach { k ->
-            drawArc(Color(0xFFA18CAF), 200f, 140f, false, Offset(at.x - rr * (1f - abs(k) * 0.3f), at.y - rr * (0.8f - k)), Size(rr * 2f * (1f - abs(k) * 0.3f), rr * 1.6f), style = Stroke(width = r * 0.035f))
+        drawPath(ceramic, androidx.compose.ui.graphics.Brush.linearGradient(
+            listOf(Color(0xFFF3CEC0), Color(0xFFDEA295), Color(0xFFB37A71)), Offset(-.48f, -.52f), Offset(.32f, .15f)))
+        drawOval(Color(0xFFF8DBCB), Offset(-.635f, -.55f), Size(1.27f, .245f))
+        drawOval(Color(0xFFA76D5C), Offset(-.565f, -.512f), Size(1.13f, .165f))
+        if (item == "kibble") {
+            for (i in 0..7) {
+                val back = i >= 4
+                val x = (i % 4 - 1.5f) * .22f + (if (back) .02f else -.03f)
+                val y = if (back) -.425f else -.475f
+                val nibble = if (i == 2) .012f * sin(fast * PI * 2).toFloat() else 0f
+                rotate(((i * 37 % 50) - 25).toFloat(), Offset(x, y)) {
+                    drawOval(Color(if (i % 3 == 0) 0xFFAB6B41 else 0xFFBD8758), Offset(x - .099f, y - .062f + nibble), Size(.20f, .113f))
+                    drawLine(Color(0xFFE1AF7D), Offset(x - .044f, y - .03f + nibble), Offset(x + .008f, y - .038f + nibble), .019f, StrokeCap.Round)
+                }
+            }
+        } else {
+            rotate(-8f, Offset(0f, rimY)) {
+                val fish = Path().apply {
+                    moveTo(-.42f, -.455f)
+                    cubicTo(-.31f, -.60f, -.02f, -.63f, .19f, -.495f)
+                    lineTo(.39f, -.595f)
+                    quadraticTo(.33f, -.485f, .392f, -.39f)
+                    lineTo(.18f, -.451f)
+                    cubicTo(.01f, -.342f, -.31f, -.341f, -.42f, -.455f)
+                    close()
+                }
+                drawPath(fish, androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(Color(0xFF86A2AD), Color(0xFFE2DCC4)), -.6f, -.37f))
+                drawCircle(INK, .024f, Offset(-.285f, -.481f))
+                drawArc(Color(0xFFA0A499), -60f, 110f, false, Offset(-.34f, -.55f), Size(.19f, .16f), style = Stroke(.014f))
+            }
         }
+        drawArc(Color(0xFFFFE3D2), 11f, 158f, false, Offset(-.613f, -.531f), Size(1.226f, .224f), style = Stroke(.037f, cap = StrokeCap.Round))
+        drawArc(Color(0x99FFF1DB), 104f, 39f, false, Offset(-.52f, -.44f), Size(.96f, .27f), style = Stroke(.023f, cap = StrokeCap.Round))
     }
+}
+
+private fun DrawScope.wand(head: Offset, r: Float, fast: Float, width: Float, feather: Offset? = null) {
+    val swing = sin(fast * 4 * PI).toFloat()
+    val anchor = feather ?: Offset(head.x + (.9f + .38f * swing) * r, head.y - r * 1.12f)
+    val tip = Offset(anchor.x + (.27f - .13f * swing) * r, anchor.y - .67f * r)
+    val handle = Offset(width * .97f, tip.y + .31f * r)
+    drawLine(Color(0xFFAA7D59), handle, tip, .065f * r, StrokeCap.Round)
+    val thread = Path().apply {
+        moveTo(tip.x, tip.y)
+        quadraticTo(tip.x + .13f * r, anchor.y - .26f * r, anchor.x, anchor.y)
+    }
+    drawPath(thread, Color(0xB5756B65), style = Stroke(.019f * r, cap = StrokeCap.Round))
+    propAt(anchor, r) {
+        for (i in 0..2) {
+            rotate(-34f + i * 32f - swing * 17f, Offset.Zero) {
+                val plume = Path().apply {
+                    moveTo(0f, 0f)
+                    cubicTo(-.145f, .16f, -.138f, .29f, -.044f, .44f)
+                    cubicTo(.082f, .31f, .128f, .15f, 0f, 0f)
+                    close()
+                }
+                val color = when (i) { 0 -> Color(0xFFCC9188); 1 -> Color(0xFFDFB76C); else -> Color(0xFF8FB6B5) }
+                drawPath(plume, color)
+                drawLine(Color(0xB8FFF1D4), Offset(0f, .03f), Offset(-.041f, .383f), .016f, StrokeCap.Round)
+                for (j in 1..3) {
+                    val y = .07f + j * .068f
+                    drawLine(Color(0x8AFFF1D4), Offset(-.02f, y), Offset(.06f, y - .061f), .012f, StrokeCap.Round)
+                }
+            }
+        }
+        drawCircle(Color(0xFFD7AC69), .059f, Offset.Zero)
+    }
+}
+
+private fun DrawScope.laserDot(at: Offset, r: Float) = propAt(at, r) {
+    drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(
+        listOf(Color(0xB8FF7D69), Color(0x59F56860), Color(0x00EF665C)), Offset.Zero, .185f), .185f, Offset.Zero)
+    drawOval(Color(0xFFF96558), Offset(-.076f, -.042f), Size(.152f, .084f))
+    drawCircle(Color(0xFFFFDDD0), .022f, Offset(-.009f, -.009f))
+}
+
+private fun DrawScope.yarn(at: Offset, r: Float, fast: Float) = propAt(at, r * .32f) {
     val string = Path().apply {
-        moveTo(at.x + rr * 0.8f, at.y + rr * 0.5f)
-        quadraticTo(at.x + rr * 2f, at.y + rr * 1.2f, at.x + rr * 2.8f, at.y + rr * 0.6f)
+        moveTo(.38f, .74f)
+        cubicTo(1.08f, 1.34f, 1.27f, .58f, 1.77f, .76f)
+        quadraticTo(2.15f, .92f, 2.42f, .81f)
     }
-    drawPath(string, Color(0xFFA18CAF), style = Stroke(width = r * 0.03f, cap = StrokeCap.Round))
+    drawOval(Color(0x36745D54), Offset(-1.02f, .73f), Size(2.13f, .40f))
+    drawPath(string, Color(0xFF9B7E9B), style = Stroke(.09f, cap = StrokeCap.Round))
+    drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(
+        listOf(Color(0xFFE5D1DC), Color(0xFFC4A4BF), Color(0xFF9F819F)), Offset(-.38f, -.52f), 1.68f), 1f, Offset.Zero)
+    rotate(fast * 360f, Offset.Zero) {
+        for (i in -2..2) {
+            val offset = i * .19f
+            val yarn = Path().apply {
+                moveTo(-.80f + offset * .17f, -.38f + offset)
+                quadraticTo(-.23f + offset * .22f, -.035f + offset, .33f + offset, .76f - offset * .25f)
+            }
+            drawPath(yarn, Color(0xCC9D809E), style = Stroke(.071f, cap = StrokeCap.Round))
+            drawPath(yarn, Color(0xACF2DDE4), style = Stroke(.027f, cap = StrokeCap.Round))
+        }
+        for (i in 0..2) {
+            val offset = i * .19f
+            val winding = Path().apply {
+                moveTo(-.36f + offset, -.85f)
+                quadraticTo(.13f + offset, -.74f, .73f + offset * .3f, -.14f + offset)
+            }
+            drawPath(winding, Color(0xBC9D809E), style = Stroke(.061f, cap = StrokeCap.Round))
+        }
+    }
 }
 
 private fun DrawScope.bubbles(c: Offset, r: Float, fast: Float, floor: Float) {
-    // 頭上的泡沫
-    listOf(-0.4f to -0.9f, -0.1f to -1.0f, 0.25f to -0.95f, 0.5f to -0.82f).forEach { (dx, dy) ->
-        drawCircle(Color.White, r * 0.16f, Offset(c.x + dx * r, c.y + dy * r))
-        drawCircle(Color(0xFFBFE3FF), r * 0.16f, Offset(c.x + dx * r, c.y + dy * r), style = Stroke(width = r * 0.02f))
+    // Foam gathers between the ears. Airborne bubbles fade in at the fur and out near the ceiling.
+    propAt(c, r) {
+        for (i in 0..6) {
+            val x = -.44f + i * .143f
+            val radius = .11f + .036f * ((i * 5) % 3)
+            val center = Offset(x, -.94f + .19f * abs(x) + (i % 2) * .043f)
+            drawCircle(Color(0xE2D8E8E8), radius, center)
+            drawCircle(Color(0xEDFFFBF3), radius * .82f, center - Offset(radius * .12f, radius * .14f))
+        }
     }
-    // 往上飄的泡泡
-    for (i in 0 until 8) {
-        val phase = (fast + i / 8f) % 1f
-        val x = c.x + cos(i * 2.1).toFloat() * r * (1.3f + (i % 3) * 0.25f) + sin(phase * 2 * PI).toFloat() * r * 0.1f
-        val y = floor - phase * (floor - (c.y - r * 1.6f))
-        val size = r * (0.08f + (i % 3) * 0.04f)
-        drawCircle(Color(0xFFBFE3FF).copy(alpha = 0.35f * (1f - phase) + 0.1f), size, Offset(x, y))
-        drawCircle(Color.White.copy(alpha = 0.9f * (1f - phase)), size, Offset(x, y), style = Stroke(width = r * 0.02f))
+    for (i in 0 until 7) {
+        val p = (fast + i / 7f) % 1f
+        val fade = sin(p * PI).toFloat()
+        val x = c.x + (cos(i * 2.1).toFloat() * (1.35f + (i % 3) * .2f) + sin(p * 2 * PI).toFloat() * .13f) * r
+        val y = floor - p * (floor - (c.y - r * 1.62f))
+        val radius = r * (.072f + (i % 3) * .045f) * (.85f + .23f * p)
+        val corner = Offset(x - radius, y - radius)
+        val diameter = Size(2 * radius, 2 * radius)
+        drawCircle(Color(0xFFAFDAD9).copy(alpha = .32f * fade), radius, Offset(x, y))
+        drawArc(Color.White.copy(alpha = .88f * fade), 168f, 127f, false, corner, diameter, style = Stroke(.14f * radius, cap = StrokeCap.Round))
+        drawArc(Color(0xFFEEC9D9).copy(alpha = .84f * fade), 12f, 112f, false, corner, diameter, style = Stroke(.13f * radius, cap = StrokeCap.Round))
+        drawCircle(Color.White.copy(alpha = .93f * fade), .17f * radius, Offset(x - .37f * radius, y - .48f * radius))
     }
 }
 
-private fun DrawScope.brush(at: Offset, r: Float, fast: Float) {
-    val x = at.x + sin(fast * 4 * PI).toFloat() * r * 0.18f
-    rotate(-30f, Offset(x, at.y)) {
-        drawRect(Color(0xFFC08A5B), Offset(x + r * 0.12f, at.y - r * 0.05f), Size(r * 0.5f, r * 0.1f))
-        drawRect(Color(0xFFE7BEB6), Offset(x - r * 0.2f, at.y - r * 0.12f), Size(r * 0.34f, r * 0.24f))
-        for (i in 0 until 4) drawLine(Color(0xFFBD7F7E), Offset(x - r * 0.16f + i * r * 0.09f, at.y + r * 0.12f), Offset(x - r * 0.16f + i * r * 0.09f, at.y + r * 0.2f), r * 0.025f)
-    }
-    // 亮晶晶
-    listOf(-0.4f to -0.3f, 0.3f to -0.5f).forEachIndexed { i, (dx, dy) ->
-        val s = r * (0.06f + 0.04f * sin((fast + i * 0.5f) * 2 * PI).toFloat().coerceAtLeast(0f))
-        val p = Offset(at.x + dx * r, at.y + dy * r)
-        val star = Path().apply {
-            moveTo(p.x, p.y - s * 2); lineTo(p.x + s * 0.5f, p.y - s * 0.5f); lineTo(p.x + s * 2, p.y); lineTo(p.x + s * 0.5f, p.y + s * 0.5f)
-            lineTo(p.x, p.y + s * 2); lineTo(p.x - s * 0.5f, p.y + s * 0.5f); lineTo(p.x - s * 2, p.y); lineTo(p.x - s * 0.5f, p.y - s * 0.5f); close()
+private fun DrawScope.brush(at: Offset, r: Float, fast: Float) = propAt(at, r) {
+    rotate(-24f + 7f * sin(fast * 2 * PI).toFloat(), Offset.Zero) {
+        // The tips meet the coat at the origin; the handle lifts away from it.
+        drawLine(Color(0xFFA57D60), Offset(.03f, -.17f), Offset(.56f, -.22f), .125f, StrokeCap.Round)
+        drawLine(Color(0xFFF1CBA2), Offset(.12f, -.197f), Offset(.525f, -.235f), .037f, StrokeCap.Round)
+        for (i in 0..6) {
+            val x = -.215f + i * .063f
+            val end = -.012f - abs(x + .03f) * .12f
+            drawLine(Color(0xFF886E65), Offset(x, -.15f), Offset(x - .023f, end), .032f, StrokeCap.Round)
         }
-        drawPath(star, Color(0xFFFFD45E))
+        drawOval(Color(0xFFAA8171), Offset(-.293f, -.303f), Size(.56f, .226f))
+        drawOval(androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(Color(0xFFF1CBAE), Color(0xFFCB987D)), -.353f, -.115f),
+            Offset(-.302f, -.354f), Size(.575f, .24f))
+        drawArc(Color(0xFFF8DDC1), 208f, 81f, false, Offset(-.246f, -.318f), Size(.435f, .145f), style = Stroke(.021f, cap = StrokeCap.Round))
     }
 }
 
