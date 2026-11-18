@@ -1,6 +1,6 @@
 # 小倆口：情侶 App
 
-可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.4.1**。
+可愛的 Android 情侶 App，資料存在你們自己的免費 Supabase 專案裡。不用開口也知道彼此的狀態，並把在一起的日子記下來。目前版本 **0.4.2**。
 
 > **已經在用 0.1 版？先更新資料庫 🛠️**
 >
@@ -110,7 +110,7 @@ cd android
 
 Windows 用 `gradlew.bat assembleRelease`。正式上架前請換成自己的簽章金鑰（`android/app/build.gradle.kts` 的 `signingConfig`）。
 
-版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.4.1、`versionCode` 22），裝好後在 App「我的」最下面看得到。
+版本號在 `android/app/build.gradle.kts`（目前 `versionName` 0.4.2、`versionCode` 23），裝好後在 App「我的」最下面看得到。
 
 ## 測試
 
@@ -152,6 +152,7 @@ App 對真的 Supabase 跑完整流程（含 0.2 的個人資料、備註、日�
 
 ## 更新紀錄
 
+- **0.4.2**：小貓會配合照護做動作（餵食、玩耍、梳毛…），閒著的時候會舔毛、伸懶腰。不用改資料庫。
 - **0.4.1**：介面的表情符號換成手繪風格的圖示，首頁和小貓換成畫的貓咪（見 [docs/ARTWORK.md](docs/ARTWORK.md)）。不用改資料庫。
 - **0.4.0**：藍牙偵測「就在身邊」💞
   - 兩支手機在大約 10 公尺內時，首頁上面從「相距 460 公尺」變成「💞 小雨 就在你身邊」，手機卡片、地圖、通知列的對方狀態也是。不用網路和 GPS，在室內、地下室反而最準。
