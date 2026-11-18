@@ -3,9 +3,7 @@ package tw.xiaoliangkou.app.ui.components
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.BitmapRegionDecoder
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.RectF
 import android.util.LruCache
 import androidx.compose.ui.geometry.Offset
@@ -27,34 +25,24 @@ internal enum class CatDrawing(val resource: Int, val mouth: Offset) {
     SLEEPING(R.drawable.cat_sleeping, Offset(.29f, .775f)),
 }
 
-/** 一次只解碼目前選用的品種，每個快取項目約 400 KiB。 */
+/** 快取最近使用的一張圖集及裁好的單格，每個單格約 400 KiB。 */
 internal object CatBitmaps {
     private val cells = LruCache<Pair<CatDrawing, Int>, Bitmap>(18)
 
-    @Suppress("DEPRECATION")
+    private var atlasDrawing: CatDrawing? = null
+    private var atlas: Bitmap? = null
+
     @Synchronized
     fun get(resources: Resources, drawing: CatDrawing, cell: Int): Bitmap {
         val key = drawing to cell
         cells.get(key)?.let { return it }
-        return resources.openRawResource(drawing.resource).use { stream ->
-            val decoder = BitmapRegionDecoder.newInstance(stream, false)
-            if (decoder == null) {
-                val atlas = BitmapFactory.decodeResource(resources, drawing.resource)
-                val w = atlas.width / 4
-                val h = atlas.height / 4
-                Bitmap.createBitmap(atlas, cell % 4 * w, cell / 4 * h, w, h)
-            } else {
-                try {
-                    val w = decoder.width / 4
-                    val h = decoder.height / 4
-                    val x = cell % 4 * w
-                    val y = cell / 4 * h
-                    decoder.decodeRegion(Rect(x, y, x + w, y + h), null)
-                } finally {
-                    decoder.recycle()
-                }
-            }
-        }.also { cells.put(key, it) }
+        val sheet = atlas?.takeIf { atlasDrawing == drawing } ?: BitmapFactory.decodeResource(resources, drawing.resource).also {
+            atlas = it
+            atlasDrawing = drawing
+        }
+        val w = sheet.width / 4
+        val h = sheet.height / 4
+        return Bitmap.createBitmap(sheet, cell % 4 * w, cell / 4 * h, w, h).also { cells.put(key, it) }
     }
 }
 
