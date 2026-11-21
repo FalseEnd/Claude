@@ -44,6 +44,11 @@ internal data class CatPose(
     val ears: Float = 0f,
     val toolStroke: Float = 0f,
     val toyX: Float = 0f,
+    val playBlend: Float = 0f,
+    val faceRight: Boolean = false,
+    val stride: Float = 0f,
+    val kick: Float = 0f,
+    val tap: Float = 0f,
 )
 
 private val restingPose = CatPose()
@@ -103,7 +108,11 @@ private fun pouncingPose(time: Float): CatPose {
     val landing = time.hold(.52f, .59f, .62f, .73f)
     val lean = time.hold(.18f, .47f, .63f, .95f)
     return CatPose(
-        x = .13f * lean,
+        playBlend = time.hold(.17f, .26f, .60f, .73f),
+        faceRight = true,
+        stride = 1f - 2f * reach,
+        kick = 2f * jump - 1f,
+        x = .095f * lean,
         lift = .21f * jump,
         squash = .16f * windUp - .046f * jump + .13f * landing,
         tilt = (9f * jump) - (6f * landing),
@@ -131,7 +140,12 @@ private fun chasingPose(time: Float): CatPose {
     val steps = time.hop(.18f, .29f) + time.hop(.38f, .51f) + time.hop(.67f, .79f)
     val crouch = time.hold(.08f, .20f, .80f, .99f)
     return CatPose(
-        x = .79f * chase,
+        playBlend = time.hold(.03f, .10f, .23f, .29f) + time.hold(.29f, .35f, .51f, .57f) +
+            time.hold(.57f, .63f, .79f, .845f) + time.hold(.845f, .89f, .94f, .99f),
+        faceRight = time < .29f || time in .57f.. .845f,
+        stride = sin(time * 12f * PI).toFloat(),
+        kick = sin((time - .042f) * 12f * PI).toFloat(),
+        x = .70f * chase,
         lift = .052f * steps,
         squash = .12f * crouch - .05f * steps,
         tilt = 36f * going,
@@ -153,7 +167,11 @@ private fun battingPose(time: Float): CatPose {
     val bat = time.hold(.35f, .43f, .48f, .57f)
     val followThrough = time.hold(.47f, .57f, .65f, .87f)
     return CatPose(
-        x = -.081f * crouch,
+        playBlend = time.hold(.13f, .23f, .72f, .85f),
+        stride = liftPaw - 2f * bat,
+        tap = bat,
+        kick = .85f * liftPaw - followThrough,
+        x = -.035f * crouch,
         squash = .16f * crouch,
         tilt = -4f * bat,
         headX = -.034f * crouch,
@@ -163,7 +181,7 @@ private fun battingPose(time: Float): CatPose {
         pawX = -.16f * bat,
         tail = .053f * followThrough,
         tailY = -.065f * crouch,
-        toyX = -.27f - .15f * time.ramp(.43f, .71f),
+        toyX = -.40f - .13f * time.ramp(.43f, .71f),
     )
 }
 

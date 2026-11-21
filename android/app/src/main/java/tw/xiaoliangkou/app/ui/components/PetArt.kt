@@ -16,6 +16,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import tw.xiaoliangkou.app.R
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -67,9 +73,10 @@ fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifie
     val cell = remember(coat) { Pet.coats.indexOfFirst { it.key == coat }.coerceAtLeast(0) }
     val base = if (face == CatFace.SLEEPING && prop == null) CatDrawing.SLEEPING else CatDrawing.SITTING
     val cat = remember(resources, cell, base) { PaintedCat(base, CatBitmaps.get(resources, base, cell), cell) }
+    val hand = if (prop == "pet") ImageBitmap.imageResource(R.drawable.petting_hand) else null
     if (!animated) {
         Canvas(modifier.semantics { contentDescription = "${Pet.coat(coat).label}，${face.description()}" }) {
-            drawPet(cat, null, 0f, stage, face, prop, CatPose(), .25f, 0f)
+            drawPet(cat, null, hand, 0f, stage, face, prop, CatPose(), .25f, 0f)
         }
         return
     }
@@ -88,6 +95,7 @@ fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifie
     }
     val motion = if (prop == null) idle else CatMotion.forProp(prop)
     val actionDrawing = when (motion) {
+        CatMotion.WAND, CatMotion.LASER, CatMotion.YARN -> CatDrawing.PLAYING
         CatMotion.EAT -> CatDrawing.EATING
         CatMotion.GROOM -> CatDrawing.GROOMING
         else -> null
@@ -115,8 +123,12 @@ fun PetCat(coat: String, stage: Int, face: CatFace, modifier: Modifier = Modifie
             val closure = (1f - abs(blink - .72f) / .027f).coerceAtLeast(0f)
             if (closure > 0f) pose = pose.copy(eyesClosed = closure)
         }
-        val blend = if (actionCat == null) 0f else minOf(t / .13f, (1f - t) / .12f).coerceIn(0f, 1f)
-        drawPet(cat, actionCat, blend, stage, face, prop, pose, breathe, if (atRest) breathe else t)
+        val blend = when (actionDrawing) {
+            null -> 0f
+            CatDrawing.PLAYING -> pose.playBlend
+            else -> minOf(t / .13f, (1f - t) / .12f).coerceIn(0f, 1f)
+        }
+        drawPet(cat, actionCat, hand, blend, stage, face, prop, pose, breathe, if (atRest) breathe else t)
     }
 }
 
@@ -138,7 +150,7 @@ private val INK = Color(0xFF725345)
 private val STAGE_SCALE = floatArrayOf(0.70f, 0.79f, 0.87f, 0.95f, 1f)
 
 /** 圖集只決定毛色，照顧行為仍由原本的 app 狀態驅動。 */
-private fun DrawScope.drawPet(cat: PaintedCat, actionCat: PaintedCat?, blend: Float, stage: Int, face: CatFace,
+private fun DrawScope.drawPet(cat: PaintedCat, actionCat: PaintedCat?, hand: ImageBitmap?, blend: Float, stage: Int, face: CatFace,
     prop: String?, pose: CatPose, breathe: Float, fast: Float) {
     val st = stage.coerceIn(0, 4)
     val side = minOf(size.height, size.width) * STAGE_SCALE[st]
@@ -179,10 +191,23 @@ private fun DrawScope.drawPet(cat: PaintedCat, actionCat: PaintedCat?, blend: Fl
             bowl(prop, Offset(left + side * mouth.x, top + side * mouth.y + dishSize * .42f), dishSize, pose.jaw)
         }
         "wand" -> wand(c, r * .85f, fast, size.width,
-            Offset(cx + pose.toyX * side, top + jump + side * .30f))
+            Offset((cx + (pose.toyX + .30f) * side).coerceAtMost(size.width - .05f * side), top + jump + side * .27f))
         "yarn" -> {
-            val turns = (pose.toyX + .27f) * side / (2f * PI.toFloat() * .32f * r)
+            val turns = (pose.toyX + .40f) * side / (2f * PI.toFloat() * .32f * r)
             yarn(Offset(cx + pose.toyX * side, floor - r * .25f), r, turns)
+        }
+        "pet" -> hand?.let {
+            val stroke = (1f - cos(fast * 4f * PI).toFloat()) / 2f
+            val contact = minOf(fast / .11f, (1f - fast) / .13f).coerceIn(0f, 1f)
+            val fingertip = Offset(left + side * (.40f + .16f * stroke + pose.headX + pose.x),
+                top + side * (.207f + .085f * stroke + pose.headY - .18f * (1f - contact)))
+            val width = side * .48f
+            val height = width * it.height / it.width
+            rotate(-5f + stroke * 9f, fingertip) {
+                drawImage(it, dstOffset = IntOffset((fingertip.x - width * .06f).toInt(),
+                    (fingertip.y - height * .94f).toInt()), dstSize = IntSize(width.toInt().coerceAtLeast(1),
+                    height.toInt().coerceAtLeast(1)), alpha = contact, filterQuality = FilterQuality.High)
+            }
         }
         "bath" -> bubbles(c + Offset(pose.headX * side, pose.headY * side), r, fast, floor)
         "brush" -> brush(Offset(cx + side * (.108f + pose.toolStroke * .09f),
@@ -190,7 +215,7 @@ private fun DrawScope.drawPet(cat: PaintedCat, actionCat: PaintedCat?, blend: Fl
     }
     if (face == CatFace.SLEEPING) {
         zzz(Offset(cx + side * 0.20f, top + side * 0.18f), r, breathe)
-    } else if (face != CatFace.OK) {
+    } else if (face != CatFace.OK && prop == null) {
         moodIllustration(face, Offset(cx + side * 0.29f, top + side * 0.23f), side * 0.075f, fast)
     }
 }

@@ -20,6 +20,7 @@ import kotlin.math.roundToInt
 /** 各姿勢都以同一條腳掌基線對齊；臉的位置則依插畫構圖決定。 */
 internal enum class CatDrawing(val resource: Int, val mouth: Offset) {
     SITTING(R.drawable.cat_coats, Offset(.453f, .461f)),
+    PLAYING(R.drawable.cat_playing, Offset(.19f, .46f)),
     EATING(R.drawable.cat_eating, Offset(.312f, .865f)),
     GROOMING(R.drawable.cat_grooming, Offset(.453f, .526f)),
     SLEEPING(R.drawable.cat_sleeping, Offset(.29f, .775f)),
@@ -63,6 +64,10 @@ internal class PaintedCat(val drawing: CatDrawing, private val bitmap: Bitmap, c
             drawIntoCanvas { it.nativeCanvas.drawBitmap(bitmap, null, destination, paint) }
             return@with
         }
+        if (drawing == CatDrawing.PLAYING) {
+            drawPlaying(this, left, top, side, pose)
+            return@with
+        }
         val sitting = drawing == CatDrawing.SITTING
         val grooming = drawing == CatDrawing.GROOMING
         val eating = drawing == CatDrawing.EATING
@@ -72,7 +77,7 @@ internal class PaintedCat(val drawing: CatDrawing, private val bitmap: Bitmap, c
             CatDrawing.SITTING -> pose.headY
             CatDrawing.GROOMING -> .019f * pose.lick
             CatDrawing.EATING -> .023f * pose.jaw - .012f
-            CatDrawing.SLEEPING -> 0f
+            CatDrawing.SLEEPING, CatDrawing.PLAYING -> 0f
         }
         val roll = if (sitting) pose.headRoll else if (grooming) -.025f * pose.lick else 0f
         var i = 0
@@ -102,6 +107,31 @@ internal class PaintedCat(val drawing: CatDrawing, private val bitmap: Bitmap, c
                 top + side * (face.y + headY - .007f)), Size(side * .024f, side * (.008f + .032f * amount)))
         }
     }
+    // The outstretched and tucked paws have distinct silhouettes in the side-view painting.
+    // Influence grows away from each shoulder or hip so toes travel farther than joints.
+    private fun drawPlaying(scope: DrawScope, left: Float, top: Float, side: Float, pose: CatPose) {
+        var i = 0
+        for (row in 0..grid) for (column in 0..grid) {
+            val x = column.toFloat() / grid
+            val y = row.toFloat() / grid
+            val front = ((.38f - x) / .29f).coerceIn(0f, 1f) * band(y, .59f, .105f)
+            val otherFront = band(x, .325f, .14f) * ((y - .57f) / .12f).coerceIn(0f, 1f)
+            val rear = ((x - .68f) / .22f).coerceIn(0f, 1f) * ((y - .56f) / .28f).coerceIn(0f, 1f)
+            val otherRear = band(x, .635f, .125f) * ((y - .63f) / .12f).coerceIn(0f, 1f)
+            val dx = (.083f * front - .085f * otherFront) * pose.stride +
+                (.075f * rear - .065f * otherRear) * pose.kick
+            val dy = (.084f * front - .070f * otherFront) * pose.stride +
+                (.097f * rear - .060f * otherRear) * pose.kick + front * .22f * pose.tap
+            val localX = if (pose.faceRight) 1f - x - dx else x + dx
+            vertices[i++] = left + localX * side
+            vertices[i++] = top + (y + dy) * side
+        }
+        scope.drawIntoCanvas { it.nativeCanvas.drawBitmapMesh(bitmap, grid, grid, vertices, 0, null, 0, paint) }
+    }
+
+    private fun band(value: Float, center: Float, radius: Float) =
+        (1f - abs(value - center) / radius).coerceIn(0f, 1f)
+
 }
 
 private val neutral = CatPose()
